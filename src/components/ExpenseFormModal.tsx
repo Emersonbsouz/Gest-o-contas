@@ -49,6 +49,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
   const [totalInstallments, setTotalInstallments] = useState('1');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (editingExpense) {
@@ -92,7 +93,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const cleanDesc = description.trim();
@@ -126,23 +127,30 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
       }
     }
 
-    onSave(
-      {
-        description: cleanDesc,
-        amount: Math.round(numAmount * 100) / 100,
-        date,
-        categoryId,
-        paymentMethod,
-        accountId: paymentMethod !== 'credit_card' ? accountId || (accounts[0] ? accounts[0].id : undefined) : undefined,
-        cardId: paymentMethod === 'credit_card' ? cardId || (cards[0] ? cards[0].id : undefined) : undefined,
-        contactId: contactId || undefined,
-        status,
-        installments: installmentsData,
-        notes: notes.trim() || undefined,
-      },
-      editingExpense ? editingExpense.id : undefined
-    );
-    onClose();
+    setIsLoading(true);
+    try {
+      await onSave(
+        {
+          description: cleanDesc,
+          amount: Math.round(numAmount * 100) / 100,
+          date,
+          categoryId,
+          paymentMethod,
+          accountId: paymentMethod !== 'credit_card' ? accountId || (accounts[0] ? accounts[0].id : undefined) : undefined,
+          cardId: paymentMethod === 'credit_card' ? cardId || (cards[0] ? cards[0].id : undefined) : undefined,
+          contactId: contactId || undefined,
+          status,
+          installments: installmentsData,
+          notes: notes.trim() || undefined,
+        },
+        editingExpense ? editingExpense.id : undefined
+      );
+      onClose();
+    } catch (err) {
+      setError('Erro ao salvar. Tente novamente.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
 
@@ -474,9 +482,14 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
             <button
               type="submit"
               id="btn-save-expense"
-              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
+              disabled={isLoading}
+              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
             >
-              <Check className="w-4 h-4" />
+              {isLoading ? (
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )}
               {editingExpense ? 'Salvar Alterações' : 'Adicionar Despesa'}
             </button>
           </div>

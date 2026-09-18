@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   RotateCcw,
   UserPlus,
+  AlertCircle,
 } from 'lucide-react';
 import {
   formatMonthYearLabel,
@@ -100,12 +101,20 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={onOpenBackupModal}
-                className="flex items-center gap-1.5 text-[11px] text-emerald-800 bg-emerald-50 hover:bg-emerald-100/80 px-2.5 py-1 rounded-lg border border-emerald-200 font-semibold transition cursor-pointer"
-                title="Clique para ver o status da nuvem ou fazer download do backup"
+                className={`flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg border font-semibold transition cursor-pointer ${
+                  cloudSyncStatus === 'error'
+                    ? 'bg-rose-100 text-rose-800 border-rose-300 animate-pulse'
+                    : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                }`}
+                title={cloudSyncStatus === 'error' ? 'ERRO DE SINCRONIZAÇÃO! Clique para verificar' : 'Clique para ver o status da nuvem ou fazer download do backup'}
               >
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span>Nuvem Ativa & Backup</span>
+                <span className={`w-2 h-2 rounded-full ${cloudSyncStatus === 'error' ? 'bg-rose-600' : 'bg-emerald-500 animate-pulse'}`} />
+                {cloudSyncStatus === 'error' ? (
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                ) : (
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                )}
+                <span>{cloudSyncStatus === 'error' ? 'Erro de Sincronização' : 'Nuvem Ativa & Backup'}</span>
               </button>
             )}
           </div>
@@ -245,7 +254,7 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 <Layers className="w-3.5 h-3.5 text-violet-600" />
-                Cadastros Gerais
+                Cadastros & Fornecedores
               </button>
             </div>
           </div>

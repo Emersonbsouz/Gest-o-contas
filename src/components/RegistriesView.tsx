@@ -267,7 +267,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
 
   // Filtered Contacts
   const filteredContacts = useMemo(() => {
-    return contacts.filter((c) => {
+    return safeContacts.filter((c) => {
       const matchSearch =
         c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (c.document && c.document.includes(searchQuery)) ||
@@ -276,42 +276,42 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
       const matchType = typeFilter === 'all' || c.type === typeFilter;
       return matchSearch && matchType;
     });
-  }, [contacts, searchQuery, typeFilter]);
+  }, [safeContacts, searchQuery, typeFilter]);
 
   // Filtered Recurring Bills
   const filteredRecurring = useMemo(() => {
-    return recurringBills.filter((b) => {
+    return safeRecurring.filter((b) => {
       const matchSearch =
         b.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (b.notes && b.notes.toLowerCase().includes(searchQuery.toLowerCase()));
       const matchType = typeFilter === 'all' || b.type === typeFilter;
       return matchSearch && matchType;
     });
-  }, [recurringBills, searchQuery, typeFilter]);
+  }, [safeRecurring, searchQuery, typeFilter]);
 
   // Filtered Goals
   const filteredGoals = useMemo(() => {
-    return goals.filter((g) =>
+    return safeGoals.filter((g) =>
       g.title.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [goals, searchQuery]);
+  }, [safeGoals, searchQuery]);
 
   // Total Recurring expenses and incomes
   const totalRecurringExpenses = useMemo(() => {
-    return recurringBills
+    return safeRecurring
       .filter((b) => b.type === 'expense' && b.active)
       .reduce((sum, b) => sum + b.amount, 0);
-  }, [recurringBills]);
+  }, [safeRecurring]);
 
   const totalRecurringIncomes = useMemo(() => {
-    return recurringBills
+    return safeRecurring
       .filter((b) => b.type === 'income' && b.active)
       .reduce((sum, b) => sum + b.amount, 0);
-  }, [recurringBills]);
+  }, [safeRecurring]);
 
   const totalCreditLimit = useMemo(() => {
-    return cards.reduce((sum, c) => sum + c.limit, 0);
-  }, [cards]);
+    return safeCards.reduce((sum, c) => sum + c.limit, 0);
+  }, [safeCards]);
 
   return (
     <div className="space-y-6">
@@ -623,34 +623,38 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
       {/* TAB 2: FAVORECIDOS & FORNECEDORES */}
       {activeTab === 'contacts' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Fornecedores, Clientes & Favorecidos</h3>
-              <p className="text-xs text-slate-500">
-                Cadastro de lojas, prestadores de serviço e clientes com dados de contato e Chave PIX
-              </p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center shadow-2xs shrink-0">
+                <Users className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 leading-tight">Interface de Cadastro: Fornecedores & Favorecidos</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Gerencie lojas, prestadores de serviço e clientes para facilitar seus lançamentos de despesas e receitas.
+                </p>
+              </div>
             </div>
 
-            {/* Filter by Contact Type */}
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap sm:shrink-0">
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
-                className="px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-white font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className="px-3.5 py-2 text-xs rounded-xl border border-slate-300 bg-white font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
               >
-                <option value="all">Todos os Tipos</option>
-                <option value="supplier">Fornecedores / Lojas</option>
-                <option value="customer">Clientes / Pagadores</option>
-                <option value="service_provider">Prestadores de Serviços</option>
-                <option value="other">Outros</option>
+                <option value="all">Todos os Contatos</option>
+                <option value="supplier">Apenas Fornecedores / Favorecidos</option>
+                <option value="customer">Apenas Clientes / Pagadores</option>
+                <option value="service_provider">Apenas Prestadores de Serviços</option>
+                <option value="other">Outros Contatos</option>
               </select>
 
               <button
                 onClick={() => onOpenContactModal()}
-                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-black text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-all active:scale-95"
               >
-                <Plus className="w-3.5 h-3.5" />
-                Novo Favorecido
+                <UserPlus className="w-4 h-4" />
+                Novo Cadastro
               </button>
             </div>
           </div>
@@ -686,12 +690,12 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                     }[contact.type] || 'Contato';
 
                     return (
-                      <tr key={contact.id} className="hover:bg-slate-50/70 transition-colors">
+                      <tr key={contact.id} className="hover:bg-slate-50/70 transition-colors group">
                         <td className="py-3 px-4">
-                          <div className="font-bold text-slate-900">{contact.name}</div>
+                          <div className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{contact.name}</div>
                           {contact.notes && (
-                            <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">
-                              {contact.notes}
+                            <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1 italic">
+                              "{contact.notes}"
                             </p>
                           )}
                         </td>

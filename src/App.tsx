@@ -245,7 +245,7 @@ export default function App() {
       name: name?.trim() || cleanEmail,
       role: chosenRole,
       permissions: chosenPerms,
-      addedAt: new Date().toISOString(),
+      addedAt: Date.now(),
     };
 
     setCompanies((prev) =>
@@ -791,16 +791,14 @@ export default function App() {
         {activeTab === 'expenses' && (
           <div className="space-y-6">
             <ExpenseSummaryCards
-              summary={expenseSummary}
+              {...expenseSummary}
               onOpenBudgetModal={() => setIsBudgetModalOpen(true)}
-              onOpenAddExpenseModal={handleOpenAddExpenseModal}
             />
 
             <MonthlyCharts
               expenses={expenses}
               categories={categories}
               currentYearMonth={currentYearMonth}
-              budget={currentBudget}
             />
 
             <ExpenseList
@@ -971,7 +969,7 @@ export default function App() {
       <QuickRegisterModal
         isOpen={isQuickRegisterOpen}
         onClose={() => setIsQuickRegisterOpen(false)}
-        onSelect={handleQuickRegisterAction}
+        onSelectAction={handleQuickRegisterAction}
       />
 
       {/* Multi-Company Modals */}

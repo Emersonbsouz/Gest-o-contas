@@ -261,21 +261,29 @@ export function useCompanyData(companyId: string | null) {
   const saveExpense = useCallback(
     async (expenseData: Omit<Expense, 'id' | 'createdAt'>, expenseId?: string) => {
       if (!companyId) return;
-      const id = expenseId || `exp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-      const newExpense: Expense = {
-        ...expenseData,
-        id,
-        createdAt: expenseId ? (expenses.find((e) => e.id === expenseId)?.createdAt || Date.now()) : Date.now(),
-      };
+      setCloudSyncStatus('syncing');
+      try {
+        const id = expenseId || `exp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const newExpense: Expense = {
+          ...expenseData,
+          id,
+          createdAt: expenseId ? (expenses.find((e) => e.id === expenseId)?.createdAt || Date.now()) : Date.now(),
+        };
 
-      setExpenses((prev) => {
-        const next = expenseId ? prev.map((e) => (e.id === expenseId ? newExpense : e)) : [newExpense, ...prev];
-        localStorage.setItem(getStorageKey('expenses'), JSON.stringify(next));
-        return next;
-      });
+        setExpenses((prev) => {
+          const next = expenseId ? prev.map((e) => (e.id === expenseId ? newExpense : e)) : [newExpense, ...prev];
+          localStorage.setItem(getStorageKey('expenses'), JSON.stringify(next));
+          return next;
+        });
 
-      await saveCompanyDoc(companyId, 'expenses', id, newExpense);
-      return newExpense;
+        await saveCompanyDoc(companyId, 'expenses', id, newExpense);
+        setCloudSyncStatus('synced');
+        return newExpense;
+      } catch (err) {
+        console.error('Erro ao salvar despesa:', err);
+        setCloudSyncStatus('error');
+        return undefined;
+      }
     },
     [companyId, expenses]
   );
@@ -283,12 +291,19 @@ export function useCompanyData(companyId: string | null) {
   const deleteExpense = useCallback(
     async (id: string) => {
       if (!companyId) return;
-      setExpenses((prev) => {
-        const next = prev.filter((e) => e.id !== id);
-        localStorage.setItem(getStorageKey('expenses'), JSON.stringify(next));
-        return next;
-      });
-      await deleteCompanyDoc(companyId, 'expenses', id);
+      setCloudSyncStatus('syncing');
+      try {
+        setExpenses((prev) => {
+          const next = prev.filter((e) => e.id !== id);
+          localStorage.setItem(getStorageKey('expenses'), JSON.stringify(next));
+          return next;
+        });
+        await deleteCompanyDoc(companyId, 'expenses', id);
+        setCloudSyncStatus('synced');
+      } catch (err) {
+        console.error('Erro ao excluir despesa:', err);
+        setCloudSyncStatus('error');
+      }
     },
     [companyId]
   );
@@ -296,20 +311,27 @@ export function useCompanyData(companyId: string | null) {
   const saveIncome = useCallback(
     async (incomeData: Omit<Income, 'id' | 'createdAt'>, incomeId?: string) => {
       if (!companyId) return;
-      const id = incomeId || `inc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-      const newIncome: Income = {
-        ...incomeData,
-        id,
-        createdAt: incomeId ? (incomes.find((i) => i.id === incomeId)?.createdAt || Date.now()) : Date.now(),
-      };
+      setCloudSyncStatus('syncing');
+      try {
+        const id = incomeId || `inc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const newIncome: Income = {
+          ...incomeData,
+          id,
+          createdAt: incomeId ? (incomes.find((i) => i.id === incomeId)?.createdAt || Date.now()) : Date.now(),
+        };
 
-      setIncomes((prev) => {
-        const next = incomeId ? prev.map((i) => (i.id === incomeId ? newIncome : i)) : [newIncome, ...prev];
-        localStorage.setItem(getStorageKey('incomes'), JSON.stringify(next));
-        return next;
-      });
+        setIncomes((prev) => {
+          const next = incomeId ? prev.map((i) => (i.id === incomeId ? newIncome : i)) : [newIncome, ...prev];
+          localStorage.setItem(getStorageKey('incomes'), JSON.stringify(next));
+          return next;
+        });
 
-      await saveCompanyDoc(companyId, 'incomes', id, newIncome);
+        await saveCompanyDoc(companyId, 'incomes', id, newIncome);
+        setCloudSyncStatus('synced');
+      } catch (err) {
+        console.error('Erro ao salvar receita:', err);
+        setCloudSyncStatus('error');
+      }
     },
     [companyId, incomes]
   );
@@ -317,12 +339,19 @@ export function useCompanyData(companyId: string | null) {
   const deleteIncome = useCallback(
     async (id: string) => {
       if (!companyId) return;
-      setIncomes((prev) => {
-        const next = prev.filter((i) => i.id !== id);
-        localStorage.setItem(getStorageKey('incomes'), JSON.stringify(next));
-        return next;
-      });
-      await deleteCompanyDoc(companyId, 'incomes', id);
+      setCloudSyncStatus('syncing');
+      try {
+        setIncomes((prev) => {
+          const next = prev.filter((i) => i.id !== id);
+          localStorage.setItem(getStorageKey('incomes'), JSON.stringify(next));
+          return next;
+        });
+        await deleteCompanyDoc(companyId, 'incomes', id);
+        setCloudSyncStatus('synced');
+      } catch (err) {
+        console.error('Erro ao excluir receita:', err);
+        setCloudSyncStatus('error');
+      }
     },
     [companyId]
   );
@@ -330,20 +359,27 @@ export function useCompanyData(companyId: string | null) {
   const saveTransfer = useCallback(
     async (transferData: Omit<AccountTransfer, 'id' | 'createdAt'>, transferId?: string) => {
       if (!companyId) return;
-      const id = transferId || `trf-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-      const newTransfer: AccountTransfer = {
-        ...transferData,
-        id,
-        createdAt: transferId ? (transfers.find((t) => t.id === transferId)?.createdAt || Date.now()) : Date.now(),
-      };
+      setCloudSyncStatus('syncing');
+      try {
+        const id = transferId || `trf-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const newTransfer: AccountTransfer = {
+          ...transferData,
+          id,
+          createdAt: transferId ? (transfers.find((t) => t.id === transferId)?.createdAt || Date.now()) : Date.now(),
+        };
 
-      setTransfers((prev) => {
-        const next = transferId ? prev.map((t) => (t.id === transferId ? newTransfer : t)) : [newTransfer, ...prev];
-        localStorage.setItem(getStorageKey('transfers'), JSON.stringify(next));
-        return next;
-      });
+        setTransfers((prev) => {
+          const next = transferId ? prev.map((t) => (t.id === transferId ? newTransfer : t)) : [newTransfer, ...prev];
+          localStorage.setItem(getStorageKey('transfers'), JSON.stringify(next));
+          return next;
+        });
 
-      await saveCompanyDoc(companyId, 'transfers', id, newTransfer);
+        await saveCompanyDoc(companyId, 'transfers', id, newTransfer);
+        setCloudSyncStatus('synced');
+      } catch (err) {
+        console.error('Erro ao salvar transferência:', err);
+        setCloudSyncStatus('error');
+      }
     },
     [companyId, transfers]
   );
@@ -394,16 +430,23 @@ export function useCompanyData(companyId: string | null) {
   const saveCard = useCallback(
     async (cardData: Omit<CreditCard, 'id'>, cardId?: string) => {
       if (!companyId) return;
-      const id = cardId || `card-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-      const newCard: CreditCard = { ...cardData, id };
+      setCloudSyncStatus('syncing');
+      try {
+        const id = cardId || `card-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const newCard: CreditCard = { ...cardData, id };
 
-      setCards((prev) => {
-        const next = cardId ? prev.map((c) => (c.id === cardId ? newCard : c)) : [...prev, newCard];
-        localStorage.setItem(getStorageKey('cards'), JSON.stringify(next));
-        return next;
-      });
+        setCards((prev) => {
+          const next = cardId ? prev.map((c) => (c.id === cardId ? newCard : c)) : [...prev, newCard];
+          localStorage.setItem(getStorageKey('cards'), JSON.stringify(next));
+          return next;
+        });
 
-      await saveCompanyDoc(companyId, 'cards', id, newCard);
+        await saveCompanyDoc(companyId, 'cards', id, newCard);
+        setCloudSyncStatus('synced');
+      } catch (err) {
+        console.error('Erro ao salvar cartão:', err);
+        setCloudSyncStatus('error');
+      }
     },
     [companyId]
   );
@@ -424,20 +467,27 @@ export function useCompanyData(companyId: string | null) {
   const saveContact = useCallback(
     async (contactData: Omit<ContactPerson, 'id' | 'createdAt'>, contactId?: string) => {
       if (!companyId) return;
-      const id = contactId || `cont-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-      const newContact: ContactPerson = {
-        ...contactData,
-        id,
-        createdAt: contactId ? (contacts.find((c) => c.id === contactId)?.createdAt || Date.now()) : Date.now(),
-      };
+      setCloudSyncStatus('syncing');
+      try {
+        const id = contactId || `cont-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const newContact: ContactPerson = {
+          ...contactData,
+          id,
+          createdAt: contactId ? (contacts.find((c) => c.id === contactId)?.createdAt || Date.now()) : Date.now(),
+        };
 
-      setContacts((prev) => {
-        const next = contactId ? prev.map((c) => (c.id === contactId ? newContact : c)) : [...prev, newContact];
-        localStorage.setItem(getStorageKey('contacts'), JSON.stringify(next));
-        return next;
-      });
+        setContacts((prev) => {
+          const next = contactId ? prev.map((c) => (c.id === contactId ? newContact : c)) : [...prev, newContact];
+          localStorage.setItem(getStorageKey('contacts'), JSON.stringify(next));
+          return next;
+        });
 
-      await saveCompanyDoc(companyId, 'contacts', id, newContact);
+        await saveCompanyDoc(companyId, 'contacts', id, newContact);
+        setCloudSyncStatus('synced');
+      } catch (err) {
+        console.error('Erro ao salvar contato:', err);
+        setCloudSyncStatus('error');
+      }
     },
     [companyId, contacts]
   );
@@ -445,12 +495,19 @@ export function useCompanyData(companyId: string | null) {
   const deleteContact = useCallback(
     async (id: string) => {
       if (!companyId) return;
-      setContacts((prev) => {
-        const next = prev.filter((c) => c.id !== id);
-        localStorage.setItem(getStorageKey('contacts'), JSON.stringify(next));
-        return next;
-      });
-      await deleteCompanyDoc(companyId, 'contacts', id);
+      setCloudSyncStatus('syncing');
+      try {
+        setContacts((prev) => {
+          const next = prev.filter((c) => c.id !== id);
+          localStorage.setItem(getStorageKey('contacts'), JSON.stringify(next));
+          return next;
+        });
+        await deleteCompanyDoc(companyId, 'contacts', id);
+        setCloudSyncStatus('synced');
+      } catch (err) {
+        console.error('Erro ao deletar contato:', err);
+        setCloudSyncStatus('error');
+      }
     },
     [companyId]
   );
@@ -458,20 +515,27 @@ export function useCompanyData(companyId: string | null) {
   const saveRecurring = useCallback(
     async (billData: Omit<RecurringBill, 'id' | 'createdAt'>, billId?: string) => {
       if (!companyId) return;
-      const id = billId || `rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-      const newBill: RecurringBill = {
-        ...billData,
-        id,
-        createdAt: billId ? (recurringBills.find((b) => b.id === billId)?.createdAt || Date.now()) : Date.now(),
-      };
+      setCloudSyncStatus('syncing');
+      try {
+        const id = billId || `rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const newBill: RecurringBill = {
+          ...billData,
+          id,
+          createdAt: billId ? (recurringBills.find((b) => b.id === billId)?.createdAt || Date.now()) : Date.now(),
+        };
 
-      setRecurringBills((prev) => {
-        const next = billId ? prev.map((b) => (b.id === billId ? newBill : b)) : [...prev, newBill];
-        localStorage.setItem(getStorageKey('recurring'), JSON.stringify(next));
-        return next;
-      });
+        setRecurringBills((prev) => {
+          const next = billId ? prev.map((b) => (b.id === billId ? newBill : b)) : [...prev, newBill];
+          localStorage.setItem(getStorageKey('recurring'), JSON.stringify(next));
+          return next;
+        });
 
-      await saveCompanyDoc(companyId, 'recurring', id, newBill);
+        await saveCompanyDoc(companyId, 'recurring', id, newBill);
+        setCloudSyncStatus('synced');
+      } catch (err) {
+        console.error('Erro ao salvar conta recorrente:', err);
+        setCloudSyncStatus('error');
+      }
     },
     [companyId, recurringBills]
   );

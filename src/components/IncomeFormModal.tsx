@@ -31,6 +31,7 @@ export const IncomeFormModal: React.FC<IncomeFormModalProps> = ({
   const [status, setStatus] = useState<PaymentStatus>('paid');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (editingIncome) {
@@ -58,7 +59,7 @@ export const IncomeFormModal: React.FC<IncomeFormModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const cleanDesc = description.trim();
@@ -83,20 +84,27 @@ export const IncomeFormModal: React.FC<IncomeFormModalProps> = ({
       return;
     }
 
-    onSave(
-      {
-        description: cleanDesc,
-        amount: Math.round(numAmount * 100) / 100,
-        date,
-        accountId,
-        category,
-        contactId: contactId || undefined,
-        status,
-        notes: notes.trim() || undefined,
-      },
-      editingIncome ? editingIncome.id : undefined
-    );
-    onClose();
+    setIsLoading(true);
+    try {
+      await onSave(
+        {
+          description: cleanDesc,
+          amount: Math.round(numAmount * 100) / 100,
+          date,
+          accountId,
+          category,
+          contactId: contactId || undefined,
+          status,
+          notes: notes.trim() || undefined,
+        },
+        editingIncome ? editingIncome.id : undefined
+      );
+      onClose();
+    } catch (err) {
+      setError('Erro ao salvar. Tente novamente.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -313,9 +321,14 @@ export const IncomeFormModal: React.FC<IncomeFormModalProps> = ({
             <button
               type="submit"
               id="btn-save-income"
-              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
+              disabled={isLoading}
+              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
             >
-              <Check className="w-4 h-4" />
+              {isLoading ? (
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )}
               {editingIncome ? 'Salvar Alterações' : 'Confirmar Entrada'}
             </button>
           </div>
