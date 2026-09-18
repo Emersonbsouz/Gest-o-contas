@@ -1,6 +1,6 @@
 {
   "name": "Controle de Gastos Pessoais",
-  "description": "Sistema de controle de gastos pessoais com categorização de despesas, geração automática de gráficos mensais e sistema completo de tesouraria com caixas, contas bancárias e fluxo financeiro.",
+  "description": "Sistema de gestão financeira multi-empresas e pessoal com isolamento total de dados, controle de acessos para sócios, tesouraria completa, cartões e fluxo de caixa.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

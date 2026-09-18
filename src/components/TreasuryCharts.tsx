@@ -29,11 +29,11 @@ interface TreasuryChartsProps {
 }
 
 export const TreasuryCharts: React.FC<TreasuryChartsProps> = ({
-  accounts,
-  incomes,
-  expenses,
+  accounts = [],
+  incomes = [],
+  expenses = [],
   currentYearMonth,
-  balances,
+  balances = {},
 }) => {
   const cashflowData = getTreasuryCashflowHistory(incomes, expenses, currentYearMonth, 6);
   const accountDistribution = getAccountDistributionData(accounts, balances);

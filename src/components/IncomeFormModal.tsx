@@ -18,7 +18,7 @@ export const IncomeFormModal: React.FC<IncomeFormModalProps> = ({
   onClose,
   onSave,
   editingIncome,
-  accounts,
+  accounts = [],
   contacts = [],
   defaultDate,
 }) => {
@@ -47,7 +47,7 @@ export const IncomeFormModal: React.FC<IncomeFormModalProps> = ({
       setDescription('');
       setAmount('');
       setDate(defaultDate || today);
-      setAccountId(accounts[0]?.id || '');
+      setAccountId(accounts?.[0]?.id || '');
       setCategory(INCOME_CATEGORIES[0]);
       setContactId('');
       setStatus('paid');

@@ -7,7 +7,7 @@ interface CreditCardFormModalProps {
   onClose: () => void;
   onSave: (cardData: Omit<CreditCard, 'id'>, cardId?: string) => void;
   editingCard?: CreditCard | null;
-  accounts: TreasuryAccount[];
+  accounts?: TreasuryAccount[];
 }
 
 const BRAND_OPTIONS: { value: CardBrand; label: string }[] = [
@@ -36,7 +36,7 @@ export const CreditCardFormModal: React.FC<CreditCardFormModalProps> = ({
   onClose,
   onSave,
   editingCard,
-  accounts,
+  accounts = [],
 }) => {
   const [name, setName] = useState('');
   const [brand, setBrand] = useState<CardBrand>('mastercard');
@@ -65,7 +65,7 @@ export const CreditCardFormModal: React.FC<CreditCardFormModalProps> = ({
       setClosingDay('25');
       setDueDay('5');
       setColor('#820ad1');
-      setLinkedAccountId(accounts[0]?.id || '');
+      setLinkedAccountId(accounts?.[0]?.id || '');
       setNotes('');
     }
     setError('');

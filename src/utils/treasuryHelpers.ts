@@ -24,37 +24,41 @@ export interface UnifiedTransaction {
 }
 
 export function calculateAccountBalances(
-  accounts: TreasuryAccount[],
-  incomes: Income[],
-  expenses: Expense[],
-  transfers: AccountTransfer[]
+  accounts: TreasuryAccount[] = [],
+  incomes: Income[] = [],
+  expenses: Expense[] = [],
+  transfers: AccountTransfer[] = []
 ): Record<string, number> {
   const balances: Record<string, number> = {};
+  const safeAccounts = accounts || [];
+  const safeIncomes = incomes || [];
+  const safeExpenses = expenses || [];
+  const safeTransfers = transfers || [];
 
   // Initialize with initialBalance
-  accounts.forEach((acc) => {
-    balances[acc.id] = acc.initialBalance;
+  safeAccounts.forEach((acc) => {
+    balances[acc.id] = acc.initialBalance || 0;
   });
 
   // Add all incomes
-  incomes.forEach((inc) => {
+  safeIncomes.forEach((inc) => {
     if (balances[inc.accountId] !== undefined) {
       balances[inc.accountId] += inc.amount;
-    } else if (accounts.length > 0) {
-      balances[accounts[0].id] = (balances[accounts[0].id] || 0) + inc.amount;
+    } else if (safeAccounts.length > 0 && safeAccounts[0]) {
+      balances[safeAccounts[0].id] = (balances[safeAccounts[0].id] || 0) + inc.amount;
     }
   });
 
   // Subtract all expenses
-  expenses.forEach((exp) => {
-    const accId = exp.accountId || (accounts[0] ? accounts[0].id : '');
-    if (balances[accId] !== undefined) {
+  safeExpenses.forEach((exp) => {
+    const accId = exp.accountId || (safeAccounts.length > 0 && safeAccounts[0] ? safeAccounts[0].id : '');
+    if (accId && balances[accId] !== undefined) {
       balances[accId] -= exp.amount;
     }
   });
 
   // Apply transfers (subtract from origin, add to destination)
-  transfers.forEach((tr) => {
+  safeTransfers.forEach((tr) => {
     if (balances[tr.fromAccountId] !== undefined) {
       balances[tr.fromAccountId] -= tr.amount;
     }
@@ -67,21 +71,27 @@ export function calculateAccountBalances(
 }
 
 export function getTreasuryMonthSummary(
-  accounts: TreasuryAccount[],
-  incomes: Income[],
-  expenses: Expense[],
-  transfers: AccountTransfer[],
-  yearMonth: string
+  accounts: TreasuryAccount[] = [],
+  incomes: Income[] = [],
+  expenses: Expense[] = [],
+  transfers: AccountTransfer[] = [],
+  yearMonth: string = ''
 ) {
-  const monthIncomes = incomes.filter((i) => i.date.startsWith(yearMonth));
-  const monthExpenses = expenses.filter((e) => e.date.startsWith(yearMonth));
-  const monthTransfers = transfers.filter((t) => t.date.startsWith(yearMonth));
+  const safeAccounts = accounts || [];
+  const safeIncomes = incomes || [];
+  const safeExpenses = expenses || [];
+  const safeTransfers = transfers || [];
+  const safeMonth = yearMonth || '';
+
+  const monthIncomes = safeIncomes.filter((i) => (safeMonth ? i.date.startsWith(safeMonth) : true));
+  const monthExpenses = safeExpenses.filter((e) => (safeMonth ? e.date.startsWith(safeMonth) : true));
+  const monthTransfers = safeTransfers.filter((t) => (safeMonth ? t.date.startsWith(safeMonth) : true));
 
   const monthInflow = monthIncomes.reduce((acc, curr) => acc + curr.amount, 0);
   const monthOutflow = monthExpenses.reduce((acc, curr) => acc + curr.amount, 0);
   const monthNet = monthInflow - monthOutflow;
 
-  const balances = calculateAccountBalances(accounts, incomes, expenses, transfers);
+  const balances = calculateAccountBalances(safeAccounts, safeIncomes, safeExpenses, safeTransfers);
   const totalBalance = Object.values(balances).reduce((acc, curr) => acc + curr, 0);
 
   return {
@@ -97,11 +107,11 @@ export function getTreasuryMonthSummary(
 }
 
 export function getUnifiedTransactions(
-  incomes: Income[],
-  expenses: Expense[],
-  transfers: AccountTransfer[],
-  accounts: TreasuryAccount[],
-  categories: Category[],
+  incomes: Income[] = [],
+  expenses: Expense[] = [],
+  transfers: AccountTransfer[] = [],
+  accounts: TreasuryAccount[] = [],
+  categories: Category[] = [],
   options?: {
     yearMonth?: string;
     accountId?: string;
@@ -109,13 +119,19 @@ export function getUnifiedTransactions(
     searchTerm?: string;
   }
 ): UnifiedTransaction[] {
-  const accountMap = new Map<string, string>(accounts.map((a) => [a.id, a.name]));
-  const categoryMap = new Map<string, Category>(categories.map((c) => [c.id, c]));
+  const safeAccounts = accounts || [];
+  const safeCategories = categories || [];
+  const safeIncomes = incomes || [];
+  const safeExpenses = expenses || [];
+  const safeTransfers = transfers || [];
+
+  const accountMap = new Map<string, string>(safeAccounts.map((a) => [a.id, a.name]));
+  const categoryMap = new Map<string, Category>(safeCategories.map((c) => [c.id, c]));
 
   const list: UnifiedTransaction[] = [];
 
   // Incomes
-  incomes.forEach((inc) => {
+  safeIncomes.forEach((inc) => {
     list.push({
       id: inc.id,
       type: 'income',
@@ -131,8 +147,8 @@ export function getUnifiedTransactions(
   });
 
   // Expenses
-  expenses.forEach((exp) => {
-    const accId = exp.accountId || (accounts[0] ? accounts[0].id : '');
+  safeExpenses.forEach((exp) => {
+    const accId = exp.accountId || (safeAccounts.length > 0 && safeAccounts[0] ? safeAccounts[0].id : '');
     const cat = categoryMap.get(exp.categoryId);
     list.push({
       id: exp.id,
@@ -151,7 +167,7 @@ export function getUnifiedTransactions(
   });
 
   // Transfers
-  transfers.forEach((tr) => {
+  safeTransfers.forEach((tr) => {
     list.push({
       id: tr.id,
       type: 'transfer',
@@ -201,13 +217,18 @@ export function getUnifiedTransactions(
 }
 
 export function getTreasuryCashflowHistory(
-  incomes: Income[],
-  expenses: Expense[],
-  currentYearMonth: string,
+  incomes: Income[] = [],
+  expenses: Expense[] = [],
+  currentYearMonth: string = '',
   monthsBack = 6
 ) {
   const shortNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-  const [currY, currM] = currentYearMonth.split('-').map(Number);
+  const safeYM = currentYearMonth || new Date().toISOString().slice(0, 7);
+  const parts = safeYM.split('-').map(Number);
+  const currY = parts[0] || new Date().getFullYear();
+  const currM = parts[1] || new Date().getMonth() + 1;
+  const safeIncomes = incomes || [];
+  const safeExpenses = expenses || [];
   const results = [];
 
   for (let i = monthsBack - 1; i >= 0; i--) {
@@ -216,8 +237,8 @@ export function getTreasuryCashflowHistory(
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const ym = `${y}-${m}`;
 
-    const monthIncomes = incomes.filter((inc) => inc.date.startsWith(ym));
-    const monthExpenses = expenses.filter((exp) => exp.date.startsWith(ym));
+    const monthIncomes = safeIncomes.filter((inc) => inc.date.startsWith(ym));
+    const monthExpenses = safeExpenses.filter((exp) => exp.date.startsWith(ym));
 
     const inflow = monthIncomes.reduce((acc, curr) => acc + curr.amount, 0);
     const outflow = monthExpenses.reduce((acc, curr) => acc + curr.amount, 0);
@@ -236,12 +257,14 @@ export function getTreasuryCashflowHistory(
 }
 
 export function getAccountDistributionData(
-  accounts: TreasuryAccount[],
-  balances: Record<string, number>
+  accounts: TreasuryAccount[] = [],
+  balances: Record<string, number> = {}
 ) {
-  return accounts
+  const safeAccounts = accounts || [];
+  const safeBalances = balances || {};
+  return safeAccounts
     .map((acc) => {
-      const balance = balances[acc.id] || 0;
+      const balance = safeBalances[acc.id] || 0;
       return {
         id: acc.id,
         name: acc.name,

@@ -13,10 +13,10 @@ interface RecurringBillFormModalProps {
   onClose: () => void;
   onSave: (billData: Omit<RecurringBill, 'id'>, billId?: string) => void;
   editingBill?: RecurringBill | null;
-  categories: Category[];
-  accounts: TreasuryAccount[];
-  cards: CreditCard[];
-  contacts: ContactPerson[];
+  categories?: Category[];
+  accounts?: TreasuryAccount[];
+  cards?: CreditCard[];
+  contacts?: ContactPerson[];
 }
 
 export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
@@ -24,10 +24,10 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
   onClose,
   onSave,
   editingBill,
-  categories,
-  accounts,
-  cards,
-  contacts,
+  categories = [],
+  accounts = [],
+  cards = [],
+  contacts = [],
 }) => {
   const [description, setDescription] = useState('');
   const [type, setType] = useState<'expense' | 'income'>('expense');
@@ -54,7 +54,7 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
         setCardId(editingBill.cardId);
       } else {
         setPaymentSource('account');
-        setAccountId(editingBill.accountId || accounts[0]?.id || '');
+        setAccountId(editingBill.accountId || accounts?.[0]?.id || '');
       }
       setContactId(editingBill.contactId || '');
       setActive(editingBill.active);
@@ -64,10 +64,10 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
       setType('expense');
       setAmount('');
       setDueDay('10');
-      setCategoryId(categories[0]?.id || '');
+      setCategoryId(categories?.[0]?.id || '');
       setPaymentSource('account');
-      setAccountId(accounts[0]?.id || '');
-      setCardId(cards[0]?.id || '');
+      setAccountId(accounts?.[0]?.id || '');
+      setCardId(cards?.[0]?.id || '');
       setContactId('');
       setActive(true);
       setNotes('');

@@ -54,6 +54,7 @@ export interface RecurringBill {
   contactId?: string;
   active: boolean;
   notes?: string;
+  createdAt?: number;
 }
 
 export interface FinancialGoal {
@@ -65,6 +66,7 @@ export interface FinancialGoal {
   color: string;
   category?: string;
   notes?: string;
+  createdAt?: number;
 }
 
 export interface IncomeCategory {
@@ -147,6 +149,89 @@ export interface TreasurySummary {
   monthOutflow: number;
   monthNet: number;
   accountBalances: Record<string, number>;
+}
+
+export type CompanyType = 'personal' | 'business';
+export type CompanyRole = 'owner' | 'admin' | 'partner' | 'operator' | 'viewer' | 'custom';
+
+export interface MemberPermissions {
+  canCreateTransactions: boolean; // Despesas, receitas, transferências
+  canEditTransactions: boolean;   // Editar lançamentos
+  canDeleteTransactions: boolean; // Excluir lançamentos
+  canManageRegistries: boolean;   // Cartões, favorecidos, contas bancárias, metas, categorias
+  canViewReports: boolean;        // Visualizar relatórios, DRE, metas
+  canManageMembers: boolean;      // Convidar e gerenciar permissões de outros membros
+}
+
+export const DEFAULT_ROLE_PERMISSIONS: Record<CompanyRole, MemberPermissions> = {
+  owner: {
+    canCreateTransactions: true,
+    canEditTransactions: true,
+    canDeleteTransactions: true,
+    canManageRegistries: true,
+    canViewReports: true,
+    canManageMembers: true,
+  },
+  admin: {
+    canCreateTransactions: true,
+    canEditTransactions: true,
+    canDeleteTransactions: true,
+    canManageRegistries: true,
+    canViewReports: true,
+    canManageMembers: true,
+  },
+  partner: {
+    canCreateTransactions: true,
+    canEditTransactions: true,
+    canDeleteTransactions: true,
+    canManageRegistries: true,
+    canViewReports: true,
+    canManageMembers: false,
+  },
+  operator: {
+    canCreateTransactions: true,
+    canEditTransactions: true,
+    canDeleteTransactions: false,
+    canManageRegistries: true,
+    canViewReports: false,
+    canManageMembers: false,
+  },
+  viewer: {
+    canCreateTransactions: false,
+    canEditTransactions: false,
+    canDeleteTransactions: false,
+    canManageRegistries: false,
+    canViewReports: true,
+    canManageMembers: false,
+  },
+  custom: {
+    canCreateTransactions: true,
+    canEditTransactions: true,
+    canDeleteTransactions: false,
+    canManageRegistries: false,
+    canViewReports: true,
+    canManageMembers: false,
+  },
+};
+
+export interface CompanyMemberInfo {
+  email: string;
+  name?: string;
+  role?: CompanyRole;
+  permissions?: MemberPermissions;
+  addedAt?: number;
+}
+
+export interface Company {
+  id: string;
+  name: string; // Ex: "Despesas Pessoais", "Empresa Cacto", "Minha Empresa Individual"
+  type: CompanyType;
+  ownerId: string;
+  ownerEmail: string;
+  memberEmails: string[]; // Lista de e-mails com acesso
+  membersInfo?: CompanyMemberInfo[];
+  color?: string;
+  createdAt: number;
 }
 
 

@@ -33,8 +33,8 @@ interface ExpenseListProps {
 type SortOption = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
 
 export const ExpenseList: React.FC<ExpenseListProps> = ({
-  expenses,
-  categories,
+  expenses = [],
+  categories = [],
   accounts = [],
   cards = [],
   contacts = [],
@@ -48,23 +48,29 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
   const [selectedPayment, setSelectedPayment] = useState<string>('all');
   const [sortBy, setSortBy] = useState<SortOption>('date_desc');
 
+  const safeAccounts = accounts || [];
+  const safeCards = cards || [];
+  const safeContacts = contacts || [];
+  const safeCategories = categories || [];
+  const safeExpenses = expenses || [];
+
   const accountMap = useMemo(() => {
-    return new Map<string, string>(accounts.map((a) => [a.id, a.name]));
-  }, [accounts]);
+    return new Map<string, string>(safeAccounts.map((a) => [a.id, a.name]));
+  }, [safeAccounts]);
 
   const cardMap = useMemo(() => {
-    return new Map<string, string>(cards.map((c) => [c.id, c.name]));
-  }, [cards]);
+    return new Map<string, string>(safeCards.map((c) => [c.id, c.name]));
+  }, [safeCards]);
 
   const contactMap = useMemo(() => {
-    return new Map<string, string>(contacts.map((c) => [c.id, c.name]));
-  }, [contacts]);
-
+    return new Map<string, string>(safeContacts.map((c) => [c.id, c.name]));
+  }, [safeContacts]);
 
   // Filter expenses for current month
   const monthExpenses = useMemo(() => {
-    return expenses.filter((e) => e.date.startsWith(currentYearMonth));
-  }, [expenses, currentYearMonth]);
+    const ym = currentYearMonth || '';
+    return safeExpenses.filter((e) => (ym ? e.date.startsWith(ym) : true));
+  }, [safeExpenses, currentYearMonth]);
 
   // Filter and sort
   const filteredExpenses = useMemo(() => {

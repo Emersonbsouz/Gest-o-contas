@@ -29,7 +29,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
   onClose,
   onSave,
   editingExpense,
-  categories,
+  categories = [],
   accounts = [],
   cards = [],
   contacts = [],
@@ -57,8 +57,8 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
       setDate(editingExpense.date);
       setCategoryId(editingExpense.categoryId);
       setPaymentMethod(editingExpense.paymentMethod);
-      setAccountId(editingExpense.accountId || accounts[0]?.id || '');
-      setCardId(editingExpense.cardId || cards[0]?.id || '');
+      setAccountId(editingExpense.accountId || accounts?.[0]?.id || '');
+      setCardId(editingExpense.cardId || cards?.[0]?.id || '');
       setContactId(editingExpense.contactId || '');
       setStatus(editingExpense.status || 'paid');
       if (editingExpense.installments) {
@@ -76,10 +76,10 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
       setDescription('');
       setAmount('');
       setDate(defaultDate || today);
-      setCategoryId(categories[0]?.id || '');
+      setCategoryId(categories?.[0]?.id || '');
       setPaymentMethod('credit_card');
-      setAccountId(accounts[0]?.id || '');
-      setCardId(cards[0]?.id || '');
+      setAccountId(accounts?.[0]?.id || '');
+      setCardId(cards?.[0]?.id || '');
       setContactId('');
       setStatus('paid');
       setIsInstallment(false);

@@ -24,6 +24,17 @@ import {
   ArrowUpRight,
   ShieldCheck,
   Sparkles,
+  UserPlus,
+  Crown,
+  Copy,
+  SlidersHorizontal,
+  DollarSign,
+  Edit3,
+  BarChart3,
+  FolderPlus,
+  Shield,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   CreditCard,
@@ -34,8 +45,14 @@ import {
   Category,
   Expense,
   Income,
+  Company,
+  CompanyRole,
+  MemberPermissions,
+  DEFAULT_ROLE_PERMISSIONS,
+  CompanyMemberInfo,
 } from '../types';
 import { formatCurrency, formatDateBR } from '../utils/formatters';
+import { EditMemberPermissionsModal } from './EditMemberPermissionsModal';
 
 interface RegistriesViewProps {
   cards: CreditCard[];
@@ -45,6 +62,28 @@ interface RegistriesViewProps {
   accounts: TreasuryAccount[];
   categories: Category[];
   currentYearMonth: string;
+
+  activeCompany?: Company | null;
+  currentUserEmail?: string | null;
+  currentUserPermissions?: MemberPermissions;
+  onAddMember?: (
+    companyId: string,
+    email: string,
+    name?: string,
+    role?: CompanyRole,
+    permissions?: MemberPermissions
+  ) => Promise<void>;
+  onUpdateMember?: (
+    companyId: string,
+    email: string,
+    updates: {
+      name?: string;
+      role: CompanyRole;
+      permissions: MemberPermissions;
+    }
+  ) => Promise<void>;
+  onRemoveMember?: (companyId: string, email: string) => Promise<void>;
+  onOpenManageMembers?: () => void;
 
   // Modals / Triggers
   onOpenCardModal: (card?: CreditCard) => void;
@@ -67,16 +106,23 @@ interface RegistriesViewProps {
   onOpenCategoryModal: () => void;
 }
 
-type ActiveRegistryTab = 'cards' | 'contacts' | 'recurring' | 'goals' | 'accounts';
+type ActiveRegistryTab = 'cards' | 'contacts' | 'recurring' | 'goals' | 'accounts' | 'members';
 
 export const RegistriesView: React.FC<RegistriesViewProps> = ({
-  cards,
-  contacts,
-  recurringBills,
-  goals,
-  accounts,
-  categories,
+  cards = [],
+  contacts = [],
+  recurringBills = [],
+  goals = [],
+  accounts = [],
+  categories = [],
   currentYearMonth,
+  activeCompany,
+  currentUserEmail,
+  currentUserPermissions,
+  onAddMember,
+  onUpdateMember,
+  onRemoveMember,
+  onOpenManageMembers,
   onOpenCardModal,
   onDeleteCard,
   onOpenContactModal,
@@ -95,26 +141,129 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
 
+  // Member management state
+  const [newMemberEmail, setNewMemberEmail] = useState('');
+  const [newMemberName, setNewMemberName] = useState('');
+  const [newMemberRole, setNewMemberRole] = useState<CompanyRole>('partner');
+  const [newMemberPermissions, setNewMemberPermissions] = useState<MemberPermissions>(DEFAULT_ROLE_PERMISSIONS.partner);
+  const [showMemberPermsDrawer, setShowMemberPermsDrawer] = useState(false);
+  const [editingMemberForPerms, setEditingMemberForPerms] = useState<CompanyMemberInfo | null>(null);
+
+  const [memberLoading, setMemberLoading] = useState(false);
+  const [memberError, setMemberError] = useState('');
+  const [memberSuccess, setMemberSuccess] = useState('');
+  const [copiedInvite, setCopiedInvite] = useState(false);
+
+  const isCompanyOwner =
+    activeCompany &&
+    (activeCompany.ownerEmail || '').toLowerCase().trim() === (currentUserEmail || '').toLowerCase().trim();
+  const canManageMembers = isCompanyOwner || currentUserPermissions?.canManageMembers;
+
+  const handleRolePresetSelect = (roleKey: CompanyRole) => {
+    setNewMemberRole(roleKey);
+    if (roleKey !== 'custom') {
+      setNewMemberPermissions({ ...DEFAULT_ROLE_PERMISSIONS[roleKey] });
+    }
+  };
+
+  const handleToggleNewPerm = (key: keyof MemberPermissions) => {
+    setNewMemberPermissions((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      setNewMemberRole('custom');
+      return next;
+    });
+  };
+
+  const handleAddMemberSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeCompany || !onAddMember) return;
+    setMemberError('');
+    setMemberSuccess('');
+    const cleanEmail = newMemberEmail.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setMemberError('Por favor, informe um e-mail válido.');
+      return;
+    }
+    if ((activeCompany.memberEmails || []).map((m) => m.toLowerCase().trim()).includes(cleanEmail)) {
+      setMemberError('Este e-mail já tem acesso cadastrado a esta empresa.');
+      return;
+    }
+
+    try {
+      setMemberLoading(true);
+      await onAddMember(activeCompany.id, cleanEmail, newMemberName.trim(), newMemberRole, newMemberPermissions);
+      setMemberSuccess(`Acesso e permissões concedidos com sucesso para ${cleanEmail}!`);
+      setNewMemberEmail('');
+      setNewMemberName('');
+      setNewMemberRole('partner');
+      setNewMemberPermissions(DEFAULT_ROLE_PERMISSIONS.partner);
+      setShowMemberPermsDrawer(false);
+    } catch (err) {
+      console.error(err);
+      setMemberError('Não foi possível cadastrar a pessoa. Verifique a conexão.');
+    } finally {
+      setMemberLoading(false);
+    }
+  };
+
+  const handleCopyInvite = () => {
+    if (!activeCompany) return;
+    const inviteText = `Olá! Você foi convidado para acessar a gestão financeira da empresa "${activeCompany.name}". Acesse pelo link: ${window.location.origin} e entre utilizando seu e-mail cadastrado.`;
+    navigator.clipboard.writeText(inviteText);
+    setCopiedInvite(true);
+    setTimeout(() => setCopiedInvite(false), 2500);
+  };
+
+  const handleRemoveMemberAction = async (emailToRemove: string) => {
+    if (!activeCompany || !onRemoveMember) return;
+    if (emailToRemove.toLowerCase() === (activeCompany.ownerEmail || '').toLowerCase()) {
+      alert('O proprietário da empresa não pode ser removido.');
+      return;
+    }
+    if (!window.confirm(`Deseja revogar o acesso de ${emailToRemove} a esta empresa?`)) {
+      return;
+    }
+    try {
+      setMemberLoading(true);
+      setMemberError('');
+      setMemberSuccess('');
+      await onRemoveMember(activeCompany.id, emailToRemove);
+      setMemberSuccess(`Acesso de ${emailToRemove} removido com sucesso.`);
+    } catch (err) {
+      console.error(err);
+      setMemberError('Não foi possível remover o acesso.');
+    } finally {
+      setMemberLoading(false);
+    }
+  };
+
+  const safeCategories = categories || [];
+  const safeAccounts = accounts || [];
+  const safeContacts = contacts || [];
+  const safeCards = cards || [];
+  const safeRecurring = recurringBills || [];
+  const safeGoals = goals || [];
+
   const categoryMap = useMemo(() => {
-    return new Map<string, string>(categories.map((c) => [c.id, c.name]));
-  }, [categories]);
+    return new Map<string, string>(safeCategories.map((c) => [c.id, c.name]));
+  }, [safeCategories]);
 
   const accountMap = useMemo(() => {
-    return new Map<string, string>(accounts.map((a) => [a.id, a.name]));
-  }, [accounts]);
+    return new Map<string, string>(safeAccounts.map((a) => [a.id, a.name]));
+  }, [safeAccounts]);
 
   const contactMap = useMemo(() => {
-    return new Map<string, string>(contacts.map((c) => [c.id, c.name]));
-  }, [contacts]);
+    return new Map<string, string>(safeContacts.map((c) => [c.id, c.name]));
+  }, [safeContacts]);
 
   // Filtered Cards
   const filteredCards = useMemo(() => {
-    return cards.filter(
+    return safeCards.filter(
       (c) =>
-        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.brand.toLowerCase().includes(searchQuery.toLowerCase())
+        (c.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (c.brand || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [cards, searchQuery]);
+  }, [safeCards, searchQuery]);
 
   // Filtered Contacts
   const filteredContacts = useMemo(() => {
@@ -322,6 +471,22 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
           >
             <Wallet className="w-3.5 h-3.5" />
             Contas & Caixas ({accounts.length})
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('members');
+              setSearchQuery('');
+              setTypeFilter('all');
+            }}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+              activeTab === 'members'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
+            }`}
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            Pessoas com Acesso ({activeCompany?.memberEmails?.length || 1})
           </button>
         </div>
 
@@ -1029,6 +1194,444 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
             })}
           </div>
         </div>
+      )}
+      {/* TAB 6: PESSOAS COM ACESSO & USUÁRIOS */}
+      {activeTab === 'members' && (
+        <div className="space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                Pessoas com Acesso à Empresa
+                {activeCompany && (
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    {activeCompany.name}
+                  </span>
+                )}
+              </h3>
+              <p className="text-xs text-slate-500">
+                Cadastre sócios, gestores e colaboradores para visualizarem e lançarem dados nesta empresa
+              </p>
+            </div>
+            {onOpenManageMembers && (
+              <button
+                type="button"
+                onClick={onOpenManageMembers}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors shrink-0"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                Gerenciador Completo de Acessos
+              </button>
+            )}
+          </div>
+
+          {/* Privacy isolation banner */}
+          <div className="p-3.5 bg-emerald-50/80 border border-emerald-200/80 rounded-xl text-xs text-emerald-900 flex items-start gap-2.5">
+            <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-emerald-950">Isolamento Seguro de Dados por Empresa</p>
+              <p className="text-emerald-800 text-[11px] mt-0.5 leading-relaxed">
+                As pessoas adicionadas aqui terão acesso <strong>exclusivamente aos lançamentos de {activeCompany?.name || 'esta empresa'}</strong>.
+                Suas despesas pessoais e outras empresas permanecem <strong>100% privadas e invisíveis</strong> para elas.
+              </p>
+            </div>
+          </div>
+
+          {memberError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{memberError}</span>
+            </div>
+          )}
+
+          {memberSuccess && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs rounded-xl flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+              <span>{memberSuccess}</span>
+            </div>
+          )}
+
+          {/* Direct Cadastro de Nova Pessoa Form */}
+          {activeCompany && canManageMembers ? (
+            <form onSubmit={handleAddMemberSubmit} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-2xs space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <UserPlus className="w-4 h-4 text-indigo-600" />
+                  Cadastrar Pessoa para ter Acesso a esta Empresa
+                </h4>
+                <span className="text-[11px] text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                  Sistema Isolado para {activeCompany.name}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    E-mail da Pessoa *
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="email"
+                      required
+                      value={newMemberEmail}
+                      onChange={(e) => setNewMemberEmail(e.target.value)}
+                      placeholder="socio@exemplo.com"
+                      className="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Nome / Cargo (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={newMemberName}
+                    onChange={(e) => setNewMemberName(e.target.value)}
+                    placeholder="Ex: Carlos (Sócio Comercial) ou Ana (Financeiro)"
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Role Presets */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1.5">
+                  Perfil de Acesso (Função):
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'partner', label: 'Sócio / Gestor', desc: 'Acesso total a lançamentos' },
+                    { id: 'admin', label: 'Administrador', desc: 'Total + Convidar membros' },
+                    { id: 'operator', label: 'Operador / Lançador', desc: 'Lança e cadastra (sem exclusão)' },
+                    { id: 'viewer', label: 'Visualizador', desc: 'Apenas relatórios e consulta' },
+                  ].map((item) => {
+                    const active = newMemberRole === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleRolePresetSelect(item.id as CompanyRole)}
+                        className={`p-2 rounded-xl text-left border transition flex flex-col justify-between ${
+                          active
+                            ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-500/20 text-indigo-950 font-bold'
+                            : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700 font-medium'
+                        }`}
+                      >
+                        <span className="text-xs">{item.label}</span>
+                        <span className="text-[10px] text-slate-500 font-normal mt-0.5">{item.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Expandable detailed permissions */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50">
+                <button
+                  type="button"
+                  onClick={() => setShowMemberPermsDrawer((prev) => !prev)}
+                  className="w-full px-3.5 py-2 flex items-center justify-between text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+                >
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Ver e Personalizar Permissões Detalhadas</span>
+                    {newMemberRole === 'custom' && (
+                      <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">
+                        Personalizado
+                      </span>
+                    )}
+                  </div>
+                  {showMemberPermsDrawer ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+
+                {showMemberPermsDrawer && (
+                  <div className="p-3 bg-white border-t border-slate-200 divide-y divide-slate-100 space-y-2">
+                    <label className="flex items-start gap-2.5 pt-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newMemberPermissions.canCreateTransactions}
+                        onChange={() => handleToggleNewPerm('canCreateTransactions')}
+                        className="mt-0.5 w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+                          Lançar Despesas, Receitas e Transferências
+                        </div>
+                        <p className="text-[11px] text-slate-500">Permite registrar novas movimentações financeiras.</p>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2.5 pt-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newMemberPermissions.canEditTransactions}
+                        onChange={() => handleToggleNewPerm('canEditTransactions')}
+                        className="mt-0.5 w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                          Editar Lançamentos Existentes
+                        </div>
+                        <p className="text-[11px] text-slate-500">Permite editar dados de lançamentos já salvos.</p>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2.5 pt-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newMemberPermissions.canDeleteTransactions}
+                        onChange={() => handleToggleNewPerm('canDeleteTransactions')}
+                        className="mt-0.5 w-4 h-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          Excluir Lançamentos
+                        </div>
+                        <p className="text-[11px] text-slate-500">Permite remover despesas ou receitas do sistema.</p>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2.5 pt-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newMemberPermissions.canManageRegistries}
+                        onChange={() => handleToggleNewPerm('canManageRegistries')}
+                        className="mt-0.5 w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <FolderPlus className="w-3.5 h-3.5 text-blue-600" />
+                          Gerenciar Contas Bancárias, Cartões e Favorecidos
+                        </div>
+                        <p className="text-[11px] text-slate-500">Permite cadastrar e alterar contas, cartões e fornecedores.</p>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2.5 pt-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newMemberPermissions.canViewReports}
+                        onChange={() => handleToggleNewPerm('canViewReports')}
+                        className="mt-0.5 w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <BarChart3 className="w-3.5 h-3.5 text-purple-600" />
+                          Visualizar Relatórios e DRE
+                        </div>
+                        <p className="text-[11px] text-slate-500">Permite acesso aos demonstrativos e gráficos comparativos.</p>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2.5 pt-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newMemberPermissions.canManageMembers}
+                        onChange={() => handleToggleNewPerm('canManageMembers')}
+                        className="mt-0.5 w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5 text-indigo-600" />
+                          Convidar e Gerenciar Outros Membros
+                        </div>
+                        <p className="text-[11px] text-slate-500">Permite adicionar ou alterar permissões de outros usuários.</p>
+                      </div>
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button
+                  type="submit"
+                  disabled={memberLoading}
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition shadow-xs"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  {memberLoading ? 'Cadastrando...' : 'Cadastrar e Conceder Permissões'}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600">
+              Você está visualizando esta empresa como membro autorizado. O proprietário ({activeCompany?.ownerEmail}) gerencia os cadastros de acesso.
+            </div>
+          )}
+
+          {/* Quick guide on how access works */}
+          <div className="p-3.5 bg-indigo-50/70 border border-indigo-100 rounded-xl text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-indigo-950 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                Como a pessoa cadastrada entra no sistema?
+              </span>
+              <button
+                type="button"
+                onClick={handleCopyInvite}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold bg-white hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg transition"
+              >
+                {copiedInvite ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                {copiedInvite ? 'Link Copiado!' : 'Copiar Convite'}
+              </button>
+            </div>
+            <p className="text-indigo-800 text-[11px] leading-relaxed">
+              1. Envie o link da aplicação para a pessoa.<br />
+              2. Na tela de login, ela simplesmente entra ou cadastra uma senha usando o <strong>mesmo e-mail</strong> adicionado acima.<br />
+              3. O ambiente independente da empresa <strong>{activeCompany?.name}</strong> aparecerá imediatamente disponível para ela com as permissões atribuídas!
+            </p>
+          </div>
+
+          {/* List of members with search filter */}
+          <div>
+            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2.5">
+              Pessoas Cadastradas nesta Empresa ({activeCompany?.memberEmails?.length || 0})
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {(activeCompany?.memberEmails || [])
+                .filter((email) => {
+                  if (!searchQuery) return true;
+                  const query = searchQuery.toLowerCase();
+                  const memberInfo = (activeCompany?.membersInfo || []).find(
+                    (m) => (m.email || '').toLowerCase() === email.toLowerCase()
+                  );
+                  return (
+                    email.toLowerCase().includes(query) ||
+                    (memberInfo?.name || '').toLowerCase().includes(query)
+                  );
+                })
+                .map((email) => {
+                  const cleanEmail = email.toLowerCase().trim();
+                  const isThisOwner = cleanEmail === (activeCompany?.ownerEmail || '').toLowerCase().trim();
+                  const isCurrentUser = cleanEmail === (currentUserEmail || '').toLowerCase().trim();
+                  const memberInfo = (activeCompany?.membersInfo || []).find(
+                    (m) => (m.email || '').toLowerCase().trim() === cleanEmail
+                  );
+
+                  const role = isThisOwner ? 'owner' : (memberInfo?.role || 'partner');
+                  const roleLabel =
+                    role === 'owner'
+                      ? 'Proprietário'
+                      : role === 'admin'
+                      ? 'Administrador'
+                      : role === 'operator'
+                      ? 'Operador / Lançador'
+                      : role === 'viewer'
+                      ? 'Visualizador (Consulta)'
+                      : role === 'custom'
+                      ? 'Personalizado'
+                      : 'Sócio / Gestor';
+
+                  const perms = memberInfo?.permissions || DEFAULT_ROLE_PERMISSIONS[role as CompanyRole] || DEFAULT_ROLE_PERMISSIONS.partner;
+
+                  return (
+                    <div
+                      key={email}
+                      className="p-4 rounded-2xl border border-slate-200 bg-white shadow-2xs flex flex-col justify-between gap-3 hover:shadow-xs transition"
+                    >
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm uppercase shrink-0 mt-0.5">
+                          {email.slice(0, 2)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-xs text-slate-900 flex items-center gap-1.5 flex-wrap">
+                            <span className="truncate">{memberInfo?.name || email}</span>
+                            {isCurrentUser && (
+                              <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-semibold shrink-0">
+                                Você
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                            {email}
+                          </div>
+
+                          <div className="mt-1.5 flex items-center gap-1 flex-wrap">
+                            {isThisOwner ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                <Crown className="w-3 h-3 text-amber-500" /> {roleLabel}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                                <Shield className="w-3 h-3 text-indigo-500" /> {roleLabel}
+                              </span>
+                            )}
+
+                            {!isThisOwner && perms && (
+                              <>
+                                {perms.canCreateTransactions && (
+                                  <span className="text-[9px] text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded font-medium border border-emerald-100">
+                                    Lança
+                                  </span>
+                                )}
+                                {!perms.canDeleteTransactions && (
+                                  <span className="text-[9px] text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded font-medium">
+                                    Sem Exclusão
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Actions: Edit permissions or delete */}
+                      <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-slate-100">
+                        {canManageMembers && !isThisOwner && onUpdateMember && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingMemberForPerms({
+                                email,
+                                name: memberInfo?.name || '',
+                                role: (memberInfo?.role || 'partner') as CompanyRole,
+                                permissions: perms,
+                                addedAt: memberInfo?.addedAt || Date.now(),
+                              })
+                            }
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 border border-slate-200 rounded-lg transition"
+                          >
+                            <SlidersHorizontal className="w-3.5 h-3.5" />
+                            Editar Permissões
+                          </button>
+                        )}
+
+                        {canManageMembers && !isThisOwner && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMemberAction(email)}
+                            disabled={memberLoading}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                            title="Revogar acesso"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Permissions Modal from Registries tab */}
+      {editingMemberForPerms && onUpdateMember && activeCompany && (
+        <EditMemberPermissionsModal
+          isOpen={!!editingMemberForPerms}
+          onClose={() => setEditingMemberForPerms(null)}
+          company={activeCompany}
+          member={editingMemberForPerms}
+          currentUserEmail={currentUserEmail}
+          onSave={onUpdateMember}
+        />
       )}
     </div>
   );

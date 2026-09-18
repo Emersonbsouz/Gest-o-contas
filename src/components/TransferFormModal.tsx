@@ -17,7 +17,7 @@ export const TransferFormModal: React.FC<TransferFormModalProps> = ({
   onClose,
   onSave,
   editingTransfer,
-  accounts,
+  accounts = [],
   defaultDate,
   defaultFromAccountId,
 }) => {
@@ -37,8 +37,8 @@ export const TransferFormModal: React.FC<TransferFormModalProps> = ({
       setDescription(editingTransfer.description || '');
     } else {
       const today = new Date().toISOString().split('T')[0];
-      const from = defaultFromAccountId || accounts[0]?.id || '';
-      const to = accounts.find((a) => a.id !== from)?.id || accounts[1]?.id || '';
+      const from = defaultFromAccountId || accounts?.[0]?.id || '';
+      const to = accounts?.find((a) => a.id !== from)?.id || accounts?.[1]?.id || '';
       setFromAccountId(from);
       setToAccountId(to);
       setAmount('');

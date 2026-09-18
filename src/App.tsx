@@ -16,11 +16,25 @@ import { RecurringBillFormModal } from './components/RecurringBillFormModal';
 import { GoalFormModal } from './components/GoalFormModal';
 import { QuickRegisterModal } from './components/QuickRegisterModal';
 import { RegistriesView } from './components/RegistriesView';
+import { CreateCompanyModal } from './components/CreateCompanyModal';
+import { ManageMembersModal } from './components/ManageMembersModal';
+import { ResetConfirmModal } from './components/ResetConfirmModal';
+import { BackupSecurityModal } from './components/BackupSecurityModal';
+import { AuthView } from './components/AuthView';
+import { useAuth } from './context/AuthContext';
+import { useCompanyData } from './hooks/useCompanyData';
+import {
+  ensureDefaultCompanies,
+  subscribeToUserCompanies,
+  createNewCompany,
+  addCompanyMember,
+  updateCompanyMember,
+  removeCompanyMember,
+} from './services/companyService';
 
 import {
   Expense,
   Category,
-  MonthlyBudget,
   TreasuryAccount,
   Income,
   AccountTransfer,
@@ -29,20 +43,12 @@ import {
   RecurringBill,
   FinancialGoal,
   ContactType,
+  Company,
+  CompanyType,
+  CompanyRole,
+  MemberPermissions,
+  DEFAULT_ROLE_PERMISSIONS,
 } from './types';
-import { DEFAULT_CATEGORIES } from './data/defaultCategories';
-import { getInitialExpenses } from './data/sampleExpenses';
-import {
-  DEFAULT_ACCOUNTS,
-  getInitialIncomes,
-  getInitialTransfers,
-} from './data/defaultTreasury';
-import {
-  DEFAULT_CREDIT_CARDS,
-  DEFAULT_CONTACTS,
-  DEFAULT_RECURRING_BILLS,
-  DEFAULT_GOALS,
-} from './data/defaultRegistries';
 import {
   getCurrentYearMonth,
   getMonthSummary,
@@ -50,138 +56,104 @@ import {
   PAYMENT_METHOD_LABELS,
 } from './utils/formatters';
 import { calculateAccountBalances } from './utils/treasuryHelpers';
-import { RotateCcw, ShieldCheck } from 'lucide-react';
-
-const STORAGE_KEYS = {
-  EXPENSES: 'app_controle_gastos_expenses',
-  CATEGORIES: 'app_controle_gastos_categories',
-  BUDGETS: 'app_controle_gastos_budgets',
-  ACCOUNTS: 'app_controle_gastos_accounts',
-  INCOMES: 'app_controle_gastos_incomes',
-  TRANSFERS: 'app_controle_gastos_transfers',
-  CARDS: 'app_controle_gastos_cards',
-  CONTACTS: 'app_controle_gastos_contacts',
-  RECURRING: 'app_controle_gastos_recurring',
-  GOALS: 'app_controle_gastos_goals',
-};
+import { RotateCcw, ShieldCheck, Loader2, Building2, User } from 'lucide-react';
 
 export default function App() {
+  const { currentUser, loading: authLoading, logout } = useAuth();
+
+  // Multi-Company State
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [activeCompany, setActiveCompany] = useState<Company | null>(null);
+  const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
+  const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
+
+  // Active Tab & Month
   const [activeTab, setActiveTab] = useState<'expenses' | 'treasury' | 'registries'>('treasury');
   const [currentYearMonth, setCurrentYearMonth] = useState<string>(() => getCurrentYearMonth());
 
-
-  // Expenses State
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.EXPENSES);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Erro ao ler despesas do localStorage', e);
+  // Subscribe to user companies when logged in
+  useEffect(() => {
+    if (!currentUser) {
+      setCompanies([]);
+      setActiveCompany(null);
+      return;
     }
-    return getInitialExpenses();
-  });
 
-  // Categories State
-  const [categories, setCategories] = useState<Category[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Erro ao ler categorias do localStorage', e);
-    }
-    return DEFAULT_CATEGORIES;
-  });
+    let isMounted = true;
 
-  // Budgets State
-  const [budgets, setBudgets] = useState<MonthlyBudget>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.BUDGETS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Erro ao ler orçamentos do localStorage', e);
-    }
-    const ym = getCurrentYearMonth();
-    return { [ym]: 3500 };
-  });
+    // Ensure starter companies (Personal, Individual, Cacto) exist in cloud
+    ensureDefaultCompanies(currentUser.uid, currentUser.email || '').then((initialComps) => {
+      if (!isMounted) return;
+      setCompanies(initialComps);
+      const savedCompId = localStorage.getItem(`app_active_company_${currentUser.uid}`);
+      const matched = initialComps.find((c) => c.id === savedCompId) || initialComps[0];
+      setActiveCompany(matched || null);
+    });
 
-  // Treasury Accounts State
-  const [accounts, setAccounts] = useState<TreasuryAccount[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.ACCOUNTS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Erro ao ler contas de tesouraria do localStorage', e);
-    }
-    return DEFAULT_ACCOUNTS;
-  });
+    // Real-time listener for companies
+    const unsubscribe = subscribeToUserCompanies(
+      currentUser.uid,
+      currentUser.email || '',
+      (updatedComps) => {
+        if (!isMounted) return;
+        if (updatedComps && updatedComps.length > 0) {
+          setCompanies(updatedComps);
+          setActiveCompany((prev) => {
+            if (!prev) return updatedComps[0] || null;
+            const stillExists = updatedComps.find((c) => c.id === prev.id);
+            return stillExists || updatedComps[0] || null;
+          });
+        }
+      }
+    );
 
-  // Incomes State
-  const [incomes, setIncomes] = useState<Income[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.INCOMES);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Erro ao ler receitas do localStorage', e);
-    }
-    return getInitialIncomes();
-  });
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [currentUser]);
 
-  // Transfers State
-  const [transfers, setTransfers] = useState<AccountTransfer[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.TRANSFERS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Erro ao ler transferências do localStorage', e);
-    }
-    return getInitialTransfers();
-  });
-
-  // Credit Cards State
-  const [cards, setCards] = useState<CreditCard[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.CARDS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Erro ao ler cartões do localStorage', e);
-    }
-    return DEFAULT_CREDIT_CARDS;
-  });
-
-  // Contacts / Favorecidos State
-  const [contacts, setContacts] = useState<ContactPerson[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.CONTACTS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Erro ao ler contatos do localStorage', e);
-    }
-    return DEFAULT_CONTACTS;
-  });
-
-  // Recurring Bills State
-  const [recurringBills, setRecurringBills] = useState<RecurringBill[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.RECURRING);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Erro ao ler contas recorrentes do localStorage', e);
-    }
-    return DEFAULT_RECURRING_BILLS;
-  });
-
-  // Financial Goals State
-  const [goals, setGoals] = useState<FinancialGoal[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.GOALS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Erro ao ler metas do localStorage', e);
-    }
-    return DEFAULT_GOALS;
-  });
+  // Hook for all isolated financial state scoped to activeCompany
+  const {
+    expenses,
+    categories,
+    budgets,
+    accounts,
+    incomes,
+    transfers,
+    cards,
+    contacts,
+    recurringBills,
+    goals,
+    loading: dataLoading,
+    cloudSyncStatus,
+    saveExpense,
+    deleteExpense,
+    saveIncome,
+    deleteIncome,
+    saveTransfer,
+    deleteTransfer,
+    saveAccount,
+    deleteAccount,
+    saveCard,
+    deleteCard,
+    saveContact,
+    deleteContact,
+    saveRecurring,
+    deleteRecurring,
+    saveGoal,
+    deleteGoal,
+    addCategory,
+    deleteCategory,
+    updateCategoryBudget,
+    saveMonthlyBudget,
+    resetData,
+    clearAllData,
+  } = useCompanyData(activeCompany?.id || null);
 
   // Modals state
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
@@ -199,7 +171,6 @@ export default function App() {
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<TreasuryAccount | null>(null);
 
-  // New Modals state for Registries
   const [isCardModalOpen, setIsCardModalOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCard | null>(null);
 
@@ -215,88 +186,6 @@ export default function App() {
 
   const [isQuickRegisterOpen, setIsQuickRegisterOpen] = useState(false);
 
-  // Sync state to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
-    } catch (e) {
-      console.error('Erro ao salvar despesas', e);
-    }
-  }, [expenses]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(categories));
-    } catch (e) {
-      console.error('Erro ao salvar categorias', e);
-    }
-  }, [categories]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(budgets));
-    } catch (e) {
-      console.error('Erro ao salvar orçamentos', e);
-    }
-  }, [budgets]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(accounts));
-    } catch (e) {
-      console.error('Erro ao salvar contas da tesouraria', e);
-    }
-  }, [accounts]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.INCOMES, JSON.stringify(incomes));
-    } catch (e) {
-      console.error('Erro ao salvar receitas', e);
-    }
-  }, [incomes]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.TRANSFERS, JSON.stringify(transfers));
-    } catch (e) {
-      console.error('Erro ao salvar transferências', e);
-    }
-  }, [transfers]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(cards));
-    } catch (e) {
-      console.error('Erro ao salvar cartões', e);
-    }
-  }, [cards]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.CONTACTS, JSON.stringify(contacts));
-    } catch (e) {
-      console.error('Erro ao salvar contatos', e);
-    }
-  }, [contacts]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.RECURRING, JSON.stringify(recurringBills));
-    } catch (e) {
-      console.error('Erro ao salvar contas recorrentes', e);
-    }
-  }, [recurringBills]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(goals));
-    } catch (e) {
-      console.error('Erro ao salvar metas financeiras', e);
-    }
-  }, [goals]);
-
-
   // Total Treasury Balance
   const totalTreasuryBalance = useMemo(() => {
     const balances = calculateAccountBalances(accounts, incomes, expenses, transfers);
@@ -307,219 +196,347 @@ export default function App() {
   const currentBudget = budgets[currentYearMonth] || 0;
   const expenseSummary = getMonthSummary(expenses, categories, currentYearMonth, currentBudget);
 
+  // Company management handlers
+  const handleSelectCompany = (comp: Company) => {
+    setActiveCompany(comp);
+    if (currentUser) {
+      localStorage.setItem(`app_active_company_${currentUser.uid}`, comp.id);
+    }
+  };
+
+  const handleCreateCompany = async (data: { name: string; type: CompanyType; color: string }) => {
+    if (!currentUser) return;
+    const newComp = await createNewCompany(currentUser.uid, currentUser.email || '', data);
+    setCompanies((prev) => [...prev, newComp]);
+    handleSelectCompany(newComp);
+  };
+
+  // Compute permissions for the current user in the active company
+  const currentUserPermissions = useMemo<MemberPermissions>(() => {
+    if (!activeCompany || !currentUser?.email) {
+      return DEFAULT_ROLE_PERMISSIONS.owner;
+    }
+    const cleanEmail = currentUser.email.toLowerCase().trim();
+    if ((activeCompany.ownerEmail || '').toLowerCase().trim() === cleanEmail) {
+      return DEFAULT_ROLE_PERMISSIONS.owner;
+    }
+    const member = (activeCompany.membersInfo || []).find(
+      (m) => (m.email || '').toLowerCase().trim() === cleanEmail
+    );
+    if (!member) {
+      return DEFAULT_ROLE_PERMISSIONS.partner;
+    }
+    return member.permissions || DEFAULT_ROLE_PERMISSIONS[member.role] || DEFAULT_ROLE_PERMISSIONS.partner;
+  }, [activeCompany, currentUser?.email]);
+
+  const handleAddMember = async (
+    companyId: string,
+    email: string,
+    name?: string,
+    role?: CompanyRole,
+    permissions?: MemberPermissions
+  ) => {
+    const chosenRole = role || 'partner';
+    const chosenPerms = permissions || DEFAULT_ROLE_PERMISSIONS[chosenRole];
+    await addCompanyMember(companyId, email, name, chosenRole, chosenPerms);
+    const cleanEmail = email.toLowerCase().trim();
+    const newMemberMeta = {
+      email: cleanEmail,
+      name: name?.trim() || cleanEmail,
+      role: chosenRole,
+      permissions: chosenPerms,
+      addedAt: new Date().toISOString(),
+    };
+
+    setCompanies((prev) =>
+      prev.map((c) =>
+        c.id === companyId
+          ? {
+              ...c,
+              memberEmails: c.memberEmails.includes(cleanEmail) ? c.memberEmails : [...c.memberEmails, cleanEmail],
+              membersInfo: [
+                ...(c.membersInfo || []).filter((m) => m.email.toLowerCase().trim() !== cleanEmail),
+                newMemberMeta,
+              ],
+            }
+          : c
+      )
+    );
+    setActiveCompany((prev) =>
+      prev && prev.id === companyId
+        ? {
+            ...prev,
+            memberEmails: prev.memberEmails.includes(cleanEmail) ? prev.memberEmails : [...prev.memberEmails, cleanEmail],
+            membersInfo: [
+              ...(prev.membersInfo || []).filter((m) => m.email.toLowerCase().trim() !== cleanEmail),
+              newMemberMeta,
+            ],
+          }
+        : prev
+    );
+  };
+
+  const handleUpdateMember = async (
+    companyId: string,
+    email: string,
+    updates: {
+      name?: string;
+      role: CompanyRole;
+      permissions: MemberPermissions;
+    }
+  ) => {
+    await updateCompanyMember(companyId, email, updates);
+    const cleanEmail = email.toLowerCase().trim();
+
+    setCompanies((prev) =>
+      prev.map((c) => {
+        if (c.id !== companyId) return c;
+        const updatedInfo = (c.membersInfo || []).map((m) => {
+          if (m.email.toLowerCase().trim() === cleanEmail) {
+            return {
+              ...m,
+              name: updates.name !== undefined ? updates.name : m.name,
+              role: updates.role,
+              permissions: updates.permissions,
+            };
+          }
+          return m;
+        });
+        return { ...c, membersInfo: updatedInfo };
+      })
+    );
+
+    setActiveCompany((prev) => {
+      if (!prev || prev.id !== companyId) return prev;
+      const updatedInfo = (prev.membersInfo || []).map((m) => {
+        if (m.email.toLowerCase().trim() === cleanEmail) {
+          return {
+            ...m,
+            name: updates.name !== undefined ? updates.name : m.name,
+            role: updates.role,
+            permissions: updates.permissions,
+          };
+        }
+        return m;
+      });
+      return { ...prev, membersInfo: updatedInfo };
+    });
+  };
+
+  const handleRemoveMember = async (companyId: string, email: string) => {
+    await removeCompanyMember(companyId, email);
+    const cleanEmail = email.toLowerCase().trim();
+    setCompanies((prev) =>
+      prev.map((c) =>
+        c.id === companyId
+          ? {
+              ...c,
+              memberEmails: c.memberEmails.filter((m) => m.toLowerCase().trim() !== cleanEmail),
+              membersInfo: (c.membersInfo || []).filter((m) => m.email.toLowerCase().trim() !== cleanEmail),
+            }
+          : c
+      )
+    );
+    setActiveCompany((prev) =>
+      prev && prev.id === companyId
+        ? {
+            ...prev,
+            memberEmails: prev.memberEmails.filter((m) => m.toLowerCase().trim() !== cleanEmail),
+            membersInfo: (prev.membersInfo || []).filter((m) => m.email.toLowerCase().trim() !== cleanEmail),
+          }
+        : prev
+    );
+  };
+
   // --- Handlers for Expenses ---
   const handleOpenAddExpenseModal = () => {
+    if (!currentUserPermissions.canCreateTransactions) {
+      alert('Você não tem permissão para lançar despesas nesta empresa.');
+      return;
+    }
     setEditingExpense(null);
     setIsExpenseModalOpen(true);
   };
 
   const handleEditExpense = (expense: Expense) => {
+    if (!currentUserPermissions.canEditTransactions) {
+      alert('Você não tem permissão para editar lançamentos nesta empresa.');
+      return;
+    }
     setEditingExpense(expense);
     setIsExpenseModalOpen(true);
   };
 
-  const handleSaveExpense = (
+  const handleDeleteExpense = async (expenseId: string) => {
+    if (!currentUserPermissions.canDeleteTransactions) {
+      alert('Você não tem permissão para excluir lançamentos nesta empresa.');
+      return;
+    }
+    await deleteExpense(expenseId);
+  };
+
+  const handleSaveExpense = async (
     expenseData: Omit<Expense, 'id' | 'createdAt'>,
     expenseId?: string
   ) => {
-    if (expenseId) {
-      setExpenses((prev) =>
-        prev.map((e) => (e.id === expenseId ? { ...e, ...expenseData } : e))
-      );
-    } else {
-      const newExpense: Expense = {
-        ...expenseData,
-        id: `exp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        createdAt: Date.now(),
-      };
-      setExpenses((prev) => [newExpense, ...prev]);
-
-      const expenseYM = newExpense.date.substring(0, 7);
+    if (expenseId && !currentUserPermissions.canEditTransactions) {
+      alert('Você não tem permissão para editar lançamentos nesta empresa.');
+      return;
+    }
+    if (!expenseId && !currentUserPermissions.canCreateTransactions) {
+      alert('Você não tem permissão para lançar despesas nesta empresa.');
+      return;
+    }
+    const saved = await saveExpense(expenseData, expenseId);
+    if (saved) {
+      const expenseYM = saved.date.substring(0, 7);
       if (expenseYM !== currentYearMonth) {
         setCurrentYearMonth(expenseYM);
       }
     }
   };
 
-  const handleDeleteExpense = (expenseId: string) => {
-    setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
-  };
-
-  // --- Handlers for Categories & Budgets ---
-  const handleAddCategory = (categoryData: Omit<Category, 'id'>) => {
-    const newCat: Category = {
-      ...categoryData,
-      id: `cat-${Date.now()}`,
-    };
-    setCategories((prev) => [...prev, newCat]);
-  };
-
-  const handleDeleteCategory = (categoryId: string) => {
-    setCategories((prev) => prev.filter((c) => c.id !== categoryId));
-    setExpenses((prev) =>
-      prev.map((e) =>
-        e.categoryId === categoryId ? { ...e, categoryId: 'cat-outros' } : e
-      )
-    );
-  };
-
-  const handleUpdateCategoryBudget = (
-    categoryId: string,
-    budgetLimit: number | undefined
-  ) => {
-    setCategories((prev) =>
-      prev.map((c) => (c.id === categoryId ? { ...c, budgetLimit } : c))
-    );
-  };
-
-  const handleSaveMonthlyBudget = (yearMonth: string, amount: number) => {
-    setBudgets((prev) => ({
-      ...prev,
-      [yearMonth]: amount,
-    }));
-  };
-
   // --- Handlers for Treasury Incomes ---
   const handleOpenAddIncomeModal = (preselectedAccountId?: string) => {
+    if (!currentUserPermissions.canCreateTransactions) {
+      alert('Você não tem permissão para lançar receitas nesta empresa.');
+      return;
+    }
     setEditingIncome(null);
     setPreselectedIncomeAccountId(preselectedAccountId);
     setIsIncomeModalOpen(true);
   };
 
   const handleEditIncome = (income: Income) => {
+    if (!currentUserPermissions.canEditTransactions) {
+      alert('Você não tem permissão para editar lançamentos nesta empresa.');
+      return;
+    }
     setEditingIncome(income);
     setPreselectedIncomeAccountId(income.accountId);
     setIsIncomeModalOpen(true);
   };
 
-  const handleSaveIncome = (
+  const handleDeleteIncome = async (incomeId: string) => {
+    if (!currentUserPermissions.canDeleteTransactions) {
+      alert('Você não tem permissão para excluir lançamentos nesta empresa.');
+      return;
+    }
+    await deleteIncome(incomeId);
+  };
+
+  const handleSaveIncome = async (
     incomeData: Omit<Income, 'id' | 'createdAt'>,
     incomeId?: string
   ) => {
-    if (incomeId) {
-      setIncomes((prev) =>
-        prev.map((i) => (i.id === incomeId ? { ...i, ...incomeData } : i))
-      );
-    } else {
-      const newIncome: Income = {
-        ...incomeData,
-        id: `inc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        createdAt: Date.now(),
-      };
-      setIncomes((prev) => [newIncome, ...prev]);
-
-      const incomeYM = newIncome.date.substring(0, 7);
-      if (incomeYM !== currentYearMonth) {
-        setCurrentYearMonth(incomeYM);
-      }
+    if (incomeId && !currentUserPermissions.canEditTransactions) {
+      alert('Você não tem permissão para editar lançamentos nesta empresa.');
+      return;
     }
-  };
-
-  const handleDeleteIncome = (incomeId: string) => {
-    setIncomes((prev) => prev.filter((i) => i.id !== incomeId));
+    if (!incomeId && !currentUserPermissions.canCreateTransactions) {
+      alert('Você não tem permissão para lançar receitas nesta empresa.');
+      return;
+    }
+    await saveIncome(incomeData, incomeId);
+    const incomeYM = incomeData.date.substring(0, 7);
+    if (incomeYM !== currentYearMonth) {
+      setCurrentYearMonth(incomeYM);
+    }
   };
 
   // --- Handlers for Treasury Transfers ---
   const handleOpenAddTransferModal = (preselectedAccountId?: string) => {
+    if (!currentUserPermissions.canCreateTransactions) {
+      alert('Você não tem permissão para lançar transferências nesta empresa.');
+      return;
+    }
     setEditingTransfer(null);
     setPreselectedTransferAccountId(preselectedAccountId);
     setIsTransferModalOpen(true);
   };
 
   const handleEditTransfer = (transfer: AccountTransfer) => {
+    if (!currentUserPermissions.canEditTransactions) {
+      alert('Você não tem permissão para editar lançamentos nesta empresa.');
+      return;
+    }
     setEditingTransfer(transfer);
     setPreselectedTransferAccountId(transfer.fromAccountId);
     setIsTransferModalOpen(true);
   };
 
-  const handleSaveTransfer = (
+  const handleDeleteTransfer = async (transferId: string) => {
+    if (!currentUserPermissions.canDeleteTransactions) {
+      alert('Você não tem permissão para excluir lançamentos nesta empresa.');
+      return;
+    }
+    await deleteTransfer(transferId);
+  };
+
+  const handleSaveTransfer = async (
     transferData: Omit<AccountTransfer, 'id' | 'createdAt'>,
     transferId?: string
   ) => {
-    if (transferId) {
-      setTransfers((prev) =>
-        prev.map((t) => (t.id === transferId ? { ...t, ...transferData } : t))
-      );
-    } else {
-      const newTransfer: AccountTransfer = {
-        ...transferData,
-        id: `tr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        createdAt: Date.now(),
-      };
-      setTransfers((prev) => [newTransfer, ...prev]);
-
-      const transferYM = newTransfer.date.substring(0, 7);
-      if (transferYM !== currentYearMonth) {
-        setCurrentYearMonth(transferYM);
-      }
+    if (transferId && !currentUserPermissions.canEditTransactions) {
+      alert('Você não tem permissão para editar lançamentos nesta empresa.');
+      return;
     }
-  };
-
-  const handleDeleteTransfer = (transferId: string) => {
-    setTransfers((prev) => prev.filter((t) => t.id !== transferId));
+    if (!transferId && !currentUserPermissions.canCreateTransactions) {
+      alert('Você não tem permissão para lançar transferências nesta empresa.');
+      return;
+    }
+    await saveTransfer(transferData, transferId);
+    const transferYM = transferData.date.substring(0, 7);
+    if (transferYM !== currentYearMonth) {
+      setCurrentYearMonth(transferYM);
+    }
   };
 
   // --- Handlers for Treasury Accounts ---
   const handleOpenAccountModal = (account?: TreasuryAccount) => {
+    if (!currentUserPermissions.canManageRegistries) {
+      alert('Você não tem permissão para gerenciar contas bancárias nesta empresa.');
+      return;
+    }
     setEditingAccount(account || null);
     setIsAccountModalOpen(true);
   };
 
-  const handleSaveAccount = (
-    accountData: Omit<TreasuryAccount, 'id'>,
-    accountId?: string
-  ) => {
-    if (accountId) {
-      setAccounts((prev) =>
-        prev.map((a) => (a.id === accountId ? { ...a, ...accountData } : a))
-      );
-    } else {
-      const newAcc: TreasuryAccount = {
-        ...accountData,
-        id: `acc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      };
-      setAccounts((prev) => [...prev, newAcc]);
+  const handleDeleteAccount = async (accountId: string) => {
+    if (!currentUserPermissions.canManageRegistries) {
+      alert('Você não tem permissão para alterar cadastros nesta empresa.');
+      return;
     }
-  };
-
-  const handleDeleteAccount = (accountId: string) => {
     if (accounts.length <= 1) {
       alert('Você deve manter ao menos uma conta bancária ou caixa na tesouraria.');
       return;
     }
-
     if (
       window.confirm(
         'Tem certeza que deseja excluir esta conta da tesouraria? Os lançamentos vinculados permanecerão no histórico.'
       )
     ) {
-      setAccounts((prev) => prev.filter((a) => a.id !== accountId));
+      await deleteAccount(accountId);
     }
   };
 
   // --- Handlers for Credit Cards ---
   const handleOpenAddCardModal = (card?: CreditCard) => {
+    if (!currentUserPermissions.canManageRegistries) {
+      alert('Você não tem permissão para gerenciar cartões nesta empresa.');
+      return;
+    }
     setEditingCard(card || null);
     setIsCardModalOpen(true);
   };
 
-  const handleSaveCard = (cardData: Omit<CreditCard, 'id'>, cardId?: string) => {
-    if (cardId) {
-      setCards((prev) =>
-        prev.map((c) => (c.id === cardId ? { ...c, ...cardData } : c))
-      );
-    } else {
-      const newCard: CreditCard = {
-        ...cardData,
-        id: `card-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      };
-      setCards((prev) => [...prev, newCard]);
+  const handleDeleteCard = async (cardId: string) => {
+    if (!currentUserPermissions.canManageRegistries) {
+      alert('Você não tem permissão para alterar cadastros nesta empresa.');
+      return;
     }
-  };
-
-  const handleDeleteCard = (cardId: string) => {
     if (window.confirm('Tem certeza que deseja remover este cartão?')) {
-      setCards((prev) => prev.filter((c) => c.id !== cardId));
+      await deleteCard(cardId);
     }
   };
 
@@ -530,23 +547,9 @@ export default function App() {
     setIsContactModalOpen(true);
   };
 
-  const handleSaveContact = (contactData: Omit<ContactPerson, 'id'>, contactId?: string) => {
-    if (contactId) {
-      setContacts((prev) =>
-        prev.map((c) => (c.id === contactId ? { ...c, ...contactData } : c))
-      );
-    } else {
-      const newContact: ContactPerson = {
-        ...contactData,
-        id: `contact-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      };
-      setContacts((prev) => [...prev, newContact]);
-    }
-  };
-
-  const handleDeleteContact = (contactId: string) => {
+  const handleDeleteContact = async (contactId: string) => {
     if (window.confirm('Deseja excluir este favorecido/contato cadastrado?')) {
-      setContacts((prev) => prev.filter((c) => c.id !== contactId));
+      await deleteContact(contactId);
     }
   };
 
@@ -556,34 +559,18 @@ export default function App() {
     setIsRecurringModalOpen(true);
   };
 
-  const handleSaveRecurring = (billData: Omit<RecurringBill, 'id'>, billId?: string) => {
-    if (billId) {
-      setRecurringBills((prev) =>
-        prev.map((b) => (b.id === billId ? { ...b, ...billData } : b))
-      );
-    } else {
-      const newBill: RecurringBill = {
-        ...billData,
-        id: `rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      };
-      setRecurringBills((prev) => [...prev, newBill]);
-    }
-  };
-
-  const handleDeleteRecurring = (billId: string) => {
+  const handleDeleteRecurring = async (billId: string) => {
     if (window.confirm('Deseja excluir esta conta ou receita fixa recorrente?')) {
-      setRecurringBills((prev) => prev.filter((b) => b.id !== billId));
+      await deleteRecurring(billId);
     }
   };
 
-  const handleTriggerRecurringBill = (bill: RecurringBill) => {
-    // Determine target date for current month
+  const handleTriggerRecurringBill = async (bill: RecurringBill) => {
     const targetDay = String(Math.min(Math.max(bill.dueDay, 1), 28)).padStart(2, '0');
     const billDate = `${currentYearMonth}-${targetDay}`;
 
     if (bill.type === 'expense') {
-      const newExp: Expense = {
-        id: `exp-rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      await saveExpense({
         description: bill.description,
         amount: bill.amount,
         date: billDate,
@@ -593,13 +580,10 @@ export default function App() {
         contactId: bill.contactId,
         status: 'pending',
         notes: 'Lançado a partir de Conta Fixa Recorrente',
-        createdAt: Date.now(),
-      };
-      setExpenses((prev) => [newExp, ...prev]);
+      });
       alert(`Despesa "${bill.description}" de ${formatDateBR(billDate)} lançada com sucesso no mês ${currentYearMonth}!`);
     } else {
-      const newInc: Income = {
-        id: `inc-rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      await saveIncome({
         description: bill.description,
         amount: bill.amount,
         date: billDate,
@@ -608,9 +592,7 @@ export default function App() {
         contactId: bill.contactId,
         status: 'pending',
         notes: 'Lançado a partir de Receita Fixa Recorrente',
-        createdAt: Date.now(),
-      };
-      setIncomes((prev) => [newInc, ...prev]);
+      });
       alert(`Receita "${bill.description}" de ${formatDateBR(billDate)} lançada com sucesso no mês ${currentYearMonth}!`);
     }
   };
@@ -621,30 +603,17 @@ export default function App() {
     setIsGoalModalOpen(true);
   };
 
-  const handleSaveGoal = (goalData: Omit<FinancialGoal, 'id'>, goalId?: string) => {
-    if (goalId) {
-      setGoals((prev) =>
-        prev.map((g) => (g.id === goalId ? { ...g, ...goalData } : g))
-      );
-    } else {
-      const newGoal: FinancialGoal = {
-        ...goalData,
-        id: `goal-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      };
-      setGoals((prev) => [...prev, newGoal]);
-    }
-  };
-
-  const handleDeleteGoal = (goalId: string) => {
+  const handleDeleteGoal = async (goalId: string) => {
     if (window.confirm('Tem certeza que deseja excluir esta meta financeira?')) {
-      setGoals((prev) => prev.filter((g) => g.id !== goalId));
+      await deleteGoal(goalId);
     }
   };
 
-  const handleUpdateGoalAmount = (goalId: string, currentAmount: number) => {
-    setGoals((prev) =>
-      prev.map((g) => (g.id === goalId ? { ...g, currentAmount } : g))
-    );
+  const handleUpdateGoalAmount = async (goalId: string, currentAmount: number) => {
+    const goal = goals.find((g) => g.id === goalId);
+    if (goal) {
+      await saveGoal({ ...goal, currentAmount }, goalId);
+    }
   };
 
   // --- Quick Register Hub Handler ---
@@ -727,46 +696,30 @@ export default function App() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `gastos_pessoais_${currentYearMonth}.csv`);
+    link.setAttribute('download', `gastos_${activeCompany?.name || 'financas'}_${currentYearMonth}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // --- Reset All Data ---
-  const handleResetData = () => {
-    if (
-      window.confirm(
-        'Deseja restaurar todos os dados de exemplo originais (despesas, tesouraria, cartões, contatos e metas)? Todas as suas alterações locais serão redefinidas.'
-      )
-    ) {
-      setExpenses(getInitialExpenses());
-      setCategories(DEFAULT_CATEGORIES);
-      setAccounts(DEFAULT_ACCOUNTS);
-      setIncomes(getInitialIncomes());
-      setTransfers(getInitialTransfers());
-      setCards(DEFAULT_CREDIT_CARDS);
-      setContacts(DEFAULT_CONTACTS);
-      setRecurringBills(DEFAULT_RECURRING_BILLS);
-      setGoals(DEFAULT_GOALS);
-      const ym = getCurrentYearMonth();
-      setBudgets({ [ym]: 3500 });
-      localStorage.removeItem(STORAGE_KEYS.EXPENSES);
-      localStorage.removeItem(STORAGE_KEYS.CATEGORIES);
-      localStorage.removeItem(STORAGE_KEYS.BUDGETS);
-      localStorage.removeItem(STORAGE_KEYS.ACCOUNTS);
-      localStorage.removeItem(STORAGE_KEYS.INCOMES);
-      localStorage.removeItem(STORAGE_KEYS.TRANSFERS);
-      localStorage.removeItem(STORAGE_KEYS.CARDS);
-      localStorage.removeItem(STORAGE_KEYS.CONTACTS);
-      localStorage.removeItem(STORAGE_KEYS.RECURRING);
-      localStorage.removeItem(STORAGE_KEYS.GOALS);
-    }
-  };
+  // If Firebase auth is loading
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-3" />
+        <p className="text-sm font-medium text-slate-300">Carregando perfil e empresas...</p>
+      </div>
+    );
+  }
+
+  // If user is not authenticated, show AuthView
+  if (!currentUser) {
+    return <AuthView />;
+  }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
-      {/* Top Header with Module Navigation & Actions */}
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800 antialiased">
+      {/* Top Header with Company Switcher */}
       <Header
         currentYearMonth={currentYearMonth}
         activeTab={activeTab}
@@ -779,77 +732,77 @@ export default function App() {
         onOpenTransferModal={() => handleOpenAddTransferModal()}
         onOpenQuickRegisterModal={() => setIsQuickRegisterOpen(true)}
         onExportData={handleExportExpensesCSV}
-        onResetData={handleResetData}
+        onResetData={() => setIsResetConfirmOpen(true)}
+        onOpenBackupModal={() => setIsBackupModalOpen(true)}
+        cloudSyncStatus={cloudSyncStatus}
+        companies={companies}
+        activeCompany={activeCompany}
+        onSelectCompany={handleSelectCompany}
+        onOpenCreateCompany={() => setIsCreateCompanyOpen(true)}
+        onOpenManageMembers={() => setIsManageMembersOpen(true)}
+        currentUserEmail={currentUser.email}
+        currentUserName={currentUser.displayName}
+        onLogout={logout}
       />
 
-      {/* Main Content */}
+      {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeTab === 'registries' ? (
-          /* Central Registry Management Hub (Cartões, Favorecidos/Clientes, Contas Fixas, Metas) */
-          <RegistriesView
-            cards={cards}
-            contacts={contacts}
-            recurringBills={recurringBills}
-            goals={goals}
-            accounts={accounts}
-            categories={categories}
-            onOpenCardModal={handleOpenAddCardModal}
-            onDeleteCard={handleDeleteCard}
-            onOpenContactModal={handleOpenAddContactModal}
-            onDeleteContact={handleDeleteContact}
-            onOpenRecurringModal={handleOpenAddRecurringModal}
-            onDeleteRecurring={handleDeleteRecurring}
-            onTriggerRecurring={handleTriggerRecurringBill}
-            onOpenGoalModal={handleOpenAddGoalModal}
-            onDeleteGoal={handleDeleteGoal}
-            onUpdateGoalAmount={handleUpdateGoalAmount}
-            onOpenAccountModal={handleOpenAccountModal}
-            onOpenCategoryModal={() => setIsCategoryModalOpen(true)}
-          />
-        ) : activeTab === 'treasury' ? (
-          /* Treasury Module (Tesouraria, Contas, Fluxo de Caixa, Livro-Caixa) */
-          <TreasuryView
-            accounts={accounts}
-            incomes={incomes}
-            expenses={expenses}
-            transfers={transfers}
-            categories={categories}
-            selectedMonth={currentYearMonth}
-            onMonthChange={setCurrentYearMonth}
-            onOpenIncomeModal={handleOpenAddIncomeModal}
-            onOpenTransferModal={handleOpenAddTransferModal}
-            onOpenExpenseModal={handleOpenAddExpenseModal}
-            onOpenAccountModal={handleOpenAccountModal}
-            onDeleteAccount={handleDeleteAccount}
-            onDeleteIncome={handleDeleteIncome}
-            onDeleteTransfer={handleDeleteTransfer}
-            onDeleteExpense={handleDeleteExpense}
-            onEditIncome={handleEditIncome}
-            onEditTransfer={handleEditTransfer}
-            onEditExpense={handleEditExpense}
-          />
-        ) : (
-          /* Expenses & Analytics Module (Despesas, Gráficos por Categoria, Limite Orçamentário) */
+        {/* Active Company Breadcrumb / Context Tag */}
+        {activeCompany && (
+          <div className="mb-4 flex items-center justify-between bg-white px-4 py-2.5 rounded-xl border border-slate-200/90 shadow-2xs flex-wrap gap-2">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-slate-400 font-medium">Ambiente Ativo:</span>
+              <span
+                className="font-bold flex items-center gap-1 px-2 py-0.5 rounded-md text-white text-[11px]"
+                style={{ backgroundColor: activeCompany.color || '#4f46e5' }}
+              >
+                {activeCompany.type === 'business' ? <Building2 className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                {activeCompany.name}
+              </span>
+              <span className="text-slate-500 hidden sm:inline">•</span>
+              <span className="text-slate-500 hidden sm:inline">
+                {activeCompany.type === 'business' ? 'Pessoa Jurídica (PJ)' : 'Pessoa Física (PF)'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsBackupModalOpen(true)}
+                className="text-xs text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100/80 px-2.5 py-1 rounded-lg border border-emerald-200 font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                title="Ver status da nuvem ou baixar cópia de segurança (backup)"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Salvo na Nuvem (Backup)</span>
+              </button>
+
+              <button
+                onClick={() => setIsManageMembersOpen(true)}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1.5"
+              >
+                <span>Sócios ({activeCompany.memberEmails?.length || 1})</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Tab: Despesas & Graficos */}
+        {activeTab === 'expenses' && (
           <div className="space-y-6">
-            {/* KPI Cards */}
             <ExpenseSummaryCards
-              total={expenseSummary.total}
-              count={expenseSummary.count}
-              dailyAverage={expenseSummary.dailyAverage}
-              deltaPercent={expenseSummary.deltaPercent}
-              topCategory={expenseSummary.topCategory}
-              budgetLimit={expenseSummary.budgetLimit}
+              summary={expenseSummary}
               onOpenBudgetModal={() => setIsBudgetModalOpen(true)}
+              onOpenAddExpenseModal={handleOpenAddExpenseModal}
             />
 
-            {/* Automatic Monthly Charts */}
             <MonthlyCharts
               expenses={expenses}
               categories={categories}
               currentYearMonth={currentYearMonth}
+              budget={currentBudget}
             />
 
-            {/* Expenses List & Filter Table */}
             <ExpenseList
               expenses={expenses}
               categories={categories}
@@ -863,38 +816,76 @@ export default function App() {
             />
           </div>
         )}
+
+        {/* Tab: Tesouraria & Caixa */}
+        {activeTab === 'treasury' && (
+          <TreasuryView
+            accounts={accounts}
+            incomes={incomes}
+            expenses={expenses}
+            transfers={transfers}
+            categories={categories}
+            selectedMonth={currentYearMonth}
+            currentYearMonth={currentYearMonth}
+            onMonthChange={setCurrentYearMonth}
+            onOpenAddIncomeModal={handleOpenAddIncomeModal}
+            onOpenAddTransferModal={handleOpenAddTransferModal}
+            onOpenAccountModal={handleOpenAccountModal}
+            onDeleteAccount={handleDeleteAccount}
+            onEditIncome={handleEditIncome}
+            onDeleteIncome={handleDeleteIncome}
+            onEditTransfer={handleEditTransfer}
+            onDeleteTransfer={handleDeleteTransfer}
+            onEditExpense={handleEditExpense}
+            onDeleteExpense={handleDeleteExpense}
+            onOpenExpenseModal={handleOpenAddExpenseModal}
+          />
+        )}
+
+        {/* Tab: Cadastros Gerais */}
+        {activeTab === 'registries' && (
+          <RegistriesView
+            cards={cards}
+            contacts={contacts}
+            recurringBills={recurringBills}
+            goals={goals}
+            categories={categories}
+            accounts={accounts}
+            currentYearMonth={currentYearMonth}
+            activeCompany={activeCompany}
+            currentUserEmail={currentUser.email}
+            currentUserPermissions={currentUserPermissions}
+            onAddMember={handleAddMember}
+            onUpdateMember={handleUpdateMember}
+            onRemoveMember={handleRemoveMember}
+            onOpenManageMembers={() => setIsManageMembersOpen(true)}
+            onOpenCardModal={handleOpenAddCardModal}
+            onDeleteCard={handleDeleteCard}
+            onOpenContactModal={handleOpenAddContactModal}
+            onDeleteContact={handleDeleteContact}
+            onOpenRecurringModal={handleOpenAddRecurringModal}
+            onDeleteRecurring={handleDeleteRecurring}
+            onTriggerRecurringBill={handleTriggerRecurringBill}
+            onOpenGoalModal={handleOpenAddGoalModal}
+            onDeleteGoal={handleDeleteGoal}
+            onUpdateGoalAmount={handleUpdateGoalAmount}
+            onOpenAccountModal={handleOpenAccountModal}
+            onDeleteAccount={handleDeleteAccount}
+            onOpenCategoryModal={() => setIsCategoryModalOpen(true)}
+          />
+        )}
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white py-4 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
-          <div className="flex items-center gap-1.5">
-            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            <span>
-              Controle de Gastos & Tesouraria • Seus dados ficam salvos localmente com total privacidade no navegador.
-            </span>
-          </div>
-          <button
-            onClick={handleResetData}
-            className="flex items-center gap-1 hover:text-indigo-600 text-slate-400 transition-colors"
-            title="Restaurar dados de exemplo da tesouraria e despesas"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Restaurar dados de exemplo</span>
-          </button>
-        </div>
-      </footer>
-
-      {/* Standard Modals */}
+      {/* Modals */}
       <ExpenseFormModal
         isOpen={isExpenseModalOpen}
         onClose={() => setIsExpenseModalOpen(false)}
         onSave={handleSaveExpense}
-        editingExpense={editingExpense}
         categories={categories}
         accounts={accounts}
         cards={cards}
         contacts={contacts}
+        editingExpense={editingExpense}
         defaultDate={`${currentYearMonth}-01`}
       />
 
@@ -902,9 +893,9 @@ export default function App() {
         isOpen={isCategoryModalOpen}
         onClose={() => setIsCategoryModalOpen(false)}
         categories={categories}
-        onAddCategory={handleAddCategory}
-        onDeleteCategory={handleDeleteCategory}
-        onUpdateCategoryBudget={handleUpdateCategoryBudget}
+        onAddCategory={addCategory}
+        onDeleteCategory={deleteCategory}
+        onUpdateCategoryBudget={updateCategoryBudget}
       />
 
       <MonthlyBudgetModal
@@ -912,7 +903,7 @@ export default function App() {
         onClose={() => setIsBudgetModalOpen(false)}
         yearMonth={currentYearMonth}
         currentBudget={currentBudget}
-        onSaveBudget={handleSaveMonthlyBudget}
+        onSaveBudget={saveMonthlyBudget}
       />
 
       <IncomeFormModal
@@ -938,7 +929,7 @@ export default function App() {
       <AccountFormModal
         isOpen={isAccountModalOpen}
         onClose={() => setIsAccountModalOpen(false)}
-        onSave={handleSaveAccount}
+        onSave={saveAccount}
         editingAccount={editingAccount}
       />
 
@@ -946,14 +937,15 @@ export default function App() {
       <CreditCardFormModal
         isOpen={isCardModalOpen}
         onClose={() => setIsCardModalOpen(false)}
-        onSave={handleSaveCard}
+        onSave={saveCard}
         editingCard={editingCard}
+        accounts={accounts}
       />
 
       <ContactFormModal
         isOpen={isContactModalOpen}
         onClose={() => setIsContactModalOpen(false)}
-        onSave={handleSaveContact}
+        onSave={saveContact}
         editingContact={editingContact}
         defaultType={contactDefaultType}
       />
@@ -961,17 +953,18 @@ export default function App() {
       <RecurringBillFormModal
         isOpen={isRecurringModalOpen}
         onClose={() => setIsRecurringModalOpen(false)}
-        onSave={handleSaveRecurring}
+        onSave={saveRecurring}
         editingBill={editingRecurring}
         categories={categories}
         accounts={accounts}
+        cards={cards}
         contacts={contacts}
       />
 
       <GoalFormModal
         isOpen={isGoalModalOpen}
         onClose={() => setIsGoalModalOpen(false)}
-        onSave={handleSaveGoal}
+        onSave={saveGoal}
         editingGoal={editingGoal}
       />
 
@@ -980,7 +973,40 @@ export default function App() {
         onClose={() => setIsQuickRegisterOpen(false)}
         onSelect={handleQuickRegisterAction}
       />
+
+      {/* Multi-Company Modals */}
+      <CreateCompanyModal
+        isOpen={isCreateCompanyOpen}
+        onClose={() => setIsCreateCompanyOpen(false)}
+        onCreate={handleCreateCompany}
+      />
+
+      <ManageMembersModal
+        isOpen={isManageMembersOpen}
+        onClose={() => setIsManageMembersOpen(false)}
+        company={activeCompany}
+        currentUserEmail={currentUser.email}
+        onAddMember={handleAddMember}
+        onUpdateMember={handleUpdateMember}
+        onRemoveMember={handleRemoveMember}
+      />
+
+      <ResetConfirmModal
+        isOpen={isResetConfirmOpen}
+        onClose={() => setIsResetConfirmOpen(false)}
+        onConfirmReset={async (keepCategories, createCleanAccount) => {
+          await clearAllData(keepCategories, createCleanAccount);
+        }}
+        companyName={activeCompany?.name || 'Ambiente Selecionado'}
+      />
+
+      <BackupSecurityModal
+        isOpen={isBackupModalOpen}
+        onClose={() => setIsBackupModalOpen(false)}
+        companies={companies}
+        currentUserEmail={currentUser.email}
+        cloudSyncStatus={cloudSyncStatus}
+      />
     </div>
   );
 }
-

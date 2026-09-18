@@ -42,15 +42,18 @@ import {
 import { TreasuryCharts } from './TreasuryCharts';
 
 interface TreasuryViewProps {
-  accounts: TreasuryAccount[];
-  incomes: Income[];
-  expenses: Expense[];
-  transfers: AccountTransfer[];
-  categories: Category[];
-  selectedMonth: string;
-  onMonthChange: (month: string) => void;
-  onOpenIncomeModal: (preselectedAccountId?: string) => void;
-  onOpenTransferModal: (preselectedAccountId?: string) => void;
+  accounts?: TreasuryAccount[];
+  incomes?: Income[];
+  expenses?: Expense[];
+  transfers?: AccountTransfer[];
+  categories?: Category[];
+  selectedMonth?: string;
+  currentYearMonth?: string;
+  onMonthChange?: (month: string) => void;
+  onOpenIncomeModal?: (preselectedAccountId?: string) => void;
+  onOpenAddIncomeModal?: (preselectedAccountId?: string) => void;
+  onOpenTransferModal?: (preselectedAccountId?: string) => void;
+  onOpenAddTransferModal?: (preselectedAccountId?: string) => void;
   onOpenExpenseModal: () => void;
   onOpenAccountModal: (account?: TreasuryAccount) => void;
   onDeleteAccount: (accountId: string) => void;
@@ -73,15 +76,18 @@ const ACCOUNT_TYPE_CONFIG: Record<
 };
 
 export const TreasuryView: React.FC<TreasuryViewProps> = ({
-  accounts,
-  incomes,
-  expenses,
-  transfers,
-  categories,
+  accounts = [],
+  incomes = [],
+  expenses = [],
+  transfers = [],
+  categories = [],
   selectedMonth,
+  currentYearMonth,
   onMonthChange,
   onOpenIncomeModal,
+  onOpenAddIncomeModal,
   onOpenTransferModal,
+  onOpenAddTransferModal,
   onOpenExpenseModal,
   onOpenAccountModal,
   onDeleteAccount,
@@ -92,6 +98,11 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
   onEditTransfer,
   onEditExpense,
 }) => {
+  const handleOpenIncome = onOpenIncomeModal || onOpenAddIncomeModal || (() => {});
+  const handleOpenTransfer = onOpenTransferModal || onOpenAddTransferModal || (() => {});
+  const activeMonth = selectedMonth || currentYearMonth || new Date().toISOString().slice(0, 7);
+  const handleMonthChange = onMonthChange || (() => {});
+
   const [filterAccount, setFilterAccount] = useState<string>('all');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense' | 'transfer'>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -99,8 +110,8 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
 
   // Month summary & balances
   const summary = useMemo(
-    () => getTreasuryMonthSummary(accounts, incomes, expenses, transfers, selectedMonth),
-    [accounts, incomes, expenses, transfers, selectedMonth]
+    () => getTreasuryMonthSummary(accounts, incomes, expenses, transfers, activeMonth),
+    [accounts, incomes, expenses, transfers, activeMonth]
   );
 
   const balances = useMemo(
@@ -112,18 +123,18 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
   const transactions = useMemo(
     () =>
       getUnifiedTransactions(incomes, expenses, transfers, accounts, categories, {
-        yearMonth: selectedMonth,
+        yearMonth: activeMonth,
         accountId: filterAccount,
         type: filterType,
         searchTerm,
       }),
-    [incomes, expenses, transfers, accounts, categories, selectedMonth, filterAccount, filterType, searchTerm]
+    [incomes, expenses, transfers, accounts, categories, activeMonth, filterAccount, filterType, searchTerm]
   );
 
   // CSV Export for Treasury Ledger
   const handleExportCSV = () => {
     const headers = ['Data', 'Tipo', 'Descricao', 'Conta', 'Destino', 'Categoria', 'Valor (R$)', 'Observacoes'];
-    const rows = transactions.map((t) => [
+    const rows = (transactions || []).map((t) => [
       t.date,
       t.type === 'income' ? 'Entrada' : t.type === 'expense' ? 'Saida' : 'Transferencia',
       `"${(t.description || '').replace(/"/g, '""')}"`,
@@ -138,24 +149,24 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `extrato_tesouraria_${selectedMonth}.csv`);
+    link.setAttribute('download', `extrato_tesouraria_${activeMonth}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   const handlePrevMonth = () => {
-    onMonthChange(getRelativeMonth(selectedMonth, -1));
+    handleMonthChange(getRelativeMonth(activeMonth, -1));
   };
 
   const handleNextMonth = () => {
-    onMonthChange(getRelativeMonth(selectedMonth, 1));
+    handleMonthChange(getRelativeMonth(activeMonth, 1));
   };
 
   const handleCurrentMonth = () => {
     const now = new Date();
     const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    onMonthChange(ym);
+    handleMonthChange(ym);
   };
 
   const isNetPositive = summary.monthNet >= 0;
@@ -202,7 +213,7 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
           <button
-            onClick={() => onOpenIncomeModal()}
+            onClick={() => handleOpenIncome()}
             id="btn-add-income"
             className="flex-1 sm:flex-initial px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1.5"
           >
@@ -211,7 +222,7 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
           </button>
 
           <button
-            onClick={() => onOpenTransferModal()}
+            onClick={() => handleOpenTransfer()}
             id="btn-add-transfer"
             className="flex-1 sm:flex-initial px-3.5 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1.5"
           >
@@ -419,7 +430,7 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
                 {/* Quick Account Actions */}
                 <div className="pt-3 border-t border-slate-200/60 flex items-center gap-1.5">
                   <button
-                    onClick={() => onOpenIncomeModal(acc.id)}
+                    onClick={() => handleOpenIncome(acc.id)}
                     className="flex-1 py-1 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold rounded-md transition-colors flex items-center justify-center gap-1"
                     title={`Adicionar receita na conta ${acc.name}`}
                   >
@@ -427,7 +438,7 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
                     + Receita
                   </button>
                   <button
-                    onClick={() => onOpenTransferModal(acc.id)}
+                    onClick={() => handleOpenTransfer(acc.id)}
                     className="flex-1 py-1 px-2 bg-sky-50 hover:bg-sky-100 text-sky-700 text-[11px] font-semibold rounded-md transition-colors flex items-center justify-center gap-1"
                     title={`Transferir a partir da conta ${acc.name}`}
                   >

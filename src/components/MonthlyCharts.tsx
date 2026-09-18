@@ -33,8 +33,8 @@ interface MonthlyChartsProps {
 type ChartViewType = 'category' | 'daily' | 'history';
 
 export const MonthlyCharts: React.FC<MonthlyChartsProps> = ({
-  expenses,
-  categories,
+  expenses = [],
+  categories = [],
   currentYearMonth,
 }) => {
   const [activeView, setActiveView] = useState<ChartViewType>('category');
@@ -47,22 +47,22 @@ export const MonthlyCharts: React.FC<MonthlyChartsProps> = ({
 
   // Custom tooltip for Category Pie Chart
   const CustomCategoryTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
+    if (active && Array.isArray(payload) && payload.length > 0 && payload[0]?.payload) {
       const data = payload[0].payload;
       return (
         <div className="bg-slate-900 text-white px-3 py-2 rounded-lg shadow-lg text-xs font-sans">
           <div className="flex items-center gap-2 font-semibold text-sm mb-1">
             <span
               className="w-2.5 h-2.5 rounded-full inline-block"
-              style={{ backgroundColor: data.color }}
+              style={{ backgroundColor: data.color || '#6366f1' }}
             />
-            <span>{data.name}</span>
+            <span>{data.name || 'Outros'}</span>
           </div>
           <p className="text-slate-200">
-            Total: <span className="font-bold text-white">{formatCurrency(data.amount)}</span>
+            Total: <span className="font-bold text-white">{formatCurrency(data.amount || 0)}</span>
           </p>
           <p className="text-slate-400">
-            {data.percentage}% do total ({data.count} {data.count === 1 ? 'gasto' : 'gastos'})
+            {data.percentage ?? 0}% do total ({data.count ?? 0} {data.count === 1 ? 'gasto' : 'gastos'})
           </p>
         </div>
       );
@@ -72,16 +72,18 @@ export const MonthlyCharts: React.FC<MonthlyChartsProps> = ({
 
   // Custom tooltip for Daily Chart
   const CustomDailyTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
+    if (active && Array.isArray(payload) && payload.length > 0 && payload[0]) {
+      const dailyVal = payload[0].value ?? 0;
+      const accumVal = payload[1]?.value;
       return (
         <div className="bg-slate-900 text-white px-3 py-2 rounded-lg shadow-lg text-xs font-sans">
           <p className="font-semibold text-sm text-slate-100 mb-1">{label}</p>
           <p className="text-emerald-400 font-medium">
-            Gasto no dia: <span className="font-bold">{formatCurrency(payload[0].value)}</span>
+            Gasto no dia: <span className="font-bold">{formatCurrency(dailyVal)}</span>
           </p>
-          {payload[1] && (
+          {accumVal !== undefined && (
             <p className="text-sky-300">
-              Acumulado no mês: <span className="font-bold">{formatCurrency(payload[1].value)}</span>
+              Acumulado no mês: <span className="font-bold">{formatCurrency(accumVal)}</span>
             </p>
           )}
         </div>
@@ -92,15 +94,16 @@ export const MonthlyCharts: React.FC<MonthlyChartsProps> = ({
 
   // Custom tooltip for History Chart
   const CustomHistoryTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      const item = payload[0].payload;
+    if (active && Array.isArray(payload) && payload.length > 0 && payload[0]) {
+      const item = payload[0].payload || {};
+      const val = payload[0].value ?? 0;
       return (
         <div className="bg-slate-900 text-white px-3 py-2 rounded-lg shadow-lg text-xs font-sans">
-          <p className="font-semibold text-sm text-slate-100 mb-1">{item.label}</p>
+          <p className="font-semibold text-sm text-slate-100 mb-1">{item.label || label}</p>
           <p className="text-indigo-300 font-bold text-base">
-            {formatCurrency(payload[0].value)}
+            {formatCurrency(val)}
           </p>
-          <p className="text-slate-400">{item.count} despesas registradas</p>
+          <p className="text-slate-400">{item.count ?? 0} despesas registradas</p>
         </div>
       );
     }
