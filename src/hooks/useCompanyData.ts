@@ -46,6 +46,7 @@ export function useCompanyData(companyId: string | null) {
   const [goals, setGoals] = useState<FinancialGoal[]>([]);
   const [loading, setLoading] = useState(true);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<'synced' | 'syncing' | 'error'>('synced');
+  const [lastError, setLastError] = useState<string | null>(null);
 
   const parseArray = <T>(key: string, fallback: T[]): T[] => {
     try {
@@ -114,6 +115,10 @@ export function useCompanyData(companyId: string | null) {
           localStorage.setItem(getStorageKey('expenses'), JSON.stringify(list));
         }
         setCloudSyncStatus('synced');
+        setLastError(null);
+      }, (err) => {
+        setCloudSyncStatus('error');
+        setLastError(err instanceof Error ? err.message : String(err));
       })
     );
 
@@ -751,6 +756,7 @@ export function useCompanyData(companyId: string | null) {
     goals,
     loading,
     cloudSyncStatus,
+    lastError,
     saveExpense,
     deleteExpense,
     saveIncome,

@@ -2,12 +2,70 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    function isAuthenticated() {
+    // --- GLOBAL HELPERS ---
+    
+    function isSignedIn() {
       return request.auth != null;
     }
-
+    
     function getUserEmail() {
       return request.auth.token.email != null ? request.auth.token.email.lower() : '';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- RELATIONSHIP HELPERS ---
+
+    function getCompany(companyId) {
+      return get(/databases/$(database)/documents/companies/$(companyId)).data;
+    }
+
+    function isCompanyMember(companyId) {
+      let company = getCompany(companyId);
+      return company.ownerId == request.auth.uid || getUserEmail() in company.memberEmails;
+    }
+
+    function getMemberInfo(companyId) {
+      let company = getCompany(companyId);
+      return company.membersInfo; // Note: Firestore rules can't easily filter arrays, but we check presence
+    }
+
+    // --- VALIDATION HELPERS ---
+
+    function isValidCompany(data) {
+      return data.keys().hasAll(['id', 'name', 'type', 'ownerId', 'ownerEmail', 'memberEmails', 'createdAt'])
+        && data.id is string && data.id.size() <= 100
+        && data.name is string && data.name.size() <= 100
+        && data.type in ['personal', 'business']
+        && data.ownerId == request.auth.uid
+        && data.ownerEmail.lower() == getUserEmail()
+        && data.memberEmails is list
+        && data.createdAt is number;
+    }
+
+    function isValidExpense(data) {
+      return data.keys().hasAll(['id', 'description', 'amount', 'date', 'categoryId', 'paymentMethod'])
+        && data.id is string && data.id.size() <= 100
+        && data.description is string && data.description.size() <= 200
+        && data.amount is number && data.amount >= 0
+        && data.date is string && data.date.size() <= 10
+        && data.categoryId is string
+        && data.paymentMethod is string;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
     }
 
     // Connection test document
@@ -15,13 +73,28 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Companies collection - persisted in Cloud Firestore
+    // Companies collection
     match /companies/{companyId} {
-      allow read, write: if true;
+      allow get: if isSignedIn() && (existing().ownerId == request.auth.uid || getUserEmail() in existing().memberEmails);
+      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || getUserEmail() in resource.data.memberEmails);
+      
+      allow create: if isSignedIn() && isValidId(companyId) && isValidCompany(incoming()) && incoming().id == companyId;
+      
+      allow update: if isSignedIn() && isValidCompany(incoming()) && (
+        existing().ownerId == request.auth.uid || 
+        (getUserEmail() in existing().memberEmails) // Add granular logic for membersInfo if needed
+      );
+      
+      allow delete: if isSignedIn() && existing().ownerId == request.auth.uid;
 
-      // Subcollections belonging to the company (expenses, accounts, cards, categories, contacts, etc.)
+      // Subcollections belonging to the company
       match /{subcollection}/{docId} {
-        allow read, write: if true;
+        allow get: if isSignedIn() && isCompanyMember(companyId);
+        allow list: if isSignedIn() && isCompanyMember(companyId);
+        
+        allow create: if isSignedIn() && isCompanyMember(companyId) && isValidId(docId);
+        allow update: if isSignedIn() && isCompanyMember(companyId) && isValidId(docId);
+        allow delete: if isSignedIn() && isCompanyMember(companyId);
       }
     }
   }

@@ -13,7 +13,7 @@ import {
   arrayRemove,
   writeBatch,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import {
   Company,
   Expense,
@@ -38,9 +38,10 @@ import { getCurrentYearMonth } from '../utils/formatters';
 
 // Initialize default companies when a user signs up or signs in for the first time
 export async function ensureDefaultCompanies(userId: string, userEmail: string): Promise<Company[]> {
+  const path = 'companies';
   try {
     const normalizedEmail = userEmail.toLowerCase().trim();
-    const companiesRef = collection(db, 'companies');
+    const companiesRef = collection(db, path);
     
     // Check if user has any companies
     const q1 = query(companiesRef, where('ownerId', '==', userId));
@@ -57,10 +58,7 @@ export async function ensureDefaultCompanies(userId: string, userEmail: string):
       return Array.from(map.values()).sort((a, b) => a.createdAt - b.createdAt);
     }
 
-    // No companies found, initialize the requested 3 defaults:
-    // 1. Despesas Pessoais (Apenas o Emerson)
-    // 2. Empresa Individual (Apenas o Emerson)
-    // 3. Empresa Cacto (Emerson + Sócio)
+    // No companies found, initialize the requested 3 defaults
     const now = Date.now();
     const defaultCompanies: Company[] = [
       {
@@ -103,40 +101,10 @@ export async function ensureDefaultCompanies(userId: string, userEmail: string):
 
     return defaultCompanies;
   } catch (error) {
-    console.error('Erro ao verificar/inicializar empresas padrão:', error);
-    // Fallback in-memory
-    return [
-      {
-        id: 'personal_default',
-        name: 'Despesas Pessoais (PF)',
-        type: 'personal',
-        ownerId: userId,
-        ownerEmail: userEmail,
-        memberEmails: [userEmail.toLowerCase()],
-        color: '#4f46e5',
-        createdAt: Date.now(),
-      },
-      {
-        id: 'individual_default',
-        name: 'Minha Empresa Individual (PJ)',
-        type: 'business',
-        ownerId: userId,
-        ownerEmail: userEmail,
-        memberEmails: [userEmail.toLowerCase()],
-        color: '#0284c7',
-        createdAt: Date.now() + 1,
-      },
-      {
-        id: 'cacto_default',
-        name: 'Empresa Cacto (PJ)',
-        type: 'business',
-        ownerId: userId,
-        ownerEmail: userEmail,
-        memberEmails: [userEmail.toLowerCase(), 'socio@cacto.com'],
-        color: '#059669',
-        createdAt: Date.now() + 2,
-      },
-    ];
+    handleFirestoreError(error, OperationType.GET, path);
+    // This line is technically unreachable due to handleFirestoreError throwing, 
+    // but added to satisfy TS return type if needed before actual throw
+    return [];
   }
 }
 
@@ -153,7 +121,7 @@ async function seedCompanyDefaults(companyId: string) {
 
     await batch.commit();
   } catch (e) {
-    console.warn('Seed defaults avisos:', e);
+    handleFirestoreError(e, OperationType.WRITE, `companies/${companyId}/defaults`);
   }
 }
 
@@ -222,16 +190,10 @@ export async function addCompanyMember(
         memberEmails: updatedMembers,
         membersInfo: updatedInfo,
       });
-      return;
     }
   } catch (e) {
-    console.warn('Erro ao atualizar membros com dados enriquecidos no Firestore, usando fallback arrayUnion:', e);
+    handleFirestoreError(e, OperationType.UPDATE, `companies/${companyId}`);
   }
-
-  // Fallback direct arrayUnion
-  await updateDoc(companyRef, {
-    memberEmails: arrayUnion(normalizedEmail),
-  });
 }
 
 // Update existing member permissions and role
@@ -277,8 +239,7 @@ export async function updateCompanyMember(
       });
     }
   } catch (e) {
-    console.error('Erro ao atualizar permissões do membro:', e);
-    throw e;
+    handleFirestoreError(e, OperationType.UPDATE, `companies/${companyId}`);
   }
 }
 
@@ -302,15 +263,10 @@ export async function removeCompanyMember(companyId: string, email: string): Pro
         memberEmails: updatedMembers,
         membersInfo: updatedInfo,
       });
-      return;
     }
   } catch (e) {
-    console.warn('Erro ao remover membro com Firestore getDoc, tentando arrayRemove:', e);
+    handleFirestoreError(e, OperationType.UPDATE, `companies/${companyId}`);
   }
-
-  await updateDoc(companyRef, {
-    memberEmails: arrayRemove(normalizedEmail),
-  });
 }
 
 // Subscribe to companies for a user in realtime
@@ -334,7 +290,7 @@ export function subscribeToUserCompanies(
       onUpdate(list);
     },
     (err) => {
-      console.warn('Erro no listener de empresas do usuário:', err);
+      handleFirestoreError(err, OperationType.LIST, 'companies');
     }
   );
 }
@@ -354,21 +310,31 @@ export function subscribeToCompanySubcollection<T>(
       onUpdate(items);
     },
     (err) => {
-      console.warn(`Erro no listener da subcoleção ${subcollectionName}:`, err);
+      handleFirestoreError(err, OperationType.LIST, `companies/${companyId}/${subcollectionName}`);
     }
   );
 }
 
 // Generic save document to company subcollection
 export async function saveCompanyDoc(companyId: string, subcollection: string, docId: string, data: any) {
-  const ref = doc(db, 'companies', companyId, subcollection, docId);
-  await setDoc(ref, data, { merge: true });
+  const path = `companies/${companyId}/${subcollection}/${docId}`;
+  try {
+    const ref = doc(db, 'companies', companyId, subcollection, docId);
+    await setDoc(ref, data, { merge: true });
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, path);
+  }
 }
 
 // Generic delete document from company subcollection
 export async function deleteCompanyDoc(companyId: string, subcollection: string, docId: string) {
-  const ref = doc(db, 'companies', companyId, subcollection, docId);
-  await deleteDoc(ref);
+  const path = `companies/${companyId}/${subcollection}/${docId}`;
+  try {
+    const ref = doc(db, 'companies', companyId, subcollection, docId);
+    await deleteDoc(ref);
+  } catch (e) {
+    handleFirestoreError(e, OperationType.DELETE, path);
+  }
 }
 
 // Clear all financial records for a company (start from scratch)
@@ -407,7 +373,7 @@ export async function clearCompanyData(companyId: string, keepCategories: boolea
         await batch.commit();
       }
     } catch (err) {
-      console.warn(`Aviso ao limpar subcoleção ${sub} do Firestore:`, err);
+      handleFirestoreError(err, OperationType.DELETE, `companies/${companyId}/${sub}`);
     }
   }
 }

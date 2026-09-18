@@ -27,6 +27,7 @@ interface BackupSecurityModalProps {
   companies: Company[];
   currentUserEmail?: string | null;
   cloudSyncStatus?: 'synced' | 'syncing' | 'error';
+  lastError?: string | null;
   onRefreshData?: () => void;
 }
 
@@ -36,6 +37,7 @@ export const BackupSecurityModal: React.FC<BackupSecurityModalProps> = ({
   companies,
   currentUserEmail,
   cloudSyncStatus = 'synced',
+  lastError,
   onRefreshData,
 }) => {
   const [isExporting, setIsExporting] = useState(false);
@@ -128,17 +130,39 @@ export const BackupSecurityModal: React.FC<BackupSecurityModalProps> = ({
         {/* Content */}
         <div className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
           {/* Real-time Cloud Status */}
-          <div className="p-4 rounded-xl bg-emerald-50/80 border border-emerald-200">
+          <div className={`p-4 rounded-xl border ${
+            cloudSyncStatus === 'error' 
+              ? 'bg-rose-50 border-rose-200' 
+              : 'bg-emerald-50/80 border-emerald-200'
+          }`}>
             <div className="flex items-center gap-2.5 mb-1.5">
-              <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
-              <h4 className="text-sm font-bold text-emerald-950 flex items-center gap-1.5">
-                <Cloud className="w-4 h-4 text-emerald-600" />
-                Google Cloud Firestore Conectado
+              <div className={`w-3 h-3 rounded-full ${
+                cloudSyncStatus === 'error' ? 'bg-rose-500' : 'bg-emerald-500 animate-pulse'
+              }`} />
+              <h4 className={`text-sm font-bold flex items-center gap-1.5 ${
+                cloudSyncStatus === 'error' ? 'text-rose-950' : 'text-emerald-950'
+              }`}>
+                {cloudSyncStatus === 'error' ? <AlertCircle className="w-4 h-4 text-rose-600" /> : <Cloud className="w-4 h-4 text-emerald-600" />}
+                {cloudSyncStatus === 'error' ? 'Erro na Conexão Cloud' : 'Google Cloud Firestore Conectado'}
               </h4>
             </div>
-            <p className="text-xs text-emerald-800 leading-relaxed">
-              Todos os seus lançamentos, contas bancárias, cartões, categorias e permissões são gravados
-              <strong> diretamente no banco de dados na nuvem da Google</strong>.
+            <p className={`text-xs leading-relaxed ${
+              cloudSyncStatus === 'error' ? 'text-rose-800' : 'text-emerald-800'
+            }`}>
+              {cloudSyncStatus === 'error' ? (
+                <>
+                  Houve um problema ao sincronizar com a nuvem: 
+                  <code className="block mt-1 p-1 bg-rose-100 rounded text-[10px] break-all">
+                    {lastError || 'Erro desconhecido de permissão ou rede.'}
+                  </code>
+                  Tente recarregar a página ou fazer login novamente.
+                </>
+              ) : (
+                <>
+                  Todos os seus lançamentos, contas bancárias, cartões, categorias e permissões são gravados
+                  <strong> diretamente no banco de dados na nuvem da Google</strong>.
+                </>
+              )}
             </p>
           </div>
 

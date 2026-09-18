@@ -127,6 +127,7 @@ export default function App() {
     goals,
     loading: dataLoading,
     cloudSyncStatus,
+    lastError,
     saveExpense,
     deleteExpense,
     saveIncome,
@@ -1004,6 +1005,8 @@ export default function App() {
         companies={companies}
         currentUserEmail={currentUser.email}
         cloudSyncStatus={cloudSyncStatus}
+        lastError={lastError}
+        onRefreshData={() => window.location.reload()}
       />
     </div>
   );
