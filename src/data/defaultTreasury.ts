@@ -38,17 +38,6 @@ export const DEFAULT_ACCOUNTS: TreasuryAccount[] = [
   },
 ];
 
-export const INCOME_CATEGORIES = [
-  'Salário',
-  'Pró-Labore',
-  'Freelance & Serviços',
-  'Vendas',
-  'Rendimentos & Dividendos',
-  'Reembolso',
-  'Doações & Presentes',
-  'Outras Entradas',
-];
-
 export function getInitialIncomes(): Income[] {
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -73,7 +62,7 @@ export function getInitialIncomes(): Income[] {
       amount: 5400.0,
       date: makeDate(currentYear, currentMonth, 5),
       accountId: 'acc-nubank',
-      category: 'Salário',
+      categoryId: 'cat-salario',
       notes: 'Depósito em conta corrente CLT',
       createdAt: Date.now() - 1000 * 60 * 60 * 24 * 4,
     },
@@ -83,7 +72,7 @@ export function getInitialIncomes(): Income[] {
       amount: 1450.0,
       date: makeDate(currentYear, currentMonth, 3),
       accountId: 'acc-itau',
-      category: 'Freelance & Serviços',
+      categoryId: 'cat-extra',
       notes: 'Pagamento recebido via PIX',
       createdAt: Date.now() - 1000 * 60 * 60 * 24 * 6,
     },
@@ -93,7 +82,7 @@ export function getInitialIncomes(): Income[] {
       amount: 78.35,
       date: makeDate(currentYear, currentMonth, 1),
       accountId: 'acc-reserva',
-      category: 'Rendimentos & Dividendos',
+      categoryId: 'cat-investimentos',
       createdAt: Date.now() - 1000 * 60 * 60 * 24 * 8,
     },
 
@@ -104,7 +93,7 @@ export function getInitialIncomes(): Income[] {
       amount: 5400.0,
       date: makeDate(prevYear, prevMonth, 5),
       accountId: 'acc-nubank',
-      category: 'Salário',
+      categoryId: 'cat-salario',
       createdAt: Date.now() - 1000 * 60 * 60 * 24 * 35,
     },
     {
@@ -113,7 +102,7 @@ export function getInitialIncomes(): Income[] {
       amount: 650.0,
       date: makeDate(prevYear, prevMonth, 15),
       accountId: 'acc-nubank',
-      category: 'Vendas',
+      categoryId: 'cat-vendas',
       createdAt: Date.now() - 1000 * 60 * 60 * 24 * 25,
     },
     {
@@ -122,7 +111,7 @@ export function getInitialIncomes(): Income[] {
       amount: 74.2,
       date: makeDate(prevYear, prevMonth, 1),
       accountId: 'acc-reserva',
-      category: 'Rendimentos & Dividendos',
+      categoryId: 'cat-investimentos',
       createdAt: Date.now() - 1000 * 60 * 60 * 24 * 39,
     },
   ];

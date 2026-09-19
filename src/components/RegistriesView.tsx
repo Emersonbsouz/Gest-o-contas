@@ -20,6 +20,7 @@ import {
   Calendar,
   Check,
   TrendingUp,
+  TrendingDown,
   ArrowDownLeft,
   ArrowUpRight,
   ShieldCheck,
@@ -52,6 +53,7 @@ import {
   CompanyMemberInfo,
 } from '../types';
 import { formatCurrency, formatDateBR } from '../utils/formatters';
+import { CategoryIcon } from './CategoryIcon';
 import { EditMemberPermissionsModal } from './EditMemberPermissionsModal';
 
 interface RegistriesViewProps {
@@ -104,9 +106,11 @@ interface RegistriesViewProps {
   onDeleteAccount: (accountId: string) => void;
 
   onOpenCategoryModal: () => void;
+  onOpenExpenseModal?: () => void;
+  onOpenIncomeModal?: () => void;
 }
 
-type ActiveRegistryTab = 'cards' | 'contacts' | 'recurring' | 'goals' | 'accounts' | 'members';
+type ActiveRegistryTab = 'cards' | 'contacts' | 'recurring' | 'goals' | 'accounts' | 'categories' | 'members';
 
 export const RegistriesView: React.FC<RegistriesViewProps> = ({
   cards = [],
@@ -136,6 +140,8 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
   onOpenAccountModal,
   onDeleteAccount,
   onOpenCategoryModal,
+  onOpenExpenseModal,
+  onOpenIncomeModal,
 }) => {
   const [activeTab, setActiveTab] = useState<ActiveRegistryTab>('cards');
   const [searchQuery, setSearchQuery] = useState('');
@@ -334,14 +340,24 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={onOpenCategoryModal}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors"
-            >
-              <Tag className="w-3.5 h-3.5 text-indigo-600" />
-              Categorias & Tetos
-            </button>
-
+            {onOpenIncomeModal && (
+              <button
+                onClick={onOpenIncomeModal}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors"
+              >
+                <ArrowDownLeft className="w-4 h-4" />
+                Nova Receita
+              </button>
+            )}
+            {onOpenExpenseModal && (
+              <button
+                onClick={onOpenExpenseModal}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors"
+              >
+                <ArrowUpRight className="w-4 h-4" />
+                Nova Despesa
+              </button>
+            )}
             <button
               onClick={() => {
                 if (activeTab === 'cards') onOpenCardModal();
@@ -349,6 +365,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                 else if (activeTab === 'recurring') onOpenRecurringModal();
                 else if (activeTab === 'goals') onOpenGoalModal();
                 else if (activeTab === 'accounts') onOpenAccountModal();
+                else if (activeTab === 'categories') onOpenCategoryModal();
               }}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors"
             >
@@ -357,7 +374,9 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
               {activeTab === 'contacts' && 'Novo Contato / Fornecedor'}
               {activeTab === 'recurring' && 'Nova Conta Recorrente'}
               {activeTab === 'goals' && 'Nova Meta Financeira'}
-              {activeTab === 'accounts' && 'Nova Conta / Caixa'}
+              {activeTab === 'accounts' && 'Nova Conta / Cota Caixa'}
+              {activeTab === 'categories' && 'Nova Categoria'}
+              {activeTab === 'members' && 'Convidar Sócio'}
             </button>
           </div>
         </div>
@@ -390,115 +409,149 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
         </div>
       </div>
 
-      {/* Tabs Selector Navigation */}
-      <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-2 overflow-x-auto">
-        <div className="flex items-center gap-1.5 shrink-0">
-          <button
-            onClick={() => {
-              setActiveTab('cards');
-              setSearchQuery('');
-              setTypeFilter('all');
-            }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'cards'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
-            }`}
-          >
-            <CreditCardIcon className="w-3.5 h-3.5" />
-            Cartões de Crédito ({cards.length})
-          </button>
+      {/* Tabs Selector Navigation (Grouped) */}
+      <div className="space-y-4">
+        <div className="flex flex-col gap-4">
+          {/* Group 1: Gestão Operacional */}
+          <div className="space-y-2">
+            <h4 className="text-[10px] uppercase font-bold text-slate-400 tracking-widest flex items-center gap-2 px-1">
+              <SlidersHorizontal className="w-3 h-3" />
+              Gestão Operacional & Base
+            </h4>
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+              <button
+                onClick={() => {
+                  setActiveTab('cards');
+                  setSearchQuery('');
+                  setTypeFilter('all');
+                }}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
+                  activeTab === 'cards'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
+                }`}
+              >
+                <CreditCardIcon className="w-3.5 h-3.5" />
+                Cartões ({cards.length})
+              </button>
 
-          <button
-            onClick={() => {
-              setActiveTab('contacts');
-              setSearchQuery('');
-              setTypeFilter('all');
-            }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'contacts'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            Favorecidos & Fornecedores ({contacts.length})
-          </button>
+              <button
+                onClick={() => {
+                  setActiveTab('contacts');
+                  setSearchQuery('');
+                  setTypeFilter('all');
+                }}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
+                  activeTab === 'contacts'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                Favorecidos ({contacts.length})
+              </button>
 
-          <button
-            onClick={() => {
-              setActiveTab('recurring');
-              setSearchQuery('');
-              setTypeFilter('all');
-            }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'recurring'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
-            }`}
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Contas Recorrentes ({recurringBills.length})
-          </button>
+              <button
+                onClick={() => {
+                  setActiveTab('categories');
+                  setSearchQuery('');
+                  setTypeFilter('all');
+                }}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
+                  activeTab === 'categories'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
+                }`}
+              >
+                <Tag className="w-3.5 h-3.5" />
+                Categorias ({categories.length})
+              </button>
 
-          <button
-            onClick={() => {
-              setActiveTab('goals');
-              setSearchQuery('');
-              setTypeFilter('all');
-            }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'goals'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
-            }`}
-          >
-            <Target className="w-3.5 h-3.5" />
-            Metas & Sonhos ({goals.length})
-          </button>
+              <button
+                onClick={() => {
+                  setActiveTab('members');
+                  setSearchQuery('');
+                  setTypeFilter('all');
+                }}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
+                  activeTab === 'members'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
+                }`}
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                Acessos ({activeCompany?.memberEmails?.length || 1})
+              </button>
+            </div>
+          </div>
 
-          <button
-            onClick={() => {
-              setActiveTab('accounts');
-              setSearchQuery('');
-              setTypeFilter('all');
-            }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'accounts'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
-            }`}
-          >
-            <Wallet className="w-3.5 h-3.5" />
-            Contas & Caixas ({accounts.length})
-          </button>
+          {/* Group 2: Planejamento Financeiro */}
+          <div className="space-y-2">
+            <h4 className="text-[10px] uppercase font-bold text-slate-400 tracking-widest flex items-center gap-2 px-1">
+              <TrendingUp className="w-3 h-3" />
+              Planejamento & Tesouraria
+            </h4>
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+              <button
+                onClick={() => {
+                  setActiveTab('recurring');
+                  setSearchQuery('');
+                  setTypeFilter('all');
+                }}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
+                  activeTab === 'recurring'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
+                }`}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Contas Recorrentes ({recurringBills.length})
+              </button>
 
-          <button
-            onClick={() => {
-              setActiveTab('members');
-              setSearchQuery('');
-              setTypeFilter('all');
-            }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
-              activeTab === 'members'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
-            }`}
-          >
-            <UserPlus className="w-3.5 h-3.5" />
-            Pessoas com Acesso ({activeCompany?.memberEmails?.length || 1})
-          </button>
+              <button
+                onClick={() => {
+                  setActiveTab('goals');
+                  setSearchQuery('');
+                  setTypeFilter('all');
+                }}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
+                  activeTab === 'goals'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
+                }`}
+              >
+                <Target className="w-3.5 h-3.5" />
+                Metas & Sonhos ({goals.length})
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveTab('accounts');
+                  setSearchQuery('');
+                  setTypeFilter('all');
+                }}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
+                  activeTab === 'accounts'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
+                }`}
+              >
+                <Wallet className="w-3.5 h-3.5" />
+                Contas Bancárias ({accounts.length})
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* Search Input */}
-        <div className="relative min-w-44 max-w-xs shrink-0">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+        {/* Search bar specifically for registries */}
+        <div className="relative w-full border-t border-slate-100 pt-3">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-6" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar cadastro..."
-            className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            placeholder="Pesquisar nos cadastros selecionados..."
+            className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500/20 outline-none"
           />
         </div>
       </div>
@@ -526,7 +579,8 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
             {filteredCards.map((card) => (
               <div
                 key={card.id}
-                className="rounded-2xl border border-slate-200 bg-white shadow-2xs overflow-hidden flex flex-col justify-between hover:shadow-xs transition-shadow"
+                className="rounded-2xl border border-slate-200 bg-white shadow-2xs overflow-hidden flex flex-col justify-between hover:shadow-xs transition-shadow cursor-pointer"
+                onClick={() => onOpenCardModal(card)}
               >
                 {/* Visual Card simulation */}
                 <div
@@ -577,26 +631,30 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                     )}
                   </div>
 
-                  <div className="flex items-center justify-end gap-1.5 pt-3 border-t border-slate-100">
-                    <button
-                      onClick={() => onOpenCardModal(card)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors font-medium"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (window.confirm(`Deseja excluir o cartão "${card.name}"?`)) {
-                          onDeleteCard(card.id);
-                        }
-                      }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors font-medium"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Excluir
-                    </button>
-                  </div>
+                    <div className="flex items-center justify-end gap-1.5 pt-3 border-t border-slate-100">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenCardModal(card);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors font-medium"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        Editar
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`Deseja excluir o cartão "${card.name}"?`)) {
+                            onDeleteCard(card.id);
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors font-medium"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Excluir
+                      </button>
+                    </div>
                 </div>
               </div>
             ))}
@@ -690,7 +748,11 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                     }[contact.type] || 'Contato';
 
                     return (
-                      <tr key={contact.id} className="hover:bg-slate-50/70 transition-colors group">
+                      <tr
+                        key={contact.id}
+                        className="hover:bg-slate-50/70 transition-colors group cursor-pointer"
+                        onClick={() => onOpenContactModal(contact)}
+                      >
                         <td className="py-3 px-4">
                           <div className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{contact.name}</div>
                           {contact.notes && (
@@ -736,15 +798,19 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                         </td>
                         <td className="py-3 px-4 text-right">
                           <div className="inline-flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenContactModal(contact);
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                            title="Editar contato"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
                             <button
-                              onClick={() => onOpenContactModal(contact)}
-                              className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                              title="Editar contato"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 if (window.confirm(`Excluir o contato "${contact.name}"?`)) {
                                   onDeleteContact(contact.id);
                                 }
@@ -820,9 +886,10 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
               return (
                 <div
                   key={bill.id}
-                  className={`rounded-2xl border p-4 bg-white shadow-2xs flex flex-col justify-between transition-all ${
-                    bill.active ? 'border-slate-200' : 'border-slate-200 opacity-60 bg-slate-50/50'
+                  className={`rounded-2xl border p-4 bg-white shadow-2xs flex flex-col justify-between transition-all cursor-pointer ${
+                    bill.active ? 'border-slate-200 hover:border-indigo-200' : 'border-slate-200 opacity-60 bg-slate-50/50'
                   }`}
+                  onClick={() => onOpenRecurringModal(bill)}
                 >
                   <div>
                     {/* Header with Type and Due Day */}
@@ -882,37 +949,44 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                   </div>
 
                   {/* Actions: Quick Trigger in current month & Edit */}
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <button
-                      onClick={() => onTriggerRecurringBill(bill)}
-                      title={`Lançar instantaneamente em ${currentYearMonth}`}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      Lançar no Mês
-                    </button>
-
-                    <div className="flex items-center gap-1">
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                       <button
-                        onClick={() => onOpenRecurringModal(bill)}
-                        className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg transition-colors"
-                        title="Editar"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (window.confirm(`Excluir a conta recorrente "${bill.description}"?`)) {
-                            onDeleteRecurring(bill.id);
-                          }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onTriggerRecurringBill(bill);
                         }}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
-                        title="Excluir"
+                        title={`Lançar instantaneamente em ${currentYearMonth}`}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Sparkles className="w-3 h-3" />
+                        Lançar no Mês
                       </button>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenRecurringModal(bill);
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg transition-colors"
+                          title="Editar"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Excluir a conta recorrente "${bill.description}"?`)) {
+                              onDeleteRecurring(bill.id);
+                            }
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
+                          title="Excluir"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
                 </div>
               );
             })}
@@ -966,7 +1040,8 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
               return (
                 <div
                   key={goal.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs flex flex-col justify-between hover:shadow-xs transition-shadow"
+                  className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs flex flex-col justify-between hover:shadow-xs transition-shadow cursor-pointer"
+                  onClick={() => onOpenGoalModal(goal)}
                 >
                   <div>
                     <div className="flex items-start justify-between gap-3 mb-3">
@@ -1040,7 +1115,8 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                   <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5">
                       <button
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           const val = prompt('Informe o valor a depositar/aportar nesta meta (R$):');
                           if (val) {
                             const parsed = parseFloat(val.replace(',', '.'));
@@ -1054,7 +1130,8 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                         + Aportar
                       </button>
                       <button
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           const val = prompt('Informe o valor a resgatar desta meta (R$):');
                           if (val) {
                             const parsed = parseFloat(val.replace(',', '.'));
@@ -1071,14 +1148,18 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
 
                     <div className="flex items-center gap-1">
                       <button
-                        onClick={() => onOpenGoalModal(goal)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenGoalModal(goal);
+                        }}
                         className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg transition-colors"
                         title="Editar"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           if (window.confirm(`Excluir a meta "${goal.title}"?`)) {
                             onDeleteGoal(goal.id);
                           }
@@ -1144,7 +1225,8 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
               return (
                 <div
                   key={acc.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs flex flex-col justify-between hover:shadow-xs transition-shadow"
+                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs flex flex-col justify-between hover:shadow-xs transition-shadow cursor-pointer"
+                  onClick={() => onOpenAccountModal(acc)}
                 >
                   <div>
                     <div className="flex items-center justify-between gap-2 mb-3">
@@ -1179,14 +1261,20 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
 
                   <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-end gap-1">
                     <button
-                      onClick={() => onOpenAccountModal(acc)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenAccountModal(acc);
+                      }}
                       className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors"
                       title="Editar"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => onDeleteAccount(acc.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteAccount(acc.id);
+                      }}
                       className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
                       title="Excluir"
                     >
@@ -1199,7 +1287,98 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
           </div>
         </div>
       )}
-      {/* TAB 6: PESSOAS COM ACESSO & USUÁRIOS */}
+
+      {/* TAB 6: GESTÃO DE CATEGORIAS */}
+      {activeTab === 'categories' && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Gestão de Categorias Financeiras</h3>
+              <p className="text-xs text-slate-500">
+                Organize seus lançamentos por categorias para ter relatórios mais precisos por tipo de gasto ou receita
+              </p>
+            </div>
+            <button
+              onClick={onOpenCategoryModal}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors border border-indigo-100"
+            >
+              <Tag className="w-3.5 h-3.5" />
+              Gerenciar Todas
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Categorias de Despesa */}
+            <div className="p-6 rounded-2xl border border-slate-200 bg-white shadow-2xs">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+                    <TrendingDown className="w-4 h-4" />
+                  </div>
+                  <h4 className="font-bold text-slate-900">Despesas</h4>
+                </div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Top 10 Categorias</span>
+              </div>
+              <div className="space-y-2">
+                {categories
+                  .filter((c) => c.type === 'expense')
+                  .slice(0, 10)
+                  .map((cat) => (
+                    <div key={cat.id} className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all">
+                      <div className="flex items-center gap-3">
+                        <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0" style={{ backgroundColor: cat.color }}>
+                          <CategoryIcon name={cat.icon} className="w-4 h-4" />
+                        </div>
+                        <span className="text-xs font-bold text-slate-700">{cat.name}</span>
+                      </div>
+                      {cat.budgetLimit && (
+                        <div className="text-right">
+                          <span className="block text-[10px] font-bold text-indigo-600">Limite</span>
+                          <span className="text-[11px] font-bold text-slate-500">R$ {cat.budgetLimit.toFixed(0)}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            {/* Categorias de Receita */}
+            <div className="p-6 rounded-2xl border border-slate-200 bg-white shadow-2xs">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                    <TrendingUp className="w-4 h-4" />
+                  </div>
+                  <h4 className="font-bold text-slate-900">Receitas</h4>
+                </div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Categorias de Entrada</span>
+              </div>
+              <div className="space-y-2">
+                {categories
+                  .filter((c) => c.type === 'income')
+                  .map((cat) => (
+                    <div key={cat.id} className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all">
+                      <div className="flex items-center gap-3">
+                        <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0" style={{ backgroundColor: cat.color }}>
+                          <CategoryIcon name={cat.icon} className="w-4 h-4" />
+                        </div>
+                        <span className="text-xs font-bold text-slate-700">{cat.name}</span>
+                      </div>
+                    </div>
+                  ))}
+                {categories.filter((c) => c.type === 'income').length === 0 && (
+                  <div className="text-center py-12">
+                    <Tag className="w-10 h-10 text-slate-100 mx-auto mb-2" />
+                    <p className="text-xs text-slate-400">Nenhuma categoria de receita cadastrada.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 7: PESSOAS COM ACESSO & USUÁRIOS */}
       {activeTab === 'members' && (
         <div className="space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

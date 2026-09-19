@@ -35,6 +35,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   onDeleteCategory,
   onUpdateCategoryBudget,
 }) => {
+  const [activeTab, setActiveTab] = useState<'expense' | 'income'>('expense');
   const [isCreating, setIsCreating] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatColor, setNewCatColor] = useState(PRESET_COLORS[0]);
@@ -44,6 +45,8 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
 
   if (!isOpen) return null;
 
+  const filteredCategories = categories.filter((c) => c.type === activeTab);
+
   const handleCreateCategory = (e: React.FormEvent) => {
     e.preventDefault();
     const cleanName = newCatName.trim();
@@ -52,8 +55,8 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
       return;
     }
 
-    if (categories.some((c) => c.name.toLowerCase() === cleanName.toLowerCase())) {
-      setError('Já existe uma categoria com este nome.');
+    if (categories.some((c) => c.name.toLowerCase() === cleanName.toLowerCase() && c.type === activeTab)) {
+      setError('Já existe uma categoria com este nome para este tipo.');
       return;
     }
 
@@ -63,7 +66,8 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
       name: cleanName,
       color: newCatColor,
       icon: newCatIcon,
-      budgetLimit: limit && limit > 0 ? limit : undefined,
+      type: activeTab,
+      budgetLimit: activeTab === 'expense' && limit && limit > 0 ? limit : undefined,
     });
 
     setNewCatName('');
@@ -87,7 +91,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
             <div>
               <h3 className="text-base font-bold text-slate-900">Gerenciar Categorias</h3>
               <p className="text-xs text-slate-500">
-                Personalize categorias para classificar suas despesas
+                Personalize categorias para classificar suas finanças
               </p>
             </div>
           </div>
@@ -99,20 +103,50 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
           </button>
         </div>
 
+        {/* Tabs for Expense/Income */}
+        <div className="flex border-b border-slate-100">
+          <button
+            onClick={() => { setActiveTab('expense'); setIsCreating(false); }}
+            className={`flex-1 py-3 text-xs font-bold transition-all border-b-2 ${
+              activeTab === 'expense'
+                ? 'text-indigo-600 border-indigo-600 bg-indigo-50/30'
+                : 'text-slate-500 border-transparent hover:text-slate-700'
+            }`}
+          >
+            Categorias de Despesa
+          </button>
+          <button
+            onClick={() => { setActiveTab('income'); setIsCreating(false); }}
+            className={`flex-1 py-3 text-xs font-bold transition-all border-b-2 ${
+              activeTab === 'income'
+                ? 'text-emerald-600 border-emerald-600 bg-emerald-50/30'
+                : 'text-slate-500 border-transparent hover:text-slate-700'
+            }`}
+          >
+            Categorias de Receita
+          </button>
+        </div>
+
         <div className="p-6 space-y-4">
           {/* Create category toggle */}
           {!isCreating ? (
             <button
               onClick={() => setIsCreating(true)}
-              className="w-full py-2.5 px-4 border border-dashed border-indigo-300 hover:border-indigo-500 rounded-xl text-indigo-600 hover:text-indigo-700 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors bg-indigo-50/40"
+              className={`w-full py-2.5 px-4 border border-dashed rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+                activeTab === 'expense'
+                  ? 'border-indigo-300 hover:border-indigo-500 text-indigo-600 bg-indigo-50/40'
+                  : 'border-emerald-300 hover:border-emerald-500 text-emerald-600 bg-emerald-50/40'
+              }`}
             >
               <Plus className="w-4 h-4" />
-              Criar Nova Categoria Personalizada
+              Criar Nova Categoria de {activeTab === 'expense' ? 'Despesa' : 'Receita'}
             </button>
           ) : (
-            <form onSubmit={handleCreateCategory} className="p-4 border border-indigo-100 rounded-xl bg-indigo-50/30 space-y-3">
+            <form onSubmit={handleCreateCategory} className={`p-4 border rounded-xl space-y-3 ${
+              activeTab === 'expense' ? 'border-indigo-100 bg-indigo-50/30' : 'border-emerald-100 bg-emerald-50/30'
+            }`}>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-800">Nova Categoria</span>
+                <span className="text-xs font-bold text-slate-800">Nova Categoria ({activeTab === 'expense' ? 'Despesa' : 'Receita'})</span>
                 <button
                   type="button"
                   onClick={() => setIsCreating(false)}
@@ -129,27 +163,29 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div>
+                <div className={activeTab === 'income' ? 'col-span-2' : ''}>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">Nome</label>
                   <input
                     type="text"
                     required
                     value={newCatName}
                     onChange={(e) => setNewCatName(e.target.value)}
-                    placeholder="Ex: Assinaturas Digitais"
+                    placeholder={activeTab === 'expense' ? "Ex: Alimentação" : "Ex: Vendas Online"}
                     className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs text-slate-900 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Limite Opcional (R$)</label>
-                  <input
-                    type="number"
-                    value={newCatLimit}
-                    onChange={(e) => setNewCatLimit(e.target.value)}
-                    placeholder="Ex: 500"
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs text-slate-900 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
+                {activeTab === 'expense' && (
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Limite Opcional (R$)</label>
+                    <input
+                      type="number"
+                      value={newCatLimit}
+                      onChange={(e) => setNewCatLimit(e.target.value)}
+                      placeholder="Ex: 500"
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs text-slate-900 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Select Color */}
@@ -184,7 +220,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                       title={ico.label}
                       className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
                         newCatIcon === ico.name
-                          ? 'bg-indigo-600 text-white'
+                          ? (activeTab === 'expense' ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white')
                           : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                       }`}
                     >
@@ -197,7 +233,9 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
               <div className="pt-2 flex justify-end">
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 flex items-center gap-1"
+                  className={`px-4 py-1.5 text-white rounded-lg text-xs font-semibold flex items-center gap-1 ${
+                    activeTab === 'expense' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                  }`}
                 >
                   <Check className="w-3.5 h-3.5" />
                   Salvar Categoria
@@ -209,52 +247,71 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
           {/* List of existing categories */}
           <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
             <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-              Categorias Ativas ({categories.length})
+              Categorias de {activeTab === 'expense' ? 'Despesa' : 'Receita'} Ativas ({filteredCategories.length})
             </h4>
 
-            {categories.map((cat) => (
+            {filteredCategories.map((cat) => (
               <div
                 key={cat.id}
                 className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-colors"
               >
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0"
-                    style={{ backgroundColor: cat.color }}
-                  >
-                    <CategoryIcon name={cat.icon} className="w-3.5 h-3.5" />
-                  </div>
                   <div>
-                    <span className="text-xs font-bold text-slate-800">{cat.name}</span>
-                    {cat.budgetLimit && (
-                      <span className="block text-[10px] text-slate-500">
-                        Limite: R$ {cat.budgetLimit.toFixed(2)}
-                      </span>
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0"
+                        style={{ backgroundColor: cat.color }}
+                      >
+                        <CategoryIcon name={cat.icon} className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-slate-800">{cat.name}</span>
+                      </div>
+                    </div>
+                    {activeTab === 'expense' && (
+                      <div className="mt-2 flex items-center gap-2 pl-9">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase">Meta:</span>
+                        <input
+                          type="number"
+                          defaultValue={cat.budgetLimit}
+                          placeholder="Limite R$"
+                          onBlur={(e) => {
+                            const val = e.target.value ? parseFloat(e.target.value) : undefined;
+                            if (val !== cat.budgetLimit) {
+                              onUpdateCategoryBudget(cat.id, val);
+                            }
+                          }}
+                          className="w-20 px-2 py-0.5 text-[10px] border border-slate-200 rounded focus:border-indigo-300 outline-none font-bold text-slate-700"
+                        />
+                      </div>
                     )}
                   </div>
-                </div>
 
                 <div className="flex items-center gap-1.5">
-                  {categories.length > 2 && (
-                    <button
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            `Excluir a categoria "${cat.name}"? As despesas existentes ficarão como "Outros".`
-                          )
-                        ) {
-                          onDeleteCategory(cat.id);
-                        }
-                      }}
-                      title="Excluir Categoria"
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                  <button
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Excluir a categoria "${cat.name}"? Lançamentos existentes ficarão como "Outros".`
+                        )
+                      ) {
+                        onDeleteCategory(cat.id);
+                      }
+                    }}
+                    title="Excluir Categoria"
+                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             ))}
+
+            {filteredCategories.length === 0 && (
+              <div className="text-center py-8">
+                <Tag className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                <p className="text-xs text-slate-400">Nenhuma categoria de {activeTab === 'expense' ? 'despesa' : 'receita'} personalizada.</p>
+              </div>
+            )}
           </div>
         </div>
 

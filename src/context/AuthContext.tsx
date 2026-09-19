@@ -40,40 +40,10 @@ export const DEFAULT_APP_USER: AppUser = {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
-    try {
-      const isLoggedOut = localStorage.getItem(LOGGED_OUT_STORAGE_KEY) === 'true';
-      if (isLoggedOut) {
-        return null;
-      }
-      const savedLocal = localStorage.getItem(LOCAL_USER_STORAGE_KEY);
-      if (savedLocal) {
-        const parsed = JSON.parse(savedLocal);
-        if (parsed && parsed.email) {
-          // If old session had obsolete UID, migrate it to the stable Firestore UID
-          if (parsed.email === 'emersonbsouza@gmail.com' && parsed.uid !== 'user_ZW1lcnNvbmJzb3V6YUBn') {
-            parsed.uid = 'user_ZW1lcnNvbmJzb3V6YUBn';
-            localStorage.setItem(LOCAL_USER_STORAGE_KEY, JSON.stringify(parsed));
-          }
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.warn('Falha ao restaurar usuário local:', e);
-    }
-    // Default directly to Emerson Souza so the user is never locked out
-    return DEFAULT_APP_USER;
-  });
-  const [loading, setLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // If not logged out and no user, set default user
-    const isLoggedOut = localStorage.getItem(LOGGED_OUT_STORAGE_KEY) === 'true';
-    if (!isLoggedOut && !currentUser) {
-      setCurrentUser(DEFAULT_APP_USER);
-      localStorage.setItem(LOCAL_USER_STORAGE_KEY, JSON.stringify(DEFAULT_APP_USER));
-    }
-
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         const appUser: AppUser = {
@@ -82,8 +52,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           displayName: user.displayName || user.email?.split('@')[0] || 'Usuário',
         };
         setCurrentUser(appUser);
-        localStorage.removeItem(LOGGED_OUT_STORAGE_KEY);
-        localStorage.setItem(LOCAL_USER_STORAGE_KEY, JSON.stringify(appUser));
+      } else {
+        setCurrentUser(null);
       }
       setLoading(false);
     });
@@ -101,9 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: result.user.email,
         displayName: result.user.displayName || result.user.email?.split('@')[0] || 'Usuário',
       };
-      localStorage.removeItem(LOGGED_OUT_STORAGE_KEY);
       setCurrentUser(appUser);
-      localStorage.setItem(LOCAL_USER_STORAGE_KEY, JSON.stringify(appUser));
     } catch (err: any) {
       console.warn('Erro ao autenticar com Google:', err);
       throw err;
@@ -114,12 +82,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, pass: string) => {
     const cleanEmail = email.trim().toLowerCase();
-    const fallbackUser: AppUser = {
-      uid: cleanEmail === 'emersonbsouza@gmail.com' ? 'user_ZW1lcnNvbmJzb3V6YUBn' : 'user_' + cleanEmail.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20),
-      email: cleanEmail,
-      displayName: cleanEmail.split('@')[0],
-    };
-
+    setLoading(true);
     try {
       const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
       const appUser: AppUser = {
@@ -127,26 +90,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: cred.user.email,
         displayName: cred.user.displayName || cleanEmail.split('@')[0],
       };
-      localStorage.removeItem(LOGGED_OUT_STORAGE_KEY);
       setCurrentUser(appUser);
-      localStorage.setItem(LOCAL_USER_STORAGE_KEY, JSON.stringify(appUser));
     } catch (err: any) {
-      console.warn('Firebase login direto em fallback seguro:', err?.code);
-      // Fail-safe: Always allow login
-      localStorage.removeItem(LOGGED_OUT_STORAGE_KEY);
-      setCurrentUser(fallbackUser);
-      localStorage.setItem(LOCAL_USER_STORAGE_KEY, JSON.stringify(fallbackUser));
+      console.error('Erro no login:', err);
+      throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
   const signup = async (email: string, pass: string, name: string) => {
     const cleanEmail = email.trim().toLowerCase();
-    const fallbackUser: AppUser = {
-      uid: cleanEmail === 'emersonbsouza@gmail.com' ? 'user_ZW1lcnNvbmJzb3V6YUBn' : 'user_' + cleanEmail.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20),
-      email: cleanEmail,
-      displayName: name.trim() || cleanEmail.split('@')[0],
-    };
-
+    setLoading(true);
     try {
       const cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
       if (name.trim()) {
@@ -159,44 +114,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: cred.user.email,
         displayName: name.trim() || cleanEmail.split('@')[0],
       };
-      localStorage.removeItem(LOGGED_OUT_STORAGE_KEY);
       setCurrentUser(appUser);
-      localStorage.setItem(LOCAL_USER_STORAGE_KEY, JSON.stringify(appUser));
     } catch (err: any) {
-      console.warn('Firebase signup direto em fallback seguro:', err?.code);
-      localStorage.removeItem(LOGGED_OUT_STORAGE_KEY);
-      setCurrentUser(fallbackUser);
-      localStorage.setItem(LOCAL_USER_STORAGE_KEY, JSON.stringify(fallbackUser));
+      console.error('Erro no cadastro:', err);
+      throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
   const logout = async () => {
-    localStorage.setItem(LOGGED_OUT_STORAGE_KEY, 'true');
-    localStorage.removeItem(LOCAL_USER_STORAGE_KEY);
-    setCurrentUser(null);
+    setLoading(true);
     try {
       await signOut(auth);
+      setCurrentUser(null);
     } catch (e) {
-      // ignore
+      console.error('Erro no logout:', e);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Quick login helper: enters immediately without blocking
+  // Quick login helper: uses a standard password for convenience in this environment
   const quickLogin = async (email: string, name: string) => {
     const standardPass = 'Empresa123!#';
     const cleanEmail = email.trim().toLowerCase();
-    const fallbackUser: AppUser = {
-      uid: cleanEmail === 'emersonbsouza@gmail.com' ? 'user_ZW1lcnNvbmJzb3V6YUBn' : 'user_' + cleanEmail.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20),
-      email: cleanEmail,
-      displayName: name,
-    };
+    setLoading(true);
 
-    localStorage.removeItem(LOGGED_OUT_STORAGE_KEY);
-    setCurrentUser(fallbackUser);
-    localStorage.setItem(LOCAL_USER_STORAGE_KEY, JSON.stringify(fallbackUser));
-
-    // Also attempt Firebase in background
     try {
+      // Try login first
       const cred = await signInWithEmailAndPassword(auth, cleanEmail, standardPass);
       const appUser: AppUser = {
         uid: cred.user.uid,
@@ -204,9 +150,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         displayName: cred.user.displayName || name,
       };
       setCurrentUser(appUser);
-      localStorage.setItem(LOCAL_USER_STORAGE_KEY, JSON.stringify(appUser));
     } catch (err: any) {
-      // Fail-safe keeps fallback
+      // If user doesn't exist, try signup
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        try {
+          const cred = await createUserWithEmailAndPassword(auth, cleanEmail, standardPass);
+          await updateProfile(cred.user, { displayName: name });
+          const appUser: AppUser = {
+            uid: cred.user.uid,
+            email: cred.user.email,
+            displayName: name,
+          };
+          setCurrentUser(appUser);
+        } catch (signupErr) {
+          console.error('Erro no login/cadastro rápido:', signupErr);
+          throw signupErr;
+        }
+      } else {
+        throw err;
+      }
+    } finally {
+      setLoading(false);
     }
   };
 

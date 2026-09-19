@@ -170,6 +170,7 @@ export function getCategoryChartData(
         name: 'Outros',
         color: '#64748b',
         icon: 'MoreHorizontal',
+        type: 'expense',
       };
       categoryMap.set(e.categoryId, { category: fallbackCat, amount: e.amount, count: 1 });
     }

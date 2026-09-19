@@ -4,6 +4,8 @@ import {
   Expense,
   AccountTransfer,
   Category,
+  BilletData,
+  PaymentMethod,
 } from '../types';
 
 export interface UnifiedTransaction {
@@ -14,6 +16,8 @@ export interface UnifiedTransaction {
   amount: number;
   accountId: string;
   accountName: string;
+  paymentMethod?: PaymentMethod;
+  billetData?: BilletData;
   toAccountId?: string;
   toAccountName?: string;
   categoryName: string;
@@ -140,7 +144,9 @@ export function getUnifiedTransactions(
       amount: inc.amount,
       accountId: inc.accountId,
       accountName: accountMap.get(inc.accountId) || 'Conta Geral',
-      categoryName: inc.category,
+      categoryName: categoryMap.get(inc.categoryId)?.name || 'Outras Entradas',
+      paymentMethod: inc.paymentMethod,
+      billetData: inc.billetData,
       notes: inc.notes,
       createdAt: inc.createdAt,
     });
@@ -159,6 +165,8 @@ export function getUnifiedTransactions(
       accountId: accId,
       accountName: accountMap.get(accId) || 'Conta Geral',
       categoryName: cat?.name || 'Despesa',
+      paymentMethod: exp.paymentMethod,
+      billetData: exp.billetData,
       color: cat?.color,
       icon: cat?.icon,
       notes: exp.notes,

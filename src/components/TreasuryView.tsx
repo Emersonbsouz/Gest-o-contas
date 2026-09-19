@@ -63,6 +63,8 @@ interface TreasuryViewProps {
   onEditIncome: (income: Income) => void;
   onEditTransfer: (transfer: AccountTransfer) => void;
   onEditExpense: (expense: Expense) => void;
+  onLiquidateExpense?: (expense: Expense) => void;
+  onLiquidateIncome?: (income: Income) => void;
 }
 
 const ACCOUNT_TYPE_CONFIG: Record<
@@ -97,6 +99,8 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
   onEditIncome,
   onEditTransfer,
   onEditExpense,
+  onLiquidateExpense,
+  onLiquidateIncome,
 }) => {
   const handleOpenIncome = onOpenIncomeModal || onOpenAddIncomeModal || (() => {});
   const handleOpenTransfer = onOpenTransferModal || onOpenAddTransferModal || (() => {});
@@ -564,8 +568,23 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
                   const isExpense = tr.type === 'expense';
                   const isTransfer = tr.type === 'transfer';
 
-                  return (
-                    <tr key={`${tr.type}-${tr.id}`} className="hover:bg-slate-50/80 transition-colors">
+                    return (
+                      <tr
+                        key={`${tr.type}-${tr.id}`}
+                        className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                        onClick={() => {
+                          if (isIncome) {
+                            const item = incomes.find((i) => i.id === tr.id);
+                            if (item) onEditIncome(item);
+                          } else if (isExpense) {
+                            const item = expenses.find((e) => e.id === tr.id);
+                            if (item) onEditExpense(item);
+                          } else if (isTransfer) {
+                            const item = transfers.find((t) => t.id === tr.id);
+                            if (item) onEditTransfer(item);
+                          }
+                        }}
+                      >
                       {/* Date */}
                       <td className="py-3 px-4 text-slate-600 font-medium whitespace-nowrap">
                         {formatDateBR(tr.date)}
@@ -595,12 +614,28 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
 
                       {/* Description & Notes */}
                       <td className="py-3 px-4">
-                        <span className="font-semibold text-slate-800 block">{tr.description}</span>
-                        {tr.notes && (
-                          <span className="text-[11px] text-slate-400 block truncate max-w-xs">
-                            {tr.notes}
-                          </span>
-                        )}
+                        <div className="flex items-start gap-2">
+                          <div>
+                            <span className="font-semibold text-slate-800 block">{tr.description}</span>
+                            {tr.notes && (
+                              <span className="text-[11px] text-slate-400 block truncate max-w-xs">
+                                {tr.notes}
+                              </span>
+                            )}
+                            {tr.paymentMethod === 'boleto' && (
+                              <div className="mt-1 flex items-center gap-1.5">
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase tracking-tighter">
+                                  Boleto
+                                </span>
+                                {tr.billetData?.dueDate && (
+                                  <span className="text-[10px] text-slate-500 font-medium">
+                                    Venc: {formatDateBR(tr.billetData.dueDate)}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </td>
 
                       {/* Account */}
@@ -647,8 +682,22 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
                         <div className="flex items-center justify-center gap-1">
                           {isIncome && (
                             <>
+                              {incomes.find(i => i.id === tr.id)?.status === 'pending' && onLiquidateIncome && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const item = incomes.find((i) => i.id === tr.id);
+                                    if (item) onLiquidateIncome(item);
+                                  }}
+                                  title="Liquidar Receita"
+                                  className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                               <button
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   const item = incomes.find((i) => i.id === tr.id);
                                   if (item) onEditIncome(item);
                                 }}
@@ -658,7 +707,12 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
                               <button
-                                onClick={() => onDeleteIncome(tr.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm('Excluir esta receita?')) {
+                                    onDeleteIncome(tr.id);
+                                  }
+                                }}
                                 title="Excluir Receita"
                                 className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
                               >
@@ -669,8 +723,22 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
 
                           {isExpense && (
                             <>
+                              {expenses.find(exp => exp.id === tr.id)?.status === 'pending' && onLiquidateExpense && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const item = expenses.find((exp) => exp.id === tr.id);
+                                    if (item) onLiquidateExpense(item);
+                                  }}
+                                  title="Liquidar Despesa"
+                                  className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                               <button
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   const item = expenses.find((e) => e.id === tr.id);
                                   if (item) onEditExpense(item);
                                 }}
@@ -680,7 +748,12 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
                               <button
-                                onClick={() => onDeleteExpense(tr.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm('Excluir esta despesa?')) {
+                                    onDeleteExpense(tr.id);
+                                  }
+                                }}
                                 title="Excluir Despesa"
                                 className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
                               >
@@ -692,7 +765,8 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
                           {isTransfer && (
                             <>
                               <button
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   const item = transfers.find((t) => t.id === tr.id);
                                   if (item) onEditTransfer(item);
                                 }}
@@ -702,7 +776,12 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
                               <button
-                                onClick={() => onDeleteTransfer(tr.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm('Excluir esta transferência?')) {
+                                    onDeleteTransfer(tr.id);
+                                  }
+                                }}
                                 title="Excluir Transferência"
                                 className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
                               >

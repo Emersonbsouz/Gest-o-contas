@@ -19,6 +19,7 @@ import {
   RotateCcw,
   UserPlus,
   AlertCircle,
+  BarChart3,
 } from 'lucide-react';
 import {
   formatMonthYearLabel,
@@ -31,8 +32,8 @@ import { CompanySwitcher } from './CompanySwitcher';
 
 interface HeaderProps {
   currentYearMonth: string;
-  activeTab: 'expenses' | 'treasury' | 'registries';
-  onTabChange: (tab: 'expenses' | 'treasury' | 'registries') => void;
+  activeTab: 'expenses' | 'treasury' | 'registries' | 'reports';
+  onTabChange: (tab: 'expenses' | 'treasury' | 'registries' | 'reports') => void;
   totalTreasuryBalance: number;
   onChangeMonth: (newYearMonth: string) => void;
   onOpenAddModal: () => void;
@@ -255,6 +256,19 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Layers className="w-3.5 h-3.5 text-violet-600" />
                 Cadastros & Fornecedores
+              </button>
+
+              <button
+                onClick={() => onTabChange('reports')}
+                id="tab-btn-reports"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                  activeTab === 'reports'
+                    ? 'bg-white text-indigo-700 shadow-xs ring-1 ring-slate-200'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                }`}
+              >
+                <BarChart3 className="w-3.5 h-3.5 text-indigo-600" />
+                Relatórios
               </button>
             </div>
           </div>

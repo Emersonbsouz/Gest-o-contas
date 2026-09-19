@@ -94,9 +94,14 @@ export async function ensureDefaultCompanies(userId: string, userEmail: string):
     ];
 
     for (const comp of defaultCompanies) {
-      await setDoc(doc(db, 'companies', comp.id), comp);
-      // Seed company initial default categories and accounts
-      await seedCompanyDefaults(comp.id);
+      try {
+        await setDoc(doc(db, 'companies', comp.id), comp);
+        // Seed company initial default categories and accounts
+        await seedCompanyDefaults(comp.id);
+      } catch (e) {
+        console.error(`[ensureDefaultCompanies] Erro ao criar empresa ${comp.id}:`, e);
+        handleFirestoreError(e, OperationType.CREATE, `companies/${comp.id}`);
+      }
     }
 
     return defaultCompanies;
@@ -299,7 +304,8 @@ export function subscribeToUserCompanies(
 export function subscribeToCompanySubcollection<T>(
   companyId: string,
   subcollectionName: string,
-  onUpdate: (items: T[]) => void
+  onUpdate: (items: T[]) => void,
+  onError?: (err: any) => void
 ) {
   const colRef = collection(db, 'companies', companyId, subcollectionName);
   return onSnapshot(
@@ -310,6 +316,7 @@ export function subscribeToCompanySubcollection<T>(
       onUpdate(items);
     },
     (err) => {
+      if (onError) onError(err);
       handleFirestoreError(err, OperationType.LIST, `companies/${companyId}/${subcollectionName}`);
     }
   );

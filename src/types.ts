@@ -2,7 +2,7 @@ export type PaymentMethod = 'pix' | 'credit_card' | 'debit_card' | 'cash' | 'tra
 
 export type AccountType = 'checking' | 'cash' | 'savings' | 'investment';
 
-export type PaymentStatus = 'paid' | 'pending';
+export type PaymentStatus = 'paid' | 'pending' | 'liquidated';
 
 export type ContactType = 'supplier' | 'customer' | 'service_provider' | 'other';
 
@@ -76,13 +76,22 @@ export interface IncomeCategory {
   icon: string;
 }
 
+export interface BilletData {
+  barcode?: string;
+  digitableLine?: string;
+  dueDate?: string;
+  assignor?: string;
+}
+
 export interface Income {
   id: string;
   description: string;
   amount: number;
   date: string; // YYYY-MM-DD
   accountId: string;
-  category: string;
+  categoryId: string;
+  paymentMethod?: PaymentMethod;
+  billetData?: BilletData;
   contactId?: string; // Cliente / Pagador
   status?: PaymentStatus;
   notes?: string;
@@ -104,6 +113,7 @@ export interface Category {
   name: string;
   color: string;
   icon: string;
+  type: 'expense' | 'income';
   budgetLimit?: number; // Optional monthly limit for this category
 }
 
@@ -114,6 +124,7 @@ export interface Expense {
   date: string; // YYYY-MM-DD
   categoryId: string;
   paymentMethod: PaymentMethod;
+  billetData?: BilletData;
   accountId?: string; // Treasury account/cash that paid this expense
   cardId?: string; // Credit card id if paid with credit card
   contactId?: string; // Fornecedor / Favorecido

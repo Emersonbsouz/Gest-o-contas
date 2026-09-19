@@ -3,11 +3,10 @@ import { Header } from './components/Header';
 import { ExpenseSummaryCards } from './components/ExpenseSummaryCards';
 import { MonthlyCharts } from './components/MonthlyCharts';
 import { ExpenseList } from './components/ExpenseList';
-import { ExpenseFormModal } from './components/ExpenseFormModal';
+import { FinancialFormModal } from './components/FinancialFormModal';
 import { CategoryManagerModal } from './components/CategoryManagerModal';
 import { MonthlyBudgetModal } from './components/MonthlyBudgetModal';
 import { TreasuryView } from './components/TreasuryView';
-import { IncomeFormModal } from './components/IncomeFormModal';
 import { TransferFormModal } from './components/TransferFormModal';
 import { AccountFormModal } from './components/AccountFormModal';
 import { CreditCardFormModal } from './components/CreditCardFormModal';
@@ -16,6 +15,7 @@ import { RecurringBillFormModal } from './components/RecurringBillFormModal';
 import { GoalFormModal } from './components/GoalFormModal';
 import { QuickRegisterModal } from './components/QuickRegisterModal';
 import { RegistriesView } from './components/RegistriesView';
+import { ReportsView } from './components/ReportsView';
 import { CreateCompanyModal } from './components/CreateCompanyModal';
 import { ManageMembersModal } from './components/ManageMembersModal';
 import { ResetConfirmModal } from './components/ResetConfirmModal';
@@ -68,7 +68,7 @@ export default function App() {
   const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
 
   // Active Tab & Month
-  const [activeTab, setActiveTab] = useState<'expenses' | 'treasury' | 'registries'>('treasury');
+  const [activeTab, setActiveTab] = useState<'expenses' | 'treasury' | 'registries' | 'reports'>('treasury');
   const [currentYearMonth, setCurrentYearMonth] = useState<string>(() => getCurrentYearMonth());
 
   // Subscribe to user companies when logged in
@@ -82,13 +82,24 @@ export default function App() {
     let isMounted = true;
 
     // Ensure starter companies (Personal, Individual, Cacto) exist in cloud
-    ensureDefaultCompanies(currentUser.uid, currentUser.email || '').then((initialComps) => {
-      if (!isMounted) return;
-      setCompanies(initialComps);
-      const savedCompId = localStorage.getItem(`app_active_company_${currentUser.uid}`);
-      const matched = initialComps.find((c) => c.id === savedCompId) || initialComps[0];
-      setActiveCompany(matched || null);
-    });
+    ensureDefaultCompanies(currentUser.uid, currentUser.email || '')
+      .then((initialComps) => {
+        if (!isMounted) return;
+        if (initialComps && initialComps.length > 0) {
+          setCompanies(initialComps);
+          setActiveCompany((prev) => {
+            if (prev) {
+              const stillExists = initialComps.find((c) => c.id === prev.id);
+              if (stillExists) return stillExists;
+            }
+            const savedCompId = localStorage.getItem(`app_active_company_${currentUser.uid}`);
+            return initialComps.find((c) => c.id === savedCompId) || initialComps[0] || null;
+          });
+        }
+      })
+      .catch((err) => {
+        console.error('[App] Erro ao carregar empresas iniciais:', err);
+      });
 
     // Real-time listener for companies
     const unsubscribe = subscribeToUserCompanies(
@@ -99,9 +110,12 @@ export default function App() {
         if (updatedComps && updatedComps.length > 0) {
           setCompanies(updatedComps);
           setActiveCompany((prev) => {
-            if (!prev) return updatedComps[0] || null;
-            const stillExists = updatedComps.find((c) => c.id === prev.id);
-            return stillExists || updatedComps[0] || null;
+            if (prev) {
+              const stillExists = updatedComps.find((c) => c.id === prev.id);
+              if (stillExists) return stillExists;
+            }
+            const savedCompId = localStorage.getItem(`app_active_company_${currentUser.uid}`);
+            return updatedComps.find((c) => c.id === savedCompId) || updatedComps[0] || null;
           });
         }
       }
@@ -155,15 +169,14 @@ export default function App() {
   // Modals state
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
-  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
-
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
 
-  const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
-  const [editingIncome, setEditingIncome] = useState<Income | null>(null);
-  const [preselectedIncomeAccountId, setPreselectedIncomeAccountId] = useState<string | undefined>();
+  // Unified Financial Modal (Expense/Income)
+  const [isFinancialModalOpen, setIsFinancialModalOpen] = useState(false);
+  const [financialModalType, setFinancialModalType] = useState<'expense' | 'income'>('expense');
+  const [editingFinancialItem, setEditingFinancialItem] = useState<any | null>(null);
+  const [financialPreselectedAccountId, setFinancialPreselectedAccountId] = useState<string | undefined>();
 
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [editingTransfer, setEditingTransfer] = useState<AccountTransfer | null>(null);
@@ -355,8 +368,10 @@ export default function App() {
       alert('Você não tem permissão para lançar despesas nesta empresa.');
       return;
     }
-    setEditingExpense(null);
-    setIsExpenseModalOpen(true);
+    setFinancialModalType('expense');
+    setEditingFinancialItem(null);
+    setFinancialPreselectedAccountId(undefined);
+    setIsFinancialModalOpen(true);
   };
 
   const handleEditExpense = (expense: Expense) => {
@@ -364,8 +379,9 @@ export default function App() {
       alert('Você não tem permissão para editar lançamentos nesta empresa.');
       return;
     }
-    setEditingExpense(expense);
-    setIsExpenseModalOpen(true);
+    setFinancialModalType('expense');
+    setEditingFinancialItem(expense);
+    setIsFinancialModalOpen(true);
   };
 
   const handleDeleteExpense = async (expenseId: string) => {
@@ -397,15 +413,24 @@ export default function App() {
     }
   };
 
+  const handleLiquidateExpense = async (expense: Expense) => {
+    if (!currentUserPermissions.canEditTransactions) {
+      alert('Você não tem permissão para liquidar lançamentos nesta empresa.');
+      return;
+    }
+    await saveExpense({ ...expense, status: 'liquidated' }, expense.id);
+  };
+
   // --- Handlers for Treasury Incomes ---
   const handleOpenAddIncomeModal = (preselectedAccountId?: string) => {
     if (!currentUserPermissions.canCreateTransactions) {
       alert('Você não tem permissão para lançar receitas nesta empresa.');
       return;
     }
-    setEditingIncome(null);
-    setPreselectedIncomeAccountId(preselectedAccountId);
-    setIsIncomeModalOpen(true);
+    setFinancialModalType('income');
+    setEditingFinancialItem(null);
+    setFinancialPreselectedAccountId(preselectedAccountId);
+    setIsFinancialModalOpen(true);
   };
 
   const handleEditIncome = (income: Income) => {
@@ -413,9 +438,10 @@ export default function App() {
       alert('Você não tem permissão para editar lançamentos nesta empresa.');
       return;
     }
-    setEditingIncome(income);
-    setPreselectedIncomeAccountId(income.accountId);
-    setIsIncomeModalOpen(true);
+    setFinancialModalType('income');
+    setEditingFinancialItem(income);
+    setFinancialPreselectedAccountId(income.accountId);
+    setIsFinancialModalOpen(true);
   };
 
   const handleDeleteIncome = async (incomeId: string) => {
@@ -443,6 +469,14 @@ export default function App() {
     if (incomeYM !== currentYearMonth) {
       setCurrentYearMonth(incomeYM);
     }
+  };
+
+  const handleLiquidateIncome = async (income: Income) => {
+    if (!currentUserPermissions.canEditTransactions) {
+      alert('Você não tem permissão para liquidar lançamentos nesta empresa.');
+      return;
+    }
+    await saveIncome({ ...income, status: 'liquidated' }, income.id);
   };
 
   // --- Handlers for Treasury Transfers ---
@@ -589,7 +623,7 @@ export default function App() {
         amount: bill.amount,
         date: billDate,
         accountId: bill.accountId || accounts[0]?.id || '',
-        category: 'Salário & Pro-labore',
+        categoryId: 'cat-salario',
         contactId: bill.contactId,
         status: 'pending',
         notes: 'Lançado a partir de Receita Fixa Recorrente',
@@ -748,6 +782,35 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Error Alert Banner */}
+        {cloudSyncStatus === 'error' && (
+          <div className="mb-4 p-4 bg-rose-50 border border-rose-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-rose-950">Falha na Sincronização com a Nuvem</h4>
+                <p className="text-xs text-rose-800 leading-relaxed max-w-xl">
+                  Seus dados estão sendo salvos apenas localmente. Verifique sua conexão ou permissões.
+                  {lastError && (
+                    <code className="block mt-1 font-mono text-[10px] bg-rose-100 p-1 rounded">
+                      {lastError}
+                    </code>
+                  )}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center justify-center gap-2"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Recarregar Sistema
+            </button>
+          </div>
+        )}
+
         {/* Active Company Breadcrumb / Context Tag */}
         {activeCompany && (
           <div className="mb-4 flex items-center justify-between bg-white px-4 py-2.5 rounded-xl border border-slate-200/90 shadow-2xs flex-wrap gap-2">
@@ -812,6 +875,7 @@ export default function App() {
               onEditExpense={handleEditExpense}
               onDeleteExpense={handleDeleteExpense}
               onOpenAddModal={handleOpenAddExpenseModal}
+              onLiquidateExpense={handleLiquidateExpense}
             />
           </div>
         )}
@@ -838,6 +902,8 @@ export default function App() {
             onEditExpense={handleEditExpense}
             onDeleteExpense={handleDeleteExpense}
             onOpenExpenseModal={handleOpenAddExpenseModal}
+            onLiquidateExpense={handleLiquidateExpense}
+            onLiquidateIncome={handleLiquidateIncome}
           />
         )}
 
@@ -871,20 +937,35 @@ export default function App() {
             onOpenAccountModal={handleOpenAccountModal}
             onDeleteAccount={handleDeleteAccount}
             onOpenCategoryModal={() => setIsCategoryModalOpen(true)}
+            onOpenExpenseModal={handleOpenAddExpenseModal}
+            onOpenIncomeModal={handleOpenAddIncomeModal}
+          />
+        )}
+
+        {/* Tab: Relatórios e Insights */}
+        {activeTab === 'reports' && (
+          <ReportsView
+            expenses={expenses}
+            incomes={incomes}
+            categories={categories}
+            accounts={accounts}
+            selectedMonth={currentYearMonth}
+            onMonthChange={setCurrentYearMonth}
           />
         )}
       </main>
 
       {/* Modals */}
-      <ExpenseFormModal
-        isOpen={isExpenseModalOpen}
-        onClose={() => setIsExpenseModalOpen(false)}
-        onSave={handleSaveExpense}
+      <FinancialFormModal
+        type={financialModalType}
+        isOpen={isFinancialModalOpen}
+        onClose={() => setIsFinancialModalOpen(false)}
+        onSave={financialModalType === 'expense' ? handleSaveExpense : handleSaveIncome}
+        editingItem={editingFinancialItem}
         categories={categories}
         accounts={accounts}
         cards={cards}
         contacts={contacts}
-        editingExpense={editingExpense}
         defaultDate={`${currentYearMonth}-01`}
       />
 
@@ -903,16 +984,6 @@ export default function App() {
         yearMonth={currentYearMonth}
         currentBudget={currentBudget}
         onSaveBudget={saveMonthlyBudget}
-      />
-
-      <IncomeFormModal
-        isOpen={isIncomeModalOpen}
-        onClose={() => setIsIncomeModalOpen(false)}
-        onSave={handleSaveIncome}
-        editingIncome={editingIncome}
-        accounts={accounts}
-        contacts={contacts}
-        defaultDate={`${currentYearMonth}-01`}
       />
 
       <TransferFormModal

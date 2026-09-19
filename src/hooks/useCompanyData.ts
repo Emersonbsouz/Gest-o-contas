@@ -283,10 +283,14 @@ export function useCompanyData(companyId: string | null) {
 
         await saveCompanyDoc(companyId, 'expenses', id, newExpense);
         setCloudSyncStatus('synced');
+        setLastError(null);
+        console.log(`[useCompanyData] Despesa salva com sucesso: ${id}`);
         return newExpense;
       } catch (err) {
-        console.error('Erro ao salvar despesa:', err);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error('[useCompanyData] Erro ao salvar despesa:', errorMessage);
         setCloudSyncStatus('error');
+        setLastError(`Erro ao salvar despesa: ${errorMessage}`);
         return undefined;
       }
     },
@@ -333,9 +337,13 @@ export function useCompanyData(companyId: string | null) {
 
         await saveCompanyDoc(companyId, 'incomes', id, newIncome);
         setCloudSyncStatus('synced');
+        setLastError(null);
+        console.log(`[useCompanyData] Receita salva com sucesso: ${id}`);
       } catch (err) {
-        console.error('Erro ao salvar receita:', err);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error('[useCompanyData] Erro ao salvar receita:', errorMessage);
         setCloudSyncStatus('error');
+        setLastError(`Erro ao salvar receita: ${errorMessage}`);
       }
     },
     [companyId, incomes]
@@ -381,9 +389,13 @@ export function useCompanyData(companyId: string | null) {
 
         await saveCompanyDoc(companyId, 'transfers', id, newTransfer);
         setCloudSyncStatus('synced');
+        setLastError(null);
+        console.log(`[useCompanyData] Transferência salva com sucesso: ${id}`);
       } catch (err) {
-        console.error('Erro ao salvar transferência:', err);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error('[useCompanyData] Erro ao salvar transferência:', errorMessage);
         setCloudSyncStatus('error');
+        setLastError(`Erro ao salvar transferência: ${errorMessage}`);
       }
     },
     [companyId, transfers]
@@ -405,16 +417,26 @@ export function useCompanyData(companyId: string | null) {
   const saveAccount = useCallback(
     async (accData: Omit<TreasuryAccount, 'id'>, accountId?: string) => {
       if (!companyId) return;
-      const id = accountId || `acc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-      const newAcc: TreasuryAccount = { ...accData, id };
-
-      setAccounts((prev) => {
-        const next = accountId ? prev.map((a) => (a.id === accountId ? newAcc : a)) : [...prev, newAcc];
-        localStorage.setItem(getStorageKey('accounts'), JSON.stringify(next));
-        return next;
-      });
-
-      await saveCompanyDoc(companyId, 'accounts', id, newAcc);
+      setCloudSyncStatus('syncing');
+      try {
+        const id = accountId || `acc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const newAcc: TreasuryAccount = { ...accData, id };
+  
+        setAccounts((prev) => {
+          const next = accountId ? prev.map((a) => (a.id === accountId ? newAcc : a)) : [...prev, newAcc];
+          localStorage.setItem(getStorageKey('accounts'), JSON.stringify(next));
+          return next;
+        });
+  
+        await saveCompanyDoc(companyId, 'accounts', id, newAcc);
+        setCloudSyncStatus('synced');
+        setLastError(null);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error('[useCompanyData] Erro ao salvar conta:', errorMessage);
+        setCloudSyncStatus('error');
+        setLastError(`Erro ao salvar conta: ${errorMessage}`);
+      }
     },
     [companyId]
   );
@@ -561,20 +583,30 @@ export function useCompanyData(companyId: string | null) {
   const saveGoal = useCallback(
     async (goalData: Omit<FinancialGoal, 'id' | 'createdAt'>, goalId?: string) => {
       if (!companyId) return;
-      const id = goalId || `goal-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-      const newGoal: FinancialGoal = {
-        ...goalData,
-        id,
-        createdAt: goalId ? (goals.find((g) => g.id === goalId)?.createdAt || Date.now()) : Date.now(),
-      };
-
-      setGoals((prev) => {
-        const next = goalId ? prev.map((g) => (g.id === goalId ? newGoal : g)) : [...prev, newGoal];
-        localStorage.setItem(getStorageKey('goals'), JSON.stringify(next));
-        return next;
-      });
-
-      await saveCompanyDoc(companyId, 'goals', id, newGoal);
+      setCloudSyncStatus('syncing');
+      try {
+        const id = goalId || `goal-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const newGoal: FinancialGoal = {
+          ...goalData,
+          id,
+          createdAt: goalId ? (goals.find((g) => g.id === goalId)?.createdAt || Date.now()) : Date.now(),
+        };
+  
+        setGoals((prev) => {
+          const next = goalId ? prev.map((g) => (g.id === goalId ? newGoal : g)) : [...prev, newGoal];
+          localStorage.setItem(getStorageKey('goals'), JSON.stringify(next));
+          return next;
+        });
+  
+        await saveCompanyDoc(companyId, 'goals', id, newGoal);
+        setCloudSyncStatus('synced');
+        setLastError(null);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error('[useCompanyData] Erro ao salvar meta:', errorMessage);
+        setCloudSyncStatus('error');
+        setLastError(`Erro ao salvar meta: ${errorMessage}`);
+      }
     },
     [companyId, goals]
   );
@@ -623,16 +655,16 @@ export function useCompanyData(companyId: string | null) {
   );
 
   const updateCategoryBudget = useCallback(
-    async (catId: string, budget?: number) => {
+    async (catId: string, budgetLimit?: number) => {
       if (!companyId) return;
       setCategories((prev) => {
-        const next = prev.map((c) => (c.id === catId ? { ...c, budget } : c));
+        const next = prev.map((c) => (c.id === catId ? { ...c, budgetLimit } : c));
         localStorage.setItem(getStorageKey('categories'), JSON.stringify(next));
         return next;
       });
       const target = categories.find((c) => c.id === catId);
       if (target) {
-        await saveCompanyDoc(companyId, 'categories', catId, { ...target, budget });
+        await saveCompanyDoc(companyId, 'categories', catId, { ...target, budgetLimit });
       }
     },
     [companyId, categories]

@@ -9,6 +9,7 @@ import {
   Plus,
   CreditCard as CreditCardIcon,
   Wallet,
+  CheckCircle2,
 } from 'lucide-react';
 import { Expense, Category, PaymentMethod, TreasuryAccount, CreditCard, ContactPerson } from '../types';
 import {
@@ -28,6 +29,7 @@ interface ExpenseListProps {
   onEditExpense: (expense: Expense) => void;
   onDeleteExpense: (expenseId: string) => void;
   onOpenAddModal: () => void;
+  onLiquidateExpense?: (expense: Expense) => void;
 }
 
 type SortOption = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
@@ -42,6 +44,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
   onEditExpense,
   onDeleteExpense,
   onOpenAddModal,
+  onLiquidateExpense,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -246,7 +249,8 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                   <tr
                     key={expense.id}
                     id={`expense-row-${expense.id}`}
-                    className="hover:bg-slate-50/80 transition-colors group"
+                    className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                    onClick={() => onEditExpense(expense)}
                   >
                     {/* Date */}
                     <td className="py-3 px-4 text-slate-500 font-medium whitespace-nowrap">
@@ -301,6 +305,11 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                           <CreditCardIcon className="w-3 h-3 text-slate-400" />
                           {PAYMENT_METHOD_LABELS[expense.paymentMethod] || expense.paymentMethod}
                         </span>
+                        {expense.paymentMethod === 'boleto' && expense.billetData?.dueDate && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-rose-600 font-bold pl-1">
+                            Venc: {formatDateBR(expense.billetData.dueDate)}
+                          </span>
+                        )}
                         {expense.cardId && cardMap.get(expense.cardId) && (
                           <span className="inline-flex items-center gap-1 text-[10px] text-indigo-600 font-medium pl-1">
                             Cartão: {cardMap.get(expense.cardId)}
@@ -325,15 +334,31 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                     {/* Actions */}
                     <td className="py-3 px-4 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1 opacity-80 group-hover:opacity-100">
+                        {expense.status === 'pending' && onLiquidateExpense && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onLiquidateExpense(expense);
+                            }}
+                            title="Liquidar Despesa"
+                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
-                          onClick={() => onEditExpense(expense)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditExpense(expense);
+                          }}
                           title="Editar Despesa"
                           className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             if (window.confirm(`Deseja realmente excluir "${expense.description}"?`)) {
                               onDeleteExpense(expense.id);
                             }
