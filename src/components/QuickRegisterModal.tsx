@@ -11,6 +11,9 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   ArrowRightLeft,
+  FileText,
+  Package,
+  HardHat,
 } from 'lucide-react';
 
 interface QuickRegisterModalProps {
@@ -27,6 +30,10 @@ interface QuickRegisterModalProps {
       | 'category'
       | 'recurring'
       | 'goal'
+      | 'proposal'
+      | 'rental'
+      | 'equipment'
+      | 'costCenter'
   ) => void;
 }
 
@@ -48,6 +55,10 @@ export const QuickRegisterModal: React.FC<QuickRegisterModalProps> = ({
       | 'category'
       | 'recurring'
       | 'goal'
+      | 'proposal'
+      | 'rental'
+      | 'equipment'
+      | 'costCenter'
   ) => {
     onClose();
     onSelectAction(action);
@@ -217,6 +228,53 @@ export const QuickRegisterModal: React.FC<QuickRegisterModalProps> = ({
                 <h4 className="text-xs font-bold text-slate-900">Meta Financeira</h4>
                 <p className="text-[10px] text-slate-500 leading-tight mt-0.5">
                   Reservas, viagens, aquisições
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {/* Módulos ERP / Engenharia */}
+          <div>
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+              Módulos ERP / Engenharia
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <button
+                onClick={() => handleSelect('proposal')}
+                className="p-3 rounded-xl border border-indigo-100 bg-indigo-50/40 hover:bg-indigo-50 hover:border-indigo-300 text-left transition-all group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center mb-2 shadow-2xs group-hover:scale-105 transition-transform">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <h4 className="text-xs font-bold text-indigo-900">Proposta Técnica</h4>
+                <p className="text-[10px] text-slate-500 leading-tight mt-0.5">
+                  Orçamentos de projetos e serviços
+                </p>
+              </button>
+
+              <button
+                onClick={() => handleSelect('costCenter')}
+                className="p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-indigo-300 text-left transition-all group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center mb-2 shadow-2xs group-hover:scale-105 transition-transform">
+                  <HardHat className="w-4 h-4" />
+                </div>
+                <h4 className="text-xs font-bold text-slate-900">Nova Obra / Projeto</h4>
+                <p className="text-[10px] text-slate-500 leading-tight mt-0.5">
+                  Centro de custo para gestão técnica
+                </p>
+              </button>
+
+              <button
+                onClick={() => handleSelect('equipment')}
+                className="p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-indigo-300 text-left transition-all group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-slate-600 text-white flex items-center justify-center mb-2 shadow-2xs group-hover:scale-105 transition-transform">
+                  <Package className="w-4 h-4" />
+                </div>
+                <h4 className="text-xs font-bold text-slate-900">Novo Patrimônio</h4>
+                <p className="text-[10px] text-slate-500 leading-tight mt-0.5">
+                  Ferramentas, andaimes, betoneiras
                 </p>
               </button>
             </div>

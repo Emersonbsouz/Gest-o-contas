@@ -7,11 +7,14 @@ import {
 import {
   Category,
   Expense,
+  Income,
   PaymentMethod,
   TreasuryAccount,
   CreditCard as CreditCardType,
   ContactPerson,
   PaymentStatus,
+  CostCenter,
+  TransactionSplit,
 } from '../types';
 import { PAYMENT_METHOD_LABELS } from '../utils/formatters';
 import { CategoryIcon } from './CategoryIcon';
@@ -26,6 +29,7 @@ interface FinancialFormModalProps {
   accounts?: TreasuryAccount[];
   cards?: CreditCardType[];
   contacts?: ContactPerson[];
+  costCenters?: CostCenter[];
   defaultDate?: string;
 }
 
@@ -39,6 +43,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   accounts = [],
   cards = [],
   contacts = [],
+  costCenters = [],
   defaultDate,
 }) => {
   // State
@@ -52,8 +57,17 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   const [contactId, setContactId] = useState('');
   const [status, setStatus] = useState<PaymentStatus>('pending');
   const [notes, setNotes] = useState('');
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [costCenterId, setCostCenterId] = useState('');
   
   // Expense specific
+  const [documentNumber, setDocumentNumber] = useState('');
+  const [transacao_id_banco, setTransacaoIdBanco] = useState('');
+  const [linha_digitavel, setLinhaDigitavel] = useState('');
+  const [splits, setSplits] = useState<Omit<TransactionSplit, 'id'>[]>([]);
+  const [showSplits, setShowSplits] = useState(false);
+  
+  // Income specific (Installment Generator)
   const [isInstallment, setIsInstallment] = useState(false);
   const [currentInstallment, setCurrentInstallment] = useState('1');
   const [totalInstallments, setTotalInstallments] = useState('1');
@@ -82,11 +96,23 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       setContactId(editingItem.contactId || '');
       setStatus(editingItem.status || 'pending');
       setNotes(editingItem.notes || '');
+      setIsRecurring(editingItem.isRecurring || false);
+      setCostCenterId(editingItem.costCenterId || '');
+      setTransacaoIdBanco(editingItem.transacao_id_banco || '');
+      setLinhaDigitavel(editingItem.linha_digitavel || '');
       
-      if (type === 'expense' && editingItem.installments) {
+      if (type === 'expense') {
+        setDocumentNumber(editingItem.documentNumber || '');
+        setSplits(editingItem.splits || []);
+        setShowSplits(editingItem.splits && editingItem.splits.length > 0);
+      }
+
+      if (editingItem.installments || (type === 'income' && editingItem.totalInstallments)) {
         setIsInstallment(true);
-        setCurrentInstallment(editingItem.installments.current.toString());
-        setTotalInstallments(editingItem.installments.total.toString());
+        const curr = editingItem.installments?.current || editingItem.installmentNumber || 1;
+        const tot = editingItem.installments?.total || editingItem.totalInstallments || 1;
+        setCurrentInstallment(curr.toString());
+        setTotalInstallments(tot.toString());
       } else {
         setIsInstallment(false);
         setCurrentInstallment('1');
@@ -109,6 +135,13 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       setContactId('');
       setStatus('pending');
       setNotes('');
+      setIsRecurring(false);
+      setCostCenterId('');
+      setDocumentNumber('');
+      setTransacaoIdBanco('');
+      setLinhaDigitavel('');
+      setSplits([]);
+      setShowSplits(false);
       setIsInstallment(false);
       setCurrentInstallment('1');
       setTotalInstallments('1');
@@ -120,6 +153,35 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
     setActiveStep(1);
     setError('');
   }, [editingItem, isOpen, type, categories]);
+
+  const handleToggleRecurring = () => {
+    const nextValue = !isRecurring;
+    setIsRecurring(nextValue);
+    if (nextValue && type === 'expense' && !costCenterId) {
+      const adminCC = costCenters.find(cc => 
+        cc.name.toLowerCase().includes('escritório') || 
+        cc.name.toLowerCase().includes('adm') ||
+        cc.name.toLowerCase().includes('administrativo')
+      );
+      if (adminCC) setCostCenterId(adminCC.id);
+    }
+  };
+
+  const addSplit = () => {
+    setSplits([...splits, { costCenterId: '', amount: 0, categoryId: categoryId }]);
+  };
+
+  const removeSplit = (index: number) => {
+    setSplits(splits.filter((_, i) => i !== index));
+  };
+
+  const updateSplit = (index: number, field: keyof Omit<TransactionSplit, 'id'>, value: any) => {
+    const newSplits = [...splits];
+    newSplits[index] = { ...newSplits[index], [field]: value };
+    setSplits(newSplits);
+  };
+
+  const totalSplitAmount = splits.reduce((acc, s) => acc + s.amount, 0);
 
   if (!isOpen) return null;
 
@@ -153,6 +215,13 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
     }
 
     const numAmount = parseFloat(amount.replace(',', '.'));
+    const totalSplitAmount = splits.reduce((acc, s) => acc + s.amount, 0);
+
+    if (type === 'expense' && showSplits && Math.abs(totalSplitAmount - numAmount) > 0.01) {
+      setError(`O valor total do rateio (R$ ${totalSplitAmount.toFixed(2)}) deve ser igual ao valor total da nota (R$ ${numAmount.toFixed(2)}). Falta ratear R$ ${(numAmount - totalSplitAmount).toFixed(2)}.`);
+      return;
+    }
+
     const billetData = paymentMethod === 'boleto' ? {
       barcode: billetBarcode.trim() || undefined,
       digitableLine: billetDigitableLine.trim() || undefined,
@@ -160,31 +229,71 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       assignor: billetAssignor.trim() || undefined,
     } : undefined;
 
-    let installmentsData = undefined;
-    if (type === 'expense' && isInstallment) {
-      const curr = parseInt(currentInstallment, 10);
-      const tot = parseInt(totalInstallments, 10);
-      if (!isNaN(curr) && !isNaN(tot) && tot > 1) {
-        installmentsData = { current: Math.max(1, curr), total: tot };
-      }
-    }
-
     setIsLoading(true);
     try {
-      await onSave({
-        description: description.trim(),
-        amount: Math.round(numAmount * 100) / 100,
-        date,
-        categoryId,
-        paymentMethod,
-        accountId: paymentMethod !== 'credit_card' ? accountId : undefined,
-        cardId: paymentMethod === 'credit_card' ? cardId : undefined,
-        contactId: contactId || undefined,
-        status,
-        notes: notes.trim() || undefined,
-        billetData,
-        installments: installmentsData,
-      }, editingItem?.id);
+      if (type === 'income' && isInstallment && !editingItem) {
+        // Installment Generator for new Incomes
+        const tot = parseInt(totalInstallments, 10);
+        const baseDate = new Date(date + 'T12:00:00');
+        
+        for (let i = 0; i < tot; i++) {
+          const installmentDate = new Date(baseDate);
+          installmentDate.setMonth(baseDate.getMonth() + i);
+          
+          await onSave({
+            description: tot > 1 ? `${description.trim()} (${i + 1}/${tot})` : description.trim(),
+            amount: Math.round(numAmount * 100) / 100,
+            date: installmentDate.toISOString().split('T')[0],
+            categoryId,
+            paymentMethod,
+            accountId: accountId || undefined,
+            contactId: contactId || undefined,
+            costCenterId: costCenterId || undefined,
+            status,
+            notes: notes.trim() || undefined,
+            isRecurring,
+            installmentNumber: i + 1,
+            totalInstallments: tot,
+            transacao_id_banco: transacao_id_banco.trim() || undefined,
+            linha_digitavel: linha_digitavel.trim() || undefined,
+          });
+        }
+      } else {
+        // Standard save (Expense or single Income)
+        let installmentsData = undefined;
+        if (type === 'expense' && isInstallment) {
+          const curr = parseInt(currentInstallment, 10);
+          const tot = parseInt(totalInstallments, 10);
+          if (!isNaN(curr) && !isNaN(tot)) {
+            installmentsData = { current: curr, total: tot };
+          }
+        }
+
+        await onSave({
+          description: description.trim(),
+          amount: Math.round(numAmount * 100) / 100,
+          date,
+          categoryId,
+          paymentMethod,
+          accountId: paymentMethod !== 'credit_card' ? accountId : undefined,
+          cardId: paymentMethod === 'credit_card' ? cardId : undefined,
+          contactId: contactId || undefined,
+          costCenterId: costCenterId || undefined,
+          status,
+          notes: notes.trim() || undefined,
+          billetData,
+          installments: installmentsData,
+          documentNumber: type === 'expense' ? documentNumber : undefined,
+          transacao_id_banco: transacao_id_banco.trim() || undefined,
+          linha_digitavel: linha_digitavel.trim() || undefined,
+          isRecurring,
+          splits: (type === 'expense' && showSplits) ? splits : undefined,
+          ...(type === 'income' && isInstallment ? {
+            installmentNumber: parseInt(currentInstallment, 10),
+            totalInstallments: parseInt(totalInstallments, 10),
+          } : {})
+        }, editingItem?.id);
+      }
       onClose();
     } catch (err) {
       setError('Erro ao salvar. Tente novamente.');
@@ -258,6 +367,40 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                 </div>
               </div>
 
+              {type === 'expense' && (
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Nº Documento / NF</label>
+                  <input
+                    type="text"
+                    value={documentNumber}
+                    onChange={(e) => setDocumentNumber(e.target.value)}
+                    placeholder="Número da nota ou recibo"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+              )}
+
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                    <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                    Recorrência
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleToggleRecurring}
+                    className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/20 ${isRecurring ? 'bg-indigo-600' : 'bg-slate-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isRecurring ? 'translate-x-5' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+                {isRecurring && (
+                  <p className="text-[10px] text-slate-500 leading-relaxed italic">
+                    Este lançamento será clonado mensalmente. O Centro de Custo padrão será "Escritório/Administrativo" se não houver rateio.
+                  </p>
+                )}
+              </div>
+
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                   <span>Categoria *</span>
@@ -284,11 +427,104 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
             </div>
           ) : (
             <div className="space-y-4 animate-in slide-in-from-left-2 duration-200">
+              {/* Cost Center / Rateio Group */}
+              <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <LayoutGrid className="w-4 h-4 text-indigo-600" />
+                    <span className="text-xs font-bold text-slate-800 uppercase tracking-tight">Destinação (Obras)</span>
+                  </div>
+                  {type === 'expense' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowSplits(!showSplits);
+                        if (!showSplits && splits.length === 0) addSplit();
+                      }}
+                      className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors ${showSplits ? 'bg-indigo-100 text-indigo-700' : 'bg-white border border-slate-200 text-slate-500 hover:bg-white'}`}
+                    >
+                      {showSplits ? 'Remover Rateio' : '+ Ativar Rateio'}
+                    </button>
+                  )}
+                </div>
+
+                {!showSplits ? (
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-500">Centro de Custo / Obra *</label>
+                    <select
+                      value={costCenterId}
+                      onChange={(e) => setCostCenterId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-indigo-500/20"
+                    >
+                      <option value="">Selecione uma obra</option>
+                      {costCenters.map(cc => (
+                        <option key={cc.id} value={cc.id}>{cc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {splits.map((split, index) => (
+                      <div key={index} className="grid grid-cols-12 gap-2 p-2 bg-white rounded-xl border border-slate-200 shadow-sm relative group">
+                        <div className="col-span-6 space-y-1">
+                          <label className="text-[9px] font-bold text-slate-400 uppercase">Obra</label>
+                          <select
+                            value={split.costCenterId}
+                            onChange={(e) => updateSplit(index, 'costCenterId', e.target.value)}
+                            className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-[11px] bg-slate-50"
+                          >
+                            <option value="">Obra...</option>
+                            {costCenters.map(cc => (
+                              <option key={cc.id} value={cc.id}>{cc.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="col-span-5 space-y-1">
+                          <label className="text-[9px] font-bold text-slate-400 uppercase">Valor (R$)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={split.amount || ''}
+                            onChange={(e) => updateSplit(index, 'amount', parseFloat(e.target.value) || 0)}
+                            placeholder="0,00"
+                            className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-[11px] font-bold bg-slate-50"
+                          />
+                        </div>
+                        <div className="col-span-1 flex items-end pb-1.5">
+                          <button
+                            type="button"
+                            onClick={() => removeSplit(index)}
+                            className="p-1 text-rose-500 hover:bg-rose-50 rounded-md transition-colors"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={addSplit}
+                      className="w-full py-2 border-2 border-dashed border-slate-200 rounded-xl text-[10px] font-bold text-slate-500 hover:border-indigo-300 hover:text-indigo-600 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Adicionar Obra ao Rateio
+                    </button>
+                    
+                    <div className="flex items-center justify-between px-2 py-1.5 bg-indigo-50/50 rounded-lg border border-indigo-100">
+                      <span className="text-[10px] font-bold text-indigo-700 uppercase">Total Rateado:</span>
+                      <span className={`text-xs font-bold ${Math.abs(totalSplitAmount - parseFloat(amount)) < 0.01 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        R$ {totalSplitAmount.toFixed(2)} / R$ {parseFloat(amount || '0').toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Payment Method Group */}
               <div className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-3">
                 <div className="flex items-center gap-2 mb-1">
-                  <LayoutGrid className="w-3.5 h-3.5 text-indigo-600" />
-                  <span className="text-xs font-bold text-slate-800 uppercase tracking-tight">Pagamento e Origem</span>
+                  <Wallet className="w-3.5 h-3.5 text-indigo-600" />
+                  <span className="text-xs font-bold text-slate-800 uppercase tracking-tight">Pagamento</span>
                 </div>
                 
                 <div className="grid grid-cols-1 gap-3">
@@ -339,22 +575,20 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-700">Situação</label>
-                  <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setStatus('pending')}
-                      className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${status === 'pending' ? 'bg-white shadow-xs text-amber-600' : 'text-slate-500 hover:bg-slate-200'}`}
-                    >
-                      Aberto
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setStatus('liquidated')}
-                      className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${status === 'liquidated' ? 'bg-white shadow-xs text-emerald-600' : 'text-slate-500 hover:bg-slate-200'}`}
-                    >
-                      Liquidado
-                    </button>
-                  </div>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as PaymentStatus)}
+                    className={`w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white font-bold ${
+                      status === 'paid' || status === 'PAGO' ? 'text-emerald-600' : 
+                      status === 'pending' || status === 'PENDENTE' ? 'text-amber-600' : 
+                      status === 'overdue' || status === 'VENCIDO' ? 'text-rose-600' : 'text-slate-500'
+                    }`}
+                  >
+                    <option value="pending">PENDENTE (Aberto)</option>
+                    <option value="paid">PAGO (Recebido)</option>
+                    <option value="overdue">VENCIDO</option>
+                    <option value="cancelled">CANCELADO</option>
+                  </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-700">{type === 'expense' ? 'Fornecedor' : 'Cliente'}</label>
@@ -405,9 +639,9 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                 </div>
               )}
 
-              {/* Installments (Expenses Only) */}
-              {type === 'expense' && (
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              {/* Installment Generator (Incomes) or Manual Installments (Expenses) */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
@@ -415,31 +649,73 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                       onChange={(e) => setIsInstallment(e.target.checked)}
                       className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
                     />
-                    <span className="text-[11px] font-bold text-slate-700">Compra Parcelada</span>
+                    <span className="text-[11px] font-bold text-slate-700">
+                      {type === 'income' ? 'Gerar Parcelas Automáticas' : 'Compra Parcelada'}
+                    </span>
                   </label>
-                  {isInstallment && (
-                    <div className="flex gap-2 mt-2 pt-2 border-t border-slate-200">
+                  {isInstallment && type === 'income' && (
+                    <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                      Automação Ativa
+                    </span>
+                  )}
+                </div>
+                
+                {isInstallment && (
+                  <div className="flex gap-2 pt-2 border-t border-slate-200">
+                    <div className="flex-1 space-y-1">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase">{type === 'expense' ? 'Parc. Atual' : 'Primeira Parc.'}</label>
                       <input
                         type="number"
                         value={currentInstallment}
                         onChange={(e) => setCurrentInstallment(e.target.value)}
-                        placeholder="Parc. Atual"
-                        className="flex-1 px-2.5 py-1 rounded-lg border border-slate-300 text-[11px]"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-[11px]"
                       />
-                      <span className="text-slate-400 self-center text-xs">de</span>
+                    </div>
+                    <div className="flex items-end pb-2">
+                      <span className="text-slate-400 text-[10px]">de</span>
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase">Total Parcelas</label>
                       <input
                         type="number"
                         value={totalInstallments}
                         onChange={(e) => setTotalInstallments(e.target.value)}
-                        placeholder="Total"
-                        className="flex-1 px-2.5 py-1 rounded-lg border border-slate-300 text-[11px]"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-[11px]"
                       />
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+                {isInstallment && type === 'income' && (
+                  <p className="text-[9px] text-slate-400 italic">
+                    O sistema criará {totalInstallments} lançamentos mensais automáticos no valor de R$ {parseFloat(amount || '0').toFixed(2)} cada.
+                  </p>
+                )}
+              </div>
 
               {/* Notes */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">ID Transação Banco</label>
+                  <input
+                    type="text"
+                    value={transacao_id_banco}
+                    onChange={(e) => setTransacaoIdBanco(e.target.value)}
+                    placeholder="ID do Gateway/Banco"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Linha Digitável</label>
+                  <input
+                    type="text"
+                    value={linha_digitavel}
+                    onChange={(e) => setLinhaDigitavel(e.target.value)}
+                    placeholder="Números para pagamento"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700">Observações</label>
                 <textarea

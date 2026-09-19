@@ -64,7 +64,7 @@ export const DEFAULT_CONTACTS: ContactPerson[] = [
   {
     id: 'cont-cliente-tech',
     name: 'Tech Solutions Consultoria Ltda',
-    type: 'customer',
+    type: 'client',
     document: '23.891.012/0001-44',
     phone: '(11) 98765-4321',
     email: 'financeiro@techsolutions.com',

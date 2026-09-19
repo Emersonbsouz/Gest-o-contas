@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Users, Phone, Mail, FileText, QrCode, Tag } from 'lucide-react';
+import { X, Users, Phone, Mail, FileText, QrCode, Tag, MapPin } from 'lucide-react';
 import { ContactPerson, ContactType } from '../types';
 
 interface ContactFormModalProps {
@@ -12,7 +12,7 @@ interface ContactFormModalProps {
 
 const CONTACT_TYPE_OPTIONS: { value: ContactType; label: string; desc: string }[] = [
   { value: 'supplier', label: 'Fornecedor / Favorecido', desc: 'Lojas, mercados, prestadores que você paga' },
-  { value: 'customer', label: 'Cliente / Fonte Pagadora', desc: 'Pessoas ou empresas que pagam você' },
+  { value: 'client', label: 'Cliente / Fonte Pagadora', desc: 'Pessoas ou empresas que pagam você' },
   { value: 'service_provider', label: 'Prestador de Serviços', desc: 'Médicos, mecânicos, diaristas, consultores' },
   { value: 'other', label: 'Outros Contatos', desc: 'Amigos, familiares ou contatos gerais' },
 ];
@@ -29,6 +29,7 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [document, setDocument] = useState('');
+  const [address, setAddress] = useState('');
   const [pixKey, setPixKey] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
@@ -41,6 +42,7 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
       setPhone(editingContact.phone || '');
       setEmail(editingContact.email || '');
       setDocument(editingContact.document || '');
+      setAddress(editingContact.address || '');
       setPixKey(editingContact.pixKey || '');
       setNotes(editingContact.notes || '');
     } else {
@@ -49,6 +51,7 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
       setPhone('');
       setEmail('');
       setDocument('');
+      setAddress('');
       setPixKey('');
       setNotes('');
     }
@@ -73,6 +76,7 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
           phone: phone.trim() || undefined,
           email: email.trim() || undefined,
           document: document.trim() || undefined,
+          address: address.trim() || undefined,
           pixKey: pixKey.trim() || undefined,
           notes: notes.trim() || undefined,
         },
@@ -218,6 +222,21 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 bg-emerald-50/20 font-mono"
               />
             </div>
+          </div>
+
+          {/* Address */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+              <MapPin className="w-3.5 h-3.5 text-slate-400" />
+              Endereço Completo
+            </label>
+            <input
+              type="text"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="Rua, Número, Bairro, Cidade - UF"
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+            />
           </div>
 
           {/* Notes */}

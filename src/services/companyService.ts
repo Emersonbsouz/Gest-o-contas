@@ -29,6 +29,10 @@ import {
   CompanyRole,
   MemberPermissions,
   DEFAULT_ROLE_PERMISSIONS,
+  CostCenter,
+  Proposal,
+  Equipment,
+  Rental,
 } from '../types';
 import { DEFAULT_CATEGORIES } from '../data/defaultCategories';
 import { DEFAULT_ACCOUNTS, getInitialIncomes, getInitialTransfers } from '../data/defaultTreasury';
@@ -356,6 +360,10 @@ export async function clearCompanyData(companyId: string, keepCategories: boolea
     'recurring',
     'goals',
     'budgets',
+    'costCenters',
+    'proposals',
+    'equipment',
+    'rentals',
   ];
 
   if (!keepCategories) {

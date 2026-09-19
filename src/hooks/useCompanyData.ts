@@ -10,6 +10,10 @@ import {
   ContactPerson,
   RecurringBill,
   FinancialGoal,
+  CostCenter,
+  Proposal,
+  Equipment,
+  Rental,
 } from '../types';
 import { DEFAULT_CATEGORIES } from '../data/defaultCategories';
 import { getInitialExpenses } from '../data/sampleExpenses';
@@ -44,6 +48,10 @@ export function useCompanyData(companyId: string | null) {
   const [contacts, setContacts] = useState<ContactPerson[]>([]);
   const [recurringBills, setRecurringBills] = useState<RecurringBill[]>([]);
   const [goals, setGoals] = useState<FinancialGoal[]>([]);
+  const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [equipment, setEquipment] = useState<Equipment[]>([]);
+  const [rentals, setRentals] = useState<Rental[]>([]);
   const [loading, setLoading] = useState(true);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<'synced' | 'syncing' | 'error'>('synced');
   const [lastError, setLastError] = useState<string | null>(null);
@@ -86,6 +94,10 @@ export function useCompanyData(companyId: string | null) {
       setContacts(parseArray<ContactPerson>(getStorageKey('contacts'), []));
       setRecurringBills(parseArray<RecurringBill>(getStorageKey('recurring'), []));
       setGoals(parseArray<FinancialGoal>(getStorageKey('goals'), []));
+      setCostCenters(parseArray<CostCenter>(getStorageKey('costCenters'), []));
+      setProposals(parseArray<Proposal>(getStorageKey('proposals'), []));
+      setEquipment(parseArray<Equipment>(getStorageKey('equipment'), []));
+      setRentals(parseArray<Rental>(getStorageKey('rentals'), []));
     } catch (e) {
       console.warn('Erro ao carregar dados locais da empresa:', e);
     } finally {
@@ -257,7 +269,35 @@ export function useCompanyData(companyId: string | null) {
       })
     );
 
-    return () => {
+      unsubs.push(
+        subscribeToCompanySubcollection<CostCenter>(companyId, 'costCenters', (items) => {
+          setCostCenters(items || []);
+          localStorage.setItem(getStorageKey('costCenters'), JSON.stringify(items || []));
+        })
+      );
+  
+      unsubs.push(
+        subscribeToCompanySubcollection<Proposal>(companyId, 'proposals', (items) => {
+          setProposals(items || []);
+          localStorage.setItem(getStorageKey('proposals'), JSON.stringify(items || []));
+        })
+      );
+  
+      unsubs.push(
+        subscribeToCompanySubcollection<Equipment>(companyId, 'equipment', (items) => {
+          setEquipment(items || []);
+          localStorage.setItem(getStorageKey('equipment'), JSON.stringify(items || []));
+        })
+      );
+  
+      unsubs.push(
+        subscribeToCompanySubcollection<Rental>(companyId, 'rentals', (items) => {
+          setRentals(items || []);
+          localStorage.setItem(getStorageKey('rentals'), JSON.stringify(items || []));
+        })
+      );
+  
+      return () => {
       unsubs.forEach((unsub) => unsub());
     };
   }, [companyId]);
@@ -624,6 +664,130 @@ export function useCompanyData(companyId: string | null) {
     [companyId]
   );
 
+  const saveCostCenter = useCallback(
+    async (data: Omit<CostCenter, 'id' | 'createdAt'>, id?: string) => {
+      if (!companyId) return;
+      const docId = id || `cc-${Date.now()}`;
+      const newObj: CostCenter = {
+        ...data,
+        id: docId,
+        createdAt: id ? (costCenters.find((c) => c.id === id)?.createdAt || Date.now()) : Date.now(),
+      };
+      setCostCenters((prev) => {
+        const next = id ? prev.map((c) => (c.id === id ? newObj : c)) : [...prev, newObj];
+        localStorage.setItem(getStorageKey('costCenters'), JSON.stringify(next));
+        return next;
+      });
+      await saveCompanyDoc(companyId, 'costCenters', docId, newObj);
+    },
+    [companyId, costCenters]
+  );
+
+  const deleteCostCenter = useCallback(
+    async (id: string) => {
+      if (!companyId) return;
+      setCostCenters((prev) => {
+        const next = prev.filter((c) => c.id !== id);
+        localStorage.setItem(getStorageKey('costCenters'), JSON.stringify(next));
+        return next;
+      });
+      await deleteCompanyDoc(companyId, 'costCenters', id);
+    },
+    [companyId]
+  );
+
+  const saveProposal = useCallback(
+    async (data: Omit<Proposal, 'id' | 'createdAt'>, id?: string) => {
+      if (!companyId) return;
+      const docId = id || `prop-${Date.now()}`;
+      const newObj: Proposal = {
+        ...data,
+        id: docId,
+        createdAt: id ? (proposals.find((p) => p.id === id)?.createdAt || Date.now()) : Date.now(),
+      };
+      setProposals((prev) => {
+        const next = id ? prev.map((p) => (p.id === id ? newObj : p)) : [...prev, newObj];
+        localStorage.setItem(getStorageKey('proposals'), JSON.stringify(next));
+        return next;
+      });
+      await saveCompanyDoc(companyId, 'proposals', docId, newObj);
+    },
+    [companyId, proposals]
+  );
+
+  const deleteProposal = useCallback(
+    async (id: string) => {
+      if (!companyId) return;
+      setProposals((prev) => {
+        const next = prev.filter((p) => p.id !== id);
+        localStorage.setItem(getStorageKey('proposals'), JSON.stringify(next));
+        return next;
+      });
+      await deleteCompanyDoc(companyId, 'proposals', id);
+    },
+    [companyId]
+  );
+
+  const saveEquipment = useCallback(
+    async (data: Omit<Equipment, 'id'>, id?: string) => {
+      if (!companyId) return;
+      const docId = id || `eq-${Date.now()}`;
+      const newObj: Equipment = { ...data, id: docId };
+      setEquipment((prev) => {
+        const next = id ? prev.map((e) => (e.id === id ? newObj : e)) : [...prev, newObj];
+        localStorage.setItem(getStorageKey('equipment'), JSON.stringify(next));
+        return next;
+      });
+      await saveCompanyDoc(companyId, 'equipment', docId, newObj);
+    },
+    [companyId]
+  );
+
+  const deleteEquipment = useCallback(
+    async (id: string) => {
+      if (!companyId) return;
+      setEquipment((prev) => {
+        const next = prev.filter((e) => e.id !== id);
+        localStorage.setItem(getStorageKey('equipment'), JSON.stringify(next));
+        return next;
+      });
+      await deleteCompanyDoc(companyId, 'equipment', id);
+    },
+    [companyId]
+  );
+
+  const saveRental = useCallback(
+    async (data: Omit<Rental, 'id' | 'createdAt'>, id?: string) => {
+      if (!companyId) return;
+      const docId = id || `rent-${Date.now()}`;
+      const newObj: Rental = {
+        ...data,
+        id: docId,
+        createdAt: id ? (rentals.find((r) => r.id === id)?.createdAt || Date.now()) : Date.now(),
+      };
+      setRentals((prev) => {
+        const next = id ? prev.map((r) => (r.id === id ? newObj : r)) : [...prev, newObj];
+        localStorage.setItem(getStorageKey('rentals'), JSON.stringify(next));
+        return next;
+      });
+      await saveCompanyDoc(companyId, 'rentals', docId, newObj);
+    },
+    [companyId, rentals]
+  );
+
+  const deleteRental = useCallback(
+    async (id: string) => {
+      if (!companyId) return;
+      setRentals((prev) => {
+        const next = prev.filter((r) => r.id !== id);
+        localStorage.setItem(getStorageKey('rentals'), JSON.stringify(next));
+        return next;
+      });
+      await deleteCompanyDoc(companyId, 'rentals', id);
+    },
+    [companyId]
+  );
+
   const addCategory = useCallback(
     async (catData: Omit<Category, 'id'>) => {
       if (!companyId) return;
@@ -786,6 +950,10 @@ export function useCompanyData(companyId: string | null) {
     contacts,
     recurringBills,
     goals,
+    costCenters,
+    proposals,
+    equipment,
+    rentals,
     loading,
     cloudSyncStatus,
     lastError,
@@ -805,6 +973,14 @@ export function useCompanyData(companyId: string | null) {
     deleteRecurring,
     saveGoal,
     deleteGoal,
+    saveCostCenter,
+    deleteCostCenter,
+    saveProposal,
+    deleteProposal,
+    saveEquipment,
+    deleteEquipment,
+    saveRental,
+    deleteRental,
     addCategory,
     deleteCategory,
     updateCategoryBudget,

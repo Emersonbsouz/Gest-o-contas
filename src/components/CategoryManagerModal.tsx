@@ -41,11 +41,15 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   const [newCatColor, setNewCatColor] = useState(PRESET_COLORS[0]);
   const [newCatIcon, setNewCatIcon] = useState(AVAILABLE_ICONS[0].name);
   const [newCatLimit, setNewCatLimit] = useState('');
+  const [newCatParentId, setNewCatParentId] = useState('');
   const [error, setError] = useState('');
 
   if (!isOpen) return null;
 
   const filteredCategories = categories.filter((c) => c.type === activeTab);
+  
+  // Potential parents (only top-level categories)
+  const potentialParents = filteredCategories.filter(c => !c.parentId);
 
   const handleCreateCategory = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,8 +59,8 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
       return;
     }
 
-    if (categories.some((c) => c.name.toLowerCase() === cleanName.toLowerCase() && c.type === activeTab)) {
-      setError('Já existe uma categoria com este nome para este tipo.');
+    if (categories.some((c) => c.name.toLowerCase() === cleanName.toLowerCase() && c.type === activeTab && c.parentId === (newCatParentId || undefined))) {
+      setError('Já existe uma categoria com este nome neste nível.');
       return;
     }
 
@@ -68,10 +72,12 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
       icon: newCatIcon,
       type: activeTab,
       budgetLimit: activeTab === 'expense' && limit && limit > 0 ? limit : undefined,
+      parentId: newCatParentId || undefined
     });
 
     setNewCatName('');
     setNewCatLimit('');
+    setNewCatParentId('');
     setIsCreating(false);
     setError('');
   };
@@ -188,6 +194,20 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                 )}
               </div>
 
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Hierarquia (Opcional)</label>
+                <select
+                  value={newCatParentId}
+                  onChange={(e) => setNewCatParentId(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs text-slate-900 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="">Categoria Principal (Nível 1)</option>
+                  {potentialParents.map(p => (
+                    <option key={p.id} value={p.id}>Sub-categoria de: {p.name}</option>
+                  ))}
+                </select>
+              </div>
+
               {/* Select Color */}
               <div>
                 <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center gap-1">
@@ -250,60 +270,91 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
               Categorias de {activeTab === 'expense' ? 'Despesa' : 'Receita'} Ativas ({filteredCategories.length})
             </h4>
 
-            {filteredCategories.map((cat) => (
-              <div
-                key={cat.id}
-                className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-colors"
-              >
-                  <div>
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0"
-                        style={{ backgroundColor: cat.color }}
-                      >
-                        <CategoryIcon name={cat.icon} className="w-3.5 h-3.5" />
+            {potentialParents.map((parent) => (
+              <React.Fragment key={parent.id}>
+                {/* Parent Category */}
+                <div
+                  className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-colors"
+                >
+                    <div>
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0"
+                          style={{ backgroundColor: parent.color }}
+                        >
+                          <CategoryIcon name={parent.icon} className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <span className="text-xs font-black text-slate-900">{parent.name}</span>
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-xs font-bold text-slate-800">{cat.name}</span>
-                      </div>
+                      {activeTab === 'expense' && (
+                        <div className="mt-2 flex items-center gap-2 pl-9">
+                          <span className="text-[10px] text-slate-400 font-bold uppercase">Meta:</span>
+                          <input
+                            type="number"
+                            defaultValue={parent.budgetLimit}
+                            placeholder="Limite R$"
+                            onBlur={(e) => {
+                              const val = e.target.value ? parseFloat(e.target.value) : undefined;
+                              if (val !== parent.budgetLimit) {
+                                onUpdateCategoryBudget(parent.id, val);
+                              }
+                            }}
+                            className="w-20 px-2 py-0.5 text-[10px] border border-slate-200 rounded focus:border-indigo-300 outline-none font-bold text-slate-700"
+                          />
+                        </div>
+                      )}
                     </div>
-                    {activeTab === 'expense' && (
-                      <div className="mt-2 flex items-center gap-2 pl-9">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase">Meta:</span>
-                        <input
-                          type="number"
-                          defaultValue={cat.budgetLimit}
-                          placeholder="Limite R$"
-                          onBlur={(e) => {
-                            const val = e.target.value ? parseFloat(e.target.value) : undefined;
-                            if (val !== cat.budgetLimit) {
-                              onUpdateCategoryBudget(cat.id, val);
-                            }
-                          }}
-                          className="w-20 px-2 py-0.5 text-[10px] border border-slate-200 rounded focus:border-indigo-300 outline-none font-bold text-slate-700"
-                        />
-                      </div>
-                    )}
-                  </div>
 
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          `Excluir a categoria "${cat.name}"? Lançamentos existentes ficarão como "Outros".`
-                        )
-                      ) {
-                        onDeleteCategory(cat.id);
-                      }
-                    }}
-                    title="Excluir Categoria"
-                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Excluir a categoria "${parent.name}"? Lançamentos existentes ficarão como "Outros".`
+                          )
+                        ) {
+                          onDeleteCategory(parent.id);
+                        }
+                      }}
+                      title="Excluir Categoria"
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-              </div>
+
+                {/* Subcategories */}
+                {filteredCategories.filter(child => child.parentId === parent.id).map(child => (
+                  <div
+                    key={child.id}
+                    className="ml-8 flex items-center justify-between p-2 rounded-xl border border-slate-100 bg-slate-50/50 hover:border-slate-200 transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-slate-300 ml-1" />
+                      <div
+                        className="w-5 h-5 rounded flex items-center justify-center text-white shrink-0"
+                        style={{ backgroundColor: child.color }}
+                      >
+                        <CategoryIcon name={child.icon} className="w-2.5 h-2.5" />
+                      </div>
+                      <span className="text-xs text-slate-700 font-medium">{child.name}</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`Excluir a sub-categoria "${child.name}"?`)) {
+                          onDeleteCategory(child.id);
+                        }
+                      }}
+                      className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </React.Fragment>
             ))}
 
             {filteredCategories.length === 0 && (

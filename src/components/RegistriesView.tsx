@@ -36,6 +36,7 @@ import {
   Shield,
   ChevronDown,
   ChevronUp,
+  Package,
 } from 'lucide-react';
 import {
   CreditCard,
@@ -51,6 +52,7 @@ import {
   MemberPermissions,
   DEFAULT_ROLE_PERMISSIONS,
   CompanyMemberInfo,
+  Equipment,
 } from '../types';
 import { formatCurrency, formatDateBR } from '../utils/formatters';
 import { CategoryIcon } from './CategoryIcon';
@@ -63,6 +65,7 @@ interface RegistriesViewProps {
   goals: FinancialGoal[];
   accounts: TreasuryAccount[];
   categories: Category[];
+  equipment: Equipment[];
   currentYearMonth: string;
 
   activeCompany?: Company | null;
@@ -108,9 +111,11 @@ interface RegistriesViewProps {
   onOpenCategoryModal: () => void;
   onOpenExpenseModal?: () => void;
   onOpenIncomeModal?: () => void;
+  onOpenEquipmentModal: (item?: Equipment) => void;
+  onDeleteEquipment: (id: string) => void;
 }
 
-type ActiveRegistryTab = 'cards' | 'contacts' | 'recurring' | 'goals' | 'accounts' | 'categories' | 'members';
+type ActiveRegistryTab = 'cards' | 'contacts' | 'recurring' | 'goals' | 'accounts' | 'categories' | 'members' | 'equipment';
 
 export const RegistriesView: React.FC<RegistriesViewProps> = ({
   cards = [],
@@ -119,6 +124,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
   goals = [],
   accounts = [],
   categories = [],
+  equipment = [],
   currentYearMonth,
   activeCompany,
   currentUserEmail,
@@ -142,6 +148,8 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
   onOpenCategoryModal,
   onOpenExpenseModal,
   onOpenIncomeModal,
+  onOpenEquipmentModal,
+  onDeleteEquipment,
 }) => {
   const [activeTab, setActiveTab] = useState<ActiveRegistryTab>('cards');
   const [searchQuery, setSearchQuery] = useState('');
@@ -358,26 +366,28 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                 Nova Despesa
               </button>
             )}
-            <button
-              onClick={() => {
-                if (activeTab === 'cards') onOpenCardModal();
-                else if (activeTab === 'contacts') onOpenContactModal();
-                else if (activeTab === 'recurring') onOpenRecurringModal();
-                else if (activeTab === 'goals') onOpenGoalModal();
-                else if (activeTab === 'accounts') onOpenAccountModal();
-                else if (activeTab === 'categories') onOpenCategoryModal();
-              }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              {activeTab === 'cards' && 'Novo Cartão'}
-              {activeTab === 'contacts' && 'Novo Contato / Fornecedor'}
-              {activeTab === 'recurring' && 'Nova Conta Recorrente'}
-              {activeTab === 'goals' && 'Nova Meta Financeira'}
-              {activeTab === 'accounts' && 'Nova Conta / Cota Caixa'}
-              {activeTab === 'categories' && 'Nova Categoria'}
-              {activeTab === 'members' && 'Convidar Sócio'}
-            </button>
+              <button
+                onClick={() => {
+                  if (activeTab === 'cards') onOpenCardModal();
+                  else if (activeTab === 'contacts') onOpenContactModal();
+                  else if (activeTab === 'recurring') onOpenRecurringModal();
+                  else if (activeTab === 'goals') onOpenGoalModal();
+                  else if (activeTab === 'accounts') onOpenAccountModal();
+                  else if (activeTab === 'categories') onOpenCategoryModal();
+                  else if (activeTab === 'equipment') onOpenEquipmentModal();
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                {activeTab === 'cards' && 'Novo Cartão'}
+                {activeTab === 'contacts' && 'Novo Contato / Fornecedor'}
+                {activeTab === 'recurring' && 'Nova Conta Recorrente'}
+                {activeTab === 'goals' && 'Nova Meta Financeira'}
+                {activeTab === 'accounts' && 'Nova Conta / Cota Caixa'}
+                {activeTab === 'categories' && 'Nova Categoria'}
+                {activeTab === 'members' && 'Convidar Sócio'}
+                {activeTab === 'equipment' && 'Novo Equipamento'}
+              </button>
           </div>
         </div>
 
@@ -481,6 +491,22 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
               >
                 <UserPlus className="w-3.5 h-3.5" />
                 Acessos ({activeCompany?.memberEmails?.length || 1})
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveTab('equipment');
+                  setSearchQuery('');
+                  setTypeFilter('all');
+                }}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
+                  activeTab === 'equipment'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
+                }`}
+              >
+                <Package className="w-3.5 h-3.5" />
+                Patrimônio ({equipment.length})
               </button>
             </div>
           </div>
@@ -1801,6 +1827,89 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                   );
                 })}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: PATRIMÔNIO / EQUIPAMENTOS */}
+      {activeTab === 'equipment' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Gestão de Patrimônio e Ferramental</h3>
+              <p className="text-xs text-slate-500">
+                Cadastre betoneiras, andaimes, ferramentas e outros equipamentos para controle de locações e obras.
+              </p>
+            </div>
+            <button
+              onClick={() => onOpenEquipmentModal()}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Novo Equipamento
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {equipment.filter(e => 
+              e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              (e.brand || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+              (e.serialNumber || '').toLowerCase().includes(searchQuery.toLowerCase())
+            ).map((item) => (
+              <div
+                key={item.id}
+                className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between"
+                onClick={() => onOpenEquipmentModal(item)}
+              >
+                <div>
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center">
+                      <Package className="w-5 h-5" />
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${
+                      item.status === 'available' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                      item.status === 'rented' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' :
+                      item.status === 'maintenance' ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                      'bg-rose-50 text-rose-700 border-rose-100'
+                    }`}>
+                      {item.status === 'available' ? 'Disponível' : 
+                       item.status === 'rented' ? 'Locado' : 
+                       item.status === 'maintenance' ? 'Manutenção' : 'Avariado'}
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-900">{item.name}</h4>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    {item.brand || 'Marca não inf.'} • SN: {item.serialNumber || 'N/A'}
+                  </p>
+                  <div className="mt-3 flex items-baseline gap-1">
+                    <span className="text-lg font-black text-slate-900">{formatCurrency(item.dailyRate)}</span>
+                    <span className="text-[10px] text-slate-400">/dia</span>
+                  </div>
+                </div>
+                <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenEquipmentModal(item);
+                    }}
+                    className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.confirm(`Deseja excluir "${item.name}"?`)) {
+                        onDeleteEquipment(item.id);
+                      }
+                    }}
+                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

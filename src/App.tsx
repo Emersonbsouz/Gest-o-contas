@@ -20,7 +20,17 @@ import { CreateCompanyModal } from './components/CreateCompanyModal';
 import { ManageMembersModal } from './components/ManageMembersModal';
 import { ResetConfirmModal } from './components/ResetConfirmModal';
 import { BackupSecurityModal } from './components/BackupSecurityModal';
+import { DatabaseSettingsModal } from './components/DatabaseSettingsModal';
 import { AuthView } from './components/AuthView';
+import { Sidebar } from './components/Sidebar';
+import { DashboardView } from './components/DashboardView';
+import { CommercialView } from './components/CommercialView';
+import { ProjectsView } from './components/ProjectsView';
+import { FinancialView } from './components/FinancialView';
+import { CostCenterModal } from './components/CostCenterModal';
+import { ProposalModal } from './components/ProposalModal';
+import { RentalModal } from './components/RentalModal';
+import { EquipmentModal } from './components/EquipmentModal';
 import { useAuth } from './context/AuthContext';
 import { useCompanyData } from './hooks/useCompanyData';
 import {
@@ -48,6 +58,10 @@ import {
   CompanyRole,
   MemberPermissions,
   DEFAULT_ROLE_PERMISSIONS,
+  CostCenter,
+  Proposal,
+  Rental,
+  Equipment,
 } from './types';
 import {
   getCurrentYearMonth,
@@ -56,7 +70,7 @@ import {
   PAYMENT_METHOD_LABELS,
 } from './utils/formatters';
 import { calculateAccountBalances } from './utils/treasuryHelpers';
-import { RotateCcw, ShieldCheck, Loader2, Building2, User } from 'lucide-react';
+import { RotateCcw, ShieldCheck, Loader2, Building2, User, Database } from 'lucide-react';
 
 export default function App() {
   const { currentUser, loading: authLoading, logout } = useAuth();
@@ -67,8 +81,8 @@ export default function App() {
   const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
   const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
 
-  // Active Tab & Month
-  const [activeTab, setActiveTab] = useState<'expenses' | 'treasury' | 'registries' | 'reports'>('treasury');
+  // Active View & Month
+  const [activeView, setActiveView] = useState<'dashboard' | 'comercial' | 'projetos' | 'financeiro' | 'cadastros' | 'relatorios'>('dashboard');
   const [currentYearMonth, setCurrentYearMonth] = useState<string>(() => getCurrentYearMonth());
 
   // Subscribe to user companies when logged in
@@ -139,6 +153,10 @@ export default function App() {
     contacts,
     recurringBills,
     goals,
+    costCenters,
+    proposals,
+    equipment,
+    rentals,
     loading: dataLoading,
     cloudSyncStatus,
     lastError,
@@ -158,6 +176,14 @@ export default function App() {
     deleteRecurring,
     saveGoal,
     deleteGoal,
+    saveCostCenter,
+    deleteCostCenter,
+    saveProposal,
+    deleteProposal,
+    saveEquipment,
+    deleteEquipment,
+    saveRental,
+    deleteRental,
     addCategory,
     deleteCategory,
     updateCategoryBudget,
@@ -171,6 +197,7 @@ export default function App() {
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
+  const [isDbSettingsOpen, setIsDbSettingsOpen] = useState(false);
 
   // Unified Financial Modal (Expense/Income)
   const [isFinancialModalOpen, setIsFinancialModalOpen] = useState(false);
@@ -199,6 +226,28 @@ export default function App() {
   const [editingGoal, setEditingGoal] = useState<FinancialGoal | null>(null);
 
   const [isQuickRegisterOpen, setIsQuickRegisterOpen] = useState(false);
+
+  // ERP Modals State
+  const [isCostCenterModalOpen, setIsCostCenterModalOpen] = useState(false);
+  const [editingCostCenter, setEditingCostCenter] = useState<CostCenter | null>(null);
+
+  const [isProposalModalOpen, setIsProposalModalOpen] = useState(false);
+  const [editingProposal, setEditingProposal] = useState<Proposal | null>(null);
+
+  const [isRentalModalOpen, setIsRentalModalOpen] = useState(false);
+  const [editingRental, setEditingRental] = useState<Rental | null>(null);
+
+  const [isEquipmentModalOpen, setIsEquipmentModalOpen] = useState(false);
+  const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null);
+
+  const [dbHealth, setDbHealth] = useState<{ status: string; database: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/health')
+      .then(res => res.json())
+      .then(data => setDbHealth(data))
+      .catch(() => setDbHealth({ status: 'error', database: 'missing' }));
+  }, []);
 
   // Total Treasury Balance
   const totalTreasuryBalance = useMemo(() => {
@@ -632,6 +681,37 @@ export default function App() {
     }
   };
 
+  const handleConvertProposal = async (proposal: Proposal) => {
+    if (!window.confirm(`Deseja converter a proposta "${proposal.title}" em um novo Centro de Custo?`)) return;
+
+    const newCC = await saveCostCenter({
+      name: proposal.title,
+      clientId: proposal.clientId,
+      status: 'active',
+      budget: proposal.amount,
+      startDate: new Date().toISOString().split('T')[0],
+      color: '#4f46e5',
+    }) as any;
+
+    if (newCC && newCC.id) {
+      // Create a pending income based on the proposal
+      await saveIncome({
+        description: `Receita: ${proposal.title}`,
+        amount: proposal.amount,
+        date: proposal.date,
+        accountId: accounts[0]?.id || '',
+        categoryId: 'cat-salario',
+        contactId: proposal.clientId,
+        status: 'pending',
+        costCenterId: newCC.id,
+        notes: `Gerado automaticamente da proposta: ${proposal.id}`,
+      });
+
+      alert(`Sucesso! Centro de custo "${proposal.title}" criado e receita provisionada.`);
+      setActiveView('projetos');
+    }
+  };
+
   // --- Handlers for Financial Goals ---
   const handleOpenAddGoalModal = (goal?: FinancialGoal) => {
     setEditingGoal(goal || null);
@@ -663,6 +743,10 @@ export default function App() {
       | 'goal'
       | 'account'
       | 'category'
+      | 'proposal'
+      | 'costCenter'
+      | 'rental'
+      | 'equipment'
   ) => {
     switch (type) {
       case 'expense':
@@ -691,6 +775,22 @@ export default function App() {
         break;
       case 'category':
         setIsCategoryModalOpen(true);
+        break;
+      case 'proposal':
+        setEditingProposal(null);
+        setIsProposalModalOpen(true);
+        break;
+      case 'costCenter':
+        setEditingCostCenter(null);
+        setIsCostCenterModalOpen(true);
+        break;
+      case 'rental':
+        setEditingRental(null);
+        setIsRentalModalOpen(true);
+        break;
+      case 'equipment':
+        setEditingEquipment(null);
+        setIsEquipmentModalOpen(true);
         break;
     }
   };
@@ -753,207 +853,194 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800 antialiased">
-      {/* Top Header with Company Switcher */}
-      <Header
-        currentYearMonth={currentYearMonth}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        totalTreasuryBalance={totalTreasuryBalance}
-        onChangeMonth={setCurrentYearMonth}
-        onOpenAddModal={handleOpenAddExpenseModal}
-        onOpenCategoryModal={() => setIsCategoryModalOpen(true)}
-        onOpenIncomeModal={() => handleOpenAddIncomeModal()}
-        onOpenTransferModal={() => handleOpenAddTransferModal()}
-        onOpenQuickRegisterModal={() => setIsQuickRegisterOpen(true)}
-        onExportData={handleExportExpensesCSV}
-        onResetData={() => setIsResetConfirmOpen(true)}
-        onOpenBackupModal={() => setIsBackupModalOpen(true)}
-        cloudSyncStatus={cloudSyncStatus}
-        companies={companies}
+    <div className="min-h-screen bg-slate-50 flex font-sans text-slate-800 antialiased">
+      <Sidebar 
+        activeView={activeView}
+        onViewChange={(view) => setActiveView(view as any)}
         activeCompany={activeCompany}
-        onSelectCompany={handleSelectCompany}
-        onOpenCreateCompany={() => setIsCreateCompanyOpen(true)}
-        onOpenManageMembers={() => setIsManageMembersOpen(true)}
-        currentUserEmail={currentUser.email}
-        currentUserName={currentUser.displayName}
         onLogout={logout}
+        cloudSyncStatus={cloudSyncStatus}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Error Alert Banner */}
-        {cloudSyncStatus === 'error' && (
-          <div className="mb-4 p-4 bg-rose-50 border border-rose-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-5 h-5 text-rose-600" />
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Top Header */}
+        <Header
+          currentYearMonth={currentYearMonth}
+          activeTab={'expenses'} // Placeholder for legacy compatibility if needed
+          onTabChange={() => {}} // Placeholder
+          totalTreasuryBalance={totalTreasuryBalance}
+          onChangeMonth={setCurrentYearMonth}
+          onOpenAddModal={handleOpenAddExpenseModal}
+          onOpenCategoryModal={() => setIsCategoryModalOpen(true)}
+          onOpenIncomeModal={() => handleOpenAddIncomeModal()}
+          onOpenTransferModal={() => handleOpenAddTransferModal()}
+          onOpenQuickRegisterModal={() => setIsQuickRegisterOpen(true)}
+          onExportData={handleExportExpensesCSV}
+          onResetData={() => setIsResetConfirmOpen(true)}
+          onOpenBackupModal={() => setIsBackupModalOpen(true)}
+          cloudSyncStatus={cloudSyncStatus}
+          companies={companies}
+          activeCompany={activeCompany}
+          onSelectCompany={handleSelectCompany}
+          onOpenCreateCompany={() => setIsCreateCompanyOpen(true)}
+          onOpenManageMembers={() => setIsManageMembersOpen(true)}
+          currentUserEmail={currentUser.email}
+          currentUserName={currentUser.displayName}
+          onLogout={logout}
+        />
+
+        {/* Main Content Area */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+          {/* Error Alert Banner */}
+          {cloudSyncStatus === 'error' && (
+            <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
+                  <ShieldCheck className="w-5 h-5 text-rose-600" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-rose-950">Falha na Sincronização</h4>
+                  <p className="text-xs text-rose-800 leading-relaxed max-w-xl">
+                    Verifique sua conexão ou permissões de acesso.
+                    {lastError && <code className="block mt-1 font-mono text-[10px] bg-rose-100 p-1 rounded">{lastError}</code>}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h4 className="text-sm font-bold text-rose-950">Falha na Sincronização com a Nuvem</h4>
-                <p className="text-xs text-rose-800 leading-relaxed max-w-xl">
-                  Seus dados estão sendo salvos apenas localmente. Verifique sua conexão ou permissões.
-                  {lastError && (
-                    <code className="block mt-1 font-mono text-[10px] bg-rose-100 p-1 rounded">
-                      {lastError}
-                    </code>
-                  )}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center justify-center gap-2"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Recarregar Sistema
-            </button>
-          </div>
-        )}
-
-        {/* Active Company Breadcrumb / Context Tag */}
-        {activeCompany && (
-          <div className="mb-4 flex items-center justify-between bg-white px-4 py-2.5 rounded-xl border border-slate-200/90 shadow-2xs flex-wrap gap-2">
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-slate-400 font-medium">Ambiente Ativo:</span>
-              <span
-                className="font-bold flex items-center gap-1 px-2 py-0.5 rounded-md text-white text-[11px]"
-                style={{ backgroundColor: activeCompany.color || '#4f46e5' }}
-              >
-                {activeCompany.type === 'business' ? <Building2 className="w-3 h-3" /> : <User className="w-3 h-3" />}
-                {activeCompany.name}
-              </span>
-              <span className="text-slate-500 hidden sm:inline">•</span>
-              <span className="text-slate-500 hidden sm:inline">
-                {activeCompany.type === 'business' ? 'Pessoa Jurídica (PJ)' : 'Pessoa Física (PF)'}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2.5">
               <button
-                type="button"
-                onClick={() => setIsBackupModalOpen(true)}
-                className="text-xs text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100/80 px-2.5 py-1 rounded-lg border border-emerald-200 font-semibold flex items-center gap-1.5 transition cursor-pointer"
-                title="Ver status da nuvem ou baixar cópia de segurança (backup)"
+                onClick={() => window.location.reload()}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-2"
               >
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Salvo na Nuvem (Backup)</span>
-              </button>
-
-              <button
-                onClick={() => setIsManageMembersOpen(true)}
-                className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1.5"
-              >
-                <span>Sócios ({activeCompany.memberEmails?.length || 1})</span>
+                <RotateCcw className="w-3.5 h-3.5" />
+                Recarregar
               </button>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Tab: Despesas & Graficos */}
-        {activeTab === 'expenses' && (
-          <div className="space-y-6">
-            <ExpenseSummaryCards
-              {...expenseSummary}
-              onOpenBudgetModal={() => setIsBudgetModalOpen(true)}
-            />
-
-            <MonthlyCharts
+          {activeView === 'dashboard' && (
+            <DashboardView 
               expenses={expenses}
-              categories={categories}
-              currentYearMonth={currentYearMonth}
-            />
-
-            <ExpenseList
-              expenses={expenses}
-              categories={categories}
+              incomes={incomes}
               accounts={accounts}
+              transfers={transfers}
+              costCenters={costCenters}
+              proposals={proposals}
+              onAction={handleQuickRegisterAction}
+              onViewChange={(view) => setActiveView(view as any)}
+            />
+          )}
+
+          {activeView === 'comercial' && (
+            <CommercialView 
+              proposals={proposals}
+              rentals={rentals}
+              contacts={contacts}
+              equipment={equipment}
+              onOpenProposalModal={(p) => {
+                setEditingProposal(p || null);
+                setIsProposalModalOpen(true);
+              }}
+              onDeleteProposal={deleteProposal}
+              onOpenRentalModal={(r) => {
+                setEditingRental(r || null);
+                setIsRentalModalOpen(true);
+              }}
+              onDeleteRental={deleteRental}
+              onConvertProposal={handleConvertProposal}
+            />
+          )}
+
+          {activeView === 'projetos' && (
+            <ProjectsView 
+              costCenters={costCenters}
+              contacts={contacts}
+              onOpenCostCenterModal={(cc) => {
+                setEditingCostCenter(cc || null);
+                setIsCostCenterModalOpen(true);
+              }}
+              onDeleteCostCenter={deleteCostCenter}
+            />
+          )}
+
+          {activeView === 'financeiro' && (
+            <FinancialView 
+              expenses={expenses}
+              incomes={incomes}
+              accounts={accounts}
+              transfers={transfers}
+              categories={categories}
               cards={cards}
               contacts={contacts}
+              costCenters={costCenters}
               currentYearMonth={currentYearMonth}
+              onMonthChange={setCurrentYearMonth}
+              onOpenExpenseModal={handleOpenAddExpenseModal}
+              onOpenIncomeModal={() => handleOpenAddIncomeModal()}
+              onOpenTransferModal={() => handleOpenAddTransferModal()}
               onEditExpense={handleEditExpense}
               onDeleteExpense={handleDeleteExpense}
-              onOpenAddModal={handleOpenAddExpenseModal}
+              onEditIncome={handleEditIncome}
+              onDeleteIncome={handleDeleteIncome}
+              onEditTransfer={handleEditTransfer}
+              onDeleteTransfer={handleDeleteTransfer}
               onLiquidateExpense={handleLiquidateExpense}
+              onLiquidateIncome={handleLiquidateIncome}
+              onOpenAccountModal={handleOpenAccountModal}
+              onDeleteAccount={handleDeleteAccount}
             />
-          </div>
-        )}
+          )}
 
-        {/* Tab: Tesouraria & Caixa */}
-        {activeTab === 'treasury' && (
-          <TreasuryView
-            accounts={accounts}
-            incomes={incomes}
-            expenses={expenses}
-            transfers={transfers}
-            categories={categories}
-            selectedMonth={currentYearMonth}
-            currentYearMonth={currentYearMonth}
-            onMonthChange={setCurrentYearMonth}
-            onOpenAddIncomeModal={handleOpenAddIncomeModal}
-            onOpenAddTransferModal={handleOpenAddTransferModal}
-            onOpenAccountModal={handleOpenAccountModal}
-            onDeleteAccount={handleDeleteAccount}
-            onEditIncome={handleEditIncome}
-            onDeleteIncome={handleDeleteIncome}
-            onEditTransfer={handleEditTransfer}
-            onDeleteTransfer={handleDeleteTransfer}
-            onEditExpense={handleEditExpense}
-            onDeleteExpense={handleDeleteExpense}
-            onOpenExpenseModal={handleOpenAddExpenseModal}
-            onLiquidateExpense={handleLiquidateExpense}
-            onLiquidateIncome={handleLiquidateIncome}
-          />
-        )}
+          {activeView === 'cadastros' && (
+            <RegistriesView
+              cards={cards}
+              contacts={contacts}
+              recurringBills={recurringBills}
+              goals={goals}
+              categories={categories}
+              accounts={accounts}
+              currentYearMonth={currentYearMonth}
+              activeCompany={activeCompany}
+              currentUserEmail={currentUser.email}
+              currentUserPermissions={currentUserPermissions}
+              onAddMember={handleAddMember}
+              onUpdateMember={handleUpdateMember}
+              onRemoveMember={handleRemoveMember}
+              onOpenManageMembers={() => setIsManageMembersOpen(true)}
+              onOpenCardModal={handleOpenAddCardModal}
+              onDeleteCard={handleDeleteCard}
+              onOpenContactModal={handleOpenAddContactModal}
+              onDeleteContact={handleDeleteContact}
+              onOpenRecurringModal={handleOpenAddRecurringModal}
+              onDeleteRecurring={handleDeleteRecurring}
+              onTriggerRecurringBill={handleTriggerRecurringBill}
+              onOpenGoalModal={handleOpenAddGoalModal}
+              onDeleteGoal={handleDeleteGoal}
+              onUpdateGoalAmount={handleUpdateGoalAmount}
+              onOpenAccountModal={handleOpenAccountModal}
+              onDeleteAccount={handleDeleteAccount}
+              onOpenCategoryModal={() => setIsCategoryModalOpen(true)}
+              onOpenExpenseModal={handleOpenAddExpenseModal}
+              onOpenIncomeModal={handleOpenAddIncomeModal}
+              equipment={equipment}
+              onOpenEquipmentModal={(item) => {
+                setEditingEquipment(item || null);
+                setIsEquipmentModalOpen(true);
+              }}
+              onDeleteEquipment={deleteEquipment}
+            />
+          )}
 
-        {/* Tab: Cadastros Gerais */}
-        {activeTab === 'registries' && (
-          <RegistriesView
-            cards={cards}
-            contacts={contacts}
-            recurringBills={recurringBills}
-            goals={goals}
-            categories={categories}
-            accounts={accounts}
-            currentYearMonth={currentYearMonth}
-            activeCompany={activeCompany}
-            currentUserEmail={currentUser.email}
-            currentUserPermissions={currentUserPermissions}
-            onAddMember={handleAddMember}
-            onUpdateMember={handleUpdateMember}
-            onRemoveMember={handleRemoveMember}
-            onOpenManageMembers={() => setIsManageMembersOpen(true)}
-            onOpenCardModal={handleOpenAddCardModal}
-            onDeleteCard={handleDeleteCard}
-            onOpenContactModal={handleOpenAddContactModal}
-            onDeleteContact={handleDeleteContact}
-            onOpenRecurringModal={handleOpenAddRecurringModal}
-            onDeleteRecurring={handleDeleteRecurring}
-            onTriggerRecurringBill={handleTriggerRecurringBill}
-            onOpenGoalModal={handleOpenAddGoalModal}
-            onDeleteGoal={handleDeleteGoal}
-            onUpdateGoalAmount={handleUpdateGoalAmount}
-            onOpenAccountModal={handleOpenAccountModal}
-            onDeleteAccount={handleDeleteAccount}
-            onOpenCategoryModal={() => setIsCategoryModalOpen(true)}
-            onOpenExpenseModal={handleOpenAddExpenseModal}
-            onOpenIncomeModal={handleOpenAddIncomeModal}
-          />
-        )}
-
-        {/* Tab: Relatórios e Insights */}
-        {activeTab === 'reports' && (
-          <ReportsView
-            expenses={expenses}
-            incomes={incomes}
-            categories={categories}
-            accounts={accounts}
-            selectedMonth={currentYearMonth}
-            onMonthChange={setCurrentYearMonth}
-          />
-        )}
-      </main>
+          {activeView === 'relatorios' && (
+            <ReportsView
+              expenses={expenses}
+              incomes={incomes}
+              categories={categories}
+              accounts={accounts}
+              selectedMonth={currentYearMonth}
+              onMonthChange={setCurrentYearMonth}
+            />
+          )}
+        </main>
+      </div>
 
       {/* Modals */}
       <FinancialFormModal
@@ -966,6 +1053,7 @@ export default function App() {
         accounts={accounts}
         cards={cards}
         contacts={contacts}
+        costCenters={costCenters}
         defaultDate={`${currentYearMonth}-01`}
       />
 
@@ -1044,6 +1132,38 @@ export default function App() {
         onSelectAction={handleQuickRegisterAction}
       />
 
+      <CostCenterModal
+        isOpen={isCostCenterModalOpen}
+        onClose={() => setIsCostCenterModalOpen(false)}
+        onSave={saveCostCenter}
+        editingCC={editingCostCenter}
+        contacts={contacts}
+      />
+
+      <ProposalModal
+        isOpen={isProposalModalOpen}
+        onClose={() => setIsProposalModalOpen(false)}
+        onSave={saveProposal}
+        editingProposal={editingProposal}
+        contacts={contacts}
+      />
+
+      <RentalModal
+        isOpen={isRentalModalOpen}
+        onClose={() => setIsRentalModalOpen(false)}
+        onSave={saveRental}
+        editingRental={editingRental}
+        contacts={contacts}
+        equipment={equipment}
+      />
+
+      <EquipmentModal
+        isOpen={isEquipmentModalOpen}
+        onClose={() => setIsEquipmentModalOpen(false)}
+        onSave={saveEquipment}
+        editingItem={editingEquipment}
+      />
+
       {/* Multi-Company Modals */}
       <CreateCompanyModal
         isOpen={isCreateCompanyOpen}
@@ -1079,6 +1199,36 @@ export default function App() {
         lastError={lastError}
         onRefreshData={() => window.location.reload()}
       />
+
+      <DatabaseSettingsModal
+        isOpen={isDbSettingsOpen}
+        onClose={() => setIsDbSettingsOpen(false)}
+      />
+
+      {/* Database Status Notification */}
+      {dbHealth?.database === 'missing' && (
+        <div className="fixed bottom-24 right-6 left-6 md:left-auto md:w-96 z-50 animate-in slide-in-from-bottom-4 duration-500">
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 shadow-xl flex items-start gap-4">
+            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+              <Database className="w-5 h-5 text-amber-600" />
+            </div>
+            <div className="flex-1">
+              <h4 className="text-sm font-bold text-amber-900">Configuração de Banco SQL (Neon)</h4>
+              <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+                Para resolver os erros de conexão, cole sua <strong>DATABASE_URL</strong> do Neon nas <strong>Configurações (Engrenagem)</strong> do sistema.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button 
+                  onClick={() => setIsDbSettingsOpen(true)}
+                  className="text-[10px] font-bold px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
+                >
+                  Configurar agora
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

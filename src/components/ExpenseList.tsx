@@ -10,8 +10,9 @@ import {
   CreditCard as CreditCardIcon,
   Wallet,
   CheckCircle2,
+  Clock,
 } from 'lucide-react';
-import { Expense, Category, PaymentMethod, TreasuryAccount, CreditCard, ContactPerson } from '../types';
+import { Expense, Category, PaymentMethod, TreasuryAccount, CreditCard, ContactPerson, CostCenter } from '../types';
 import {
   formatCurrency,
   formatDateBR,
@@ -25,6 +26,7 @@ interface ExpenseListProps {
   accounts?: TreasuryAccount[];
   cards?: CreditCard[];
   contacts?: ContactPerson[];
+  costCenters?: CostCenter[];
   currentYearMonth: string;
   onEditExpense: (expense: Expense) => void;
   onDeleteExpense: (expenseId: string) => void;
@@ -40,6 +42,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
   accounts = [],
   cards = [],
   contacts = [],
+  costCenters = [],
   currentYearMonth,
   onEditExpense,
   onDeleteExpense,
@@ -68,6 +71,10 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
   const contactMap = useMemo(() => {
     return new Map<string, string>(safeContacts.map((c) => [c.id, c.name]));
   }, [safeContacts]);
+
+  const costCenterMap = useMemo(() => {
+    return new Map<string, string>(costCenters.map((cc) => [cc.id, cc.name]));
+  }, [costCenters]);
 
   // Filter expenses for current month
   const monthExpenses = useMemo(() => {
@@ -261,10 +268,28 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-semibold text-slate-900">{expense.description}</span>
-                        {expense.status === 'pending' && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                        {(expense.status === 'pending' || expense.status === 'PENDENTE') && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 uppercase">
                             A Pagar
                           </span>
+                        )}
+                        {(expense.status === 'paid' || expense.status === 'PAGO' || expense.status === 'liquidated') && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
+                            Pago
+                          </span>
+                        )}
+                        {(expense.status === 'overdue' || expense.status === 'VENCIDO') && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 uppercase">
+                            Vencido
+                          </span>
+                        )}
+                        {(expense.status === 'cancelled' || expense.status === 'CANCELADO') && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-50 text-slate-700 border border-slate-200 uppercase">
+                            Cancelado
+                          </span>
+                        )}
+                        {expense.isRecurring && (
+                          <Clock className="w-3 h-3 text-indigo-500" />
                         )}
                         {expense.installments && (
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
@@ -272,15 +297,35 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-400 mt-0.5">
-                        {expense.contactId && contactMap.get(expense.contactId) && (
-                          <span className="text-violet-600 font-medium">
-                            Favorecido: {contactMap.get(expense.contactId)}
-                          </span>
-                        )}
-                        {expense.notes && (
-                          <span className="truncate max-w-xs">{expense.notes}</span>
-                        )}
+                      <div className="flex flex-col gap-0.5 mt-1">
+                        <div className="flex items-center gap-2 flex-wrap text-[10px] uppercase tracking-tight">
+                          {expense.documentNumber && (
+                            <span className="text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded">
+                              NF: {expense.documentNumber}
+                            </span>
+                          )}
+                          {expense.splits && expense.splits.length > 0 ? (
+                            <span className="text-indigo-600 font-bold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                              Múltiplas Obras ({expense.splits.length})
+                            </span>
+                          ) : (
+                            expense.costCenterId && (
+                              <span className="text-indigo-600 font-bold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                                Obra: {costCenterMap.get(expense.costCenterId)}
+                              </span>
+                            )
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-400">
+                          {expense.contactId && contactMap.get(expense.contactId) && (
+                            <span className="text-violet-600 font-medium">
+                              Fornecedor: {contactMap.get(expense.contactId)}
+                            </span>
+                          )}
+                          {expense.notes && (
+                            <span className="truncate max-w-xs italic">{expense.notes}</span>
+                          )}
+                        </div>
                       </div>
                     </td>
 

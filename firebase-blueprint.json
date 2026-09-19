@@ -46,7 +46,13 @@
         "accountId": { "type": "string" },
         "cardId": { "type": "string" },
         "contactId": { "type": "string" },
+        "costCenterId": { "type": "string" },
         "status": { "type": "string" },
+        "splits": { "type": "array" },
+        "transacao_id_banco": { "type": "string" },
+        "linha_digitavel": { "type": "string" },
+        "documentNumber": { "type": "string" },
+        "isRecurring": { "type": "boolean" },
         "createdAt": { "type": "number" }
       },
       "required": ["id", "description", "amount", "date", "categoryId", "paymentMethod"]
@@ -63,10 +69,73 @@
         "accountId": { "type": "string" },
         "category": { "type": "string" },
         "contactId": { "type": "string" },
+        "costCenterId": { "type": "string" },
         "status": { "type": "string" },
+        "transacao_id_banco": { "type": "string" },
+        "linha_digitavel": { "type": "string" },
+        "isRecurring": { "type": "boolean" },
+        "installmentNumber": { "type": "number" },
+        "totalInstallments": { "type": "number" },
         "createdAt": { "type": "number" }
       },
       "required": ["id", "description", "amount", "date", "accountId", "category"]
+    },
+    "CostCenter": {
+      "title": "CostCenter",
+      "description": "Centro de custo (Obra ou Projeto) vinculado a um cliente.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "type": "string" },
+        "clientId": { "type": "string" },
+        "budget": { "type": "number" },
+        "color": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "status", "clientId", "createdAt"]
+    },
+    "Proposal": {
+      "title": "Proposal",
+      "description": "Orçamento ou proposta comercial.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "clientId": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string" },
+        "date": { "type": "string" },
+        "items": { "type": "array" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "title", "clientId", "amount", "status", "date", "createdAt"]
+    },
+    "Equipment": {
+      "title": "Equipment",
+      "description": "Equipamento disponível para locação.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "type": "string" },
+        "dailyRate": { "type": "number" }
+      },
+      "required": ["id", "name", "status", "dailyRate"]
+    },
+    "Rental": {
+      "title": "Rental",
+      "description": "Controle de locação de equipamento.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "equipmentId": { "type": "string" },
+        "clientId": { "type": "string" },
+        "startDate": { "type": "string" },
+        "status": { "type": "string" },
+        "amount": { "type": "number" }
+      },
+      "required": ["id", "equipmentId", "clientId", "startDate", "status", "amount"]
     },
     "CreditCard": {
       "title": "CreditCard",
@@ -105,7 +174,9 @@
         "type": { "type": "string" },
         "phone": { "type": "string" },
         "email": { "type": "string" },
-        "document": { "type": "string" }
+        "document": { "type": "string" },
+        "address": { "type": "string" },
+        "pixKey": { "type": "string" }
       },
       "required": ["id", "name", "type"]
     },
@@ -192,6 +263,22 @@
     "/companies/{companyId}/goals/{goalId}": {
       "schema": { "$ref": "#/entities/FinancialGoal" },
       "description": "Metas da empresa."
+    },
+    "/companies/{companyId}/costCenters/{costCenterId}": {
+      "schema": { "$ref": "#/entities/CostCenter" },
+      "description": "Centros de custo (obras/projetos) da empresa."
+    },
+    "/companies/{companyId}/proposals/{proposalId}": {
+      "schema": { "$ref": "#/entities/Proposal" },
+      "description": "Propostas e orçamentos comerciais."
+    },
+    "/companies/{companyId}/equipment/{equipmentId}": {
+      "schema": { "$ref": "#/entities/Equipment" },
+      "description": "Equipamentos para locação."
+    },
+    "/companies/{companyId}/rentals/{rentalId}": {
+      "schema": { "$ref": "#/entities/Rental" },
+      "description": "Registros de locações."
     }
   }
 }
