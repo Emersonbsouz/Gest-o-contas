@@ -20,7 +20,6 @@ import { CreateCompanyModal } from './components/CreateCompanyModal';
 import { ManageMembersModal } from './components/ManageMembersModal';
 import { ResetConfirmModal } from './components/ResetConfirmModal';
 import { BackupSecurityModal } from './components/BackupSecurityModal';
-import { DatabaseSettingsModal } from './components/DatabaseSettingsModal';
 import { AuthView } from './components/AuthView';
 import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './components/DashboardView';
@@ -197,7 +196,6 @@ export default function App() {
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
-  const [isDbSettingsOpen, setIsDbSettingsOpen] = useState(false);
 
   // Unified Financial Modal (Expense/Income)
   const [isFinancialModalOpen, setIsFinancialModalOpen] = useState(false);
@@ -239,15 +237,6 @@ export default function App() {
 
   const [isEquipmentModalOpen, setIsEquipmentModalOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null);
-
-  const [dbHealth, setDbHealth] = useState<{ status: string; database: string } | null>(null);
-
-  useEffect(() => {
-    fetch('/api/health')
-      .then(res => res.json())
-      .then(data => setDbHealth(data))
-      .catch(() => setDbHealth({ status: 'error', database: 'missing' }));
-  }, []);
 
   // Total Treasury Balance
   const totalTreasuryBalance = useMemo(() => {
@@ -1199,36 +1188,6 @@ export default function App() {
         lastError={lastError}
         onRefreshData={() => window.location.reload()}
       />
-
-      <DatabaseSettingsModal
-        isOpen={isDbSettingsOpen}
-        onClose={() => setIsDbSettingsOpen(false)}
-      />
-
-      {/* Database Status Notification */}
-      {dbHealth?.database === 'missing' && (
-        <div className="fixed bottom-24 right-6 left-6 md:left-auto md:w-96 z-50 animate-in slide-in-from-bottom-4 duration-500">
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 shadow-xl flex items-start gap-4">
-            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-              <Database className="w-5 h-5 text-amber-600" />
-            </div>
-            <div className="flex-1">
-              <h4 className="text-sm font-bold text-amber-900">Configuração de Banco SQL (Neon)</h4>
-              <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-                Para resolver os erros de conexão, cole sua <strong>DATABASE_URL</strong> do Neon nas <strong>Configurações (Engrenagem)</strong> do sistema.
-              </p>
-              <div className="mt-3 flex gap-2">
-                <button 
-                  onClick={() => setIsDbSettingsOpen(true)}
-                  className="text-[10px] font-bold px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
-                >
-                  Configurar agora
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
