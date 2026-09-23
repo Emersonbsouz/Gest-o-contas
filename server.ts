@@ -9,20 +9,18 @@ const __dirname = dirname(__filename);
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
 
   app.use(express.json());
 
-  // API Routes
-  app.get('/api/health', (req, res) => {
-    res.json({ 
-      status: 'ok', 
+  app.get('/api/health', (_req, res) => {
+    res.json({
+      status: 'ok',
       service: 'Firebase Integrated',
-      env: process.env.NODE_ENV
+      env: process.env.NODE_ENV || 'development',
     });
   });
 
-  // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -32,14 +30,17 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.get('*', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Servidor rodando em http://localhost:${PORT}`);
+    console.log(`Servidor rodando na porta ${PORT}`);
   });
 }
 
-startServer();
+startServer().catch((error) => {
+  console.error('Falha ao iniciar o servidor:', error);
+  process.exit(1);
+});
