@@ -1,164 +1,168 @@
-import {
-  collection,
-  doc,
-  getDocs,
-  getDoc,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  onSnapshot,
-  arrayUnion,
-  arrayRemove,
-  writeBatch,
-} from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import {
   Company,
-  Expense,
-  Income,
-  TreasuryAccount,
-  CreditCard,
-  Category,
-  ContactPerson,
-  RecurringBill,
-  FinancialGoal,
-  AccountTransfer,
-  MonthlyBudget,
   CompanyRole,
   MemberPermissions,
   DEFAULT_ROLE_PERMISSIONS,
-  CostCenter,
-  Proposal,
-  Equipment,
-  Rental,
+  CompanyMemberInfo,
 } from '../types';
 import { DEFAULT_CATEGORIES } from '../data/defaultCategories';
-import { DEFAULT_ACCOUNTS, getInitialIncomes, getInitialTransfers } from '../data/defaultTreasury';
-import { DEFAULT_CREDIT_CARDS, DEFAULT_CONTACTS, DEFAULT_RECURRING_BILLS, DEFAULT_GOALS } from '../data/defaultRegistries';
-import { getInitialExpenses } from '../data/sampleExpenses';
-import { getCurrentYearMonth } from '../utils/formatters';
 
-// Initialize default companies when a user signs up or signs in for the first time
-export async function ensureDefaultCompanies(userId: string, userEmail: string): Promise<Company[]> {
-  const path = 'companies';
-  try {
-    const normalizedEmail = userEmail.toLowerCase().trim();
-    const companiesRef = collection(db, path);
-    
-    // Check if user has any companies
-    const q1 = query(companiesRef, where('ownerId', '==', userId));
-    const snapshot1 = await getDocs(q1);
+const POLL_INTERVAL_MS = 8000;
 
-    const q2 = query(companiesRef, where('memberEmails', 'array-contains', normalizedEmail));
-    const snapshot2 = await getDocs(q2);
-
-    const map = new Map<string, Company>();
-    snapshot1.forEach((d) => map.set(d.id, d.data() as Company));
-    snapshot2.forEach((d) => map.set(d.id, d.data() as Company));
-
-    if (map.size > 0) {
-      return Array.from(map.values()).sort((a, b) => a.createdAt - b.createdAt);
-    }
-
-    // No companies found, initialize the requested 3 defaults
-    const now = Date.now();
-    const defaultCompanies: Company[] = [
-      {
-        id: `personal_${userId.slice(0, 8)}`,
-        name: 'Despesas Pessoais (PF)',
-        type: 'personal',
-        ownerId: userId,
-        ownerEmail: normalizedEmail,
-        memberEmails: [normalizedEmail],
-        color: '#4f46e5', // Indigo
-        createdAt: now,
-      },
-      {
-        id: `individual_${userId.slice(0, 8)}`,
-        name: 'Minha Empresa Individual (PJ)',
-        type: 'business',
-        ownerId: userId,
-        ownerEmail: normalizedEmail,
-        memberEmails: [normalizedEmail],
-        color: '#0284c7', // Sky Blue
-        createdAt: now + 1,
-      },
-      {
-        id: `cacto_${userId.slice(0, 8)}`,
-        name: 'Empresa Cacto (PJ)',
-        type: 'business',
-        ownerId: userId,
-        ownerEmail: normalizedEmail,
-        memberEmails: [normalizedEmail, 'socio@cacto.com'],
-        color: '#059669', // Emerald green (cacto)
-        createdAt: now + 2,
-      },
-    ];
-
-    for (const comp of defaultCompanies) {
-      try {
-        await setDoc(doc(db, 'companies', comp.id), comp);
-        // Seed company initial default categories and accounts
-        await seedCompanyDefaults(comp.id);
-      } catch (e) {
-        console.error(`[ensureDefaultCompanies] Erro ao criar empresa ${comp.id}:`, e);
-        handleFirestoreError(e, OperationType.CREATE, `companies/${comp.id}`);
-      }
-    }
-
-    return defaultCompanies;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.GET, path);
-    // This line is technically unreachable due to handleFirestoreError throwing, 
-    // but added to satisfy TS return type if needed before actual throw
-    return [];
+function fromDbRole(role?: string | null): CompanyRole {
+  switch (role) {
+    case 'owner':
+    case 'admin':
+    case 'partner':
+    case 'viewer':
+      return role;
+    case 'finance':
+      return 'partner';
+    case 'collaborator':
+    default:
+      return 'operator';
   }
 }
 
-// Seed starter categories for a new company
+function toDbRole(role: CompanyRole): 'owner' | 'admin' | 'partner' | 'finance' | 'collaborator' | 'viewer' {
+  switch (role) {
+    case 'owner':
+    case 'admin':
+    case 'partner':
+    case 'viewer':
+      return role;
+    case 'operator':
+    case 'custom':
+    default:
+      return 'collaborator';
+  }
+}
+
+function timestamp(value?: string | null): number {
+  if (!value) return Date.now();
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
+async function hydrateCompanies(rows: any[], fallbackEmail: string): Promise<Company[]> {
+  if (!rows.length) return [];
+  const companyIds = rows.map((row) => row.id);
+  const { data: members, error: membersError } = await supabase
+    .from('company_members')
+    .select('company_id,email,name,role,permissions,created_at')
+    .in('company_id', companyIds);
+
+  if (membersError) throw membersError;
+
+  return rows.map((row) => {
+    const related = (members || []).filter((member: any) => member.company_id === row.id);
+    const ownerMember = related.find((member: any) => member.role === 'owner');
+    const memberEmails = related.map((member: any) => String(member.email || '').toLowerCase()).filter(Boolean);
+    const membersInfo: CompanyMemberInfo[] = related.map((member: any) => ({
+      email: member.email,
+      name: member.name || undefined,
+      role: fromDbRole(member.role),
+      permissions: member.permissions || DEFAULT_ROLE_PERMISSIONS[fromDbRole(member.role)],
+      addedAt: timestamp(member.created_at),
+    }));
+
+    const normalizedFallback = fallbackEmail.toLowerCase().trim();
+    const ownerEmail = ownerMember?.email || normalizedFallback;
+    if (ownerEmail && !memberEmails.includes(ownerEmail)) memberEmails.unshift(ownerEmail);
+
+    return {
+      id: row.id,
+      name: row.name,
+      type: row.type,
+      ownerId: row.owner_id,
+      ownerEmail,
+      memberEmails,
+      membersInfo,
+      color: row.color || '#4f46e5',
+      createdAt: timestamp(row.created_at),
+    } as Company;
+  });
+}
+
+async function loadAccessibleCompanies(userEmail: string): Promise<Company[]> {
+  const { data, error } = await supabase
+    .from('companies')
+    .select('id,name,type,owner_id,color,created_at')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return hydrateCompanies(data || [], userEmail);
+}
+
 async function seedCompanyDefaults(companyId: string) {
-  try {
-    const batch = writeBatch(db);
-
-    // Only essential categories so user starts clean from scratch
-    DEFAULT_CATEGORIES.forEach((cat) => {
-      const ref = doc(db, 'companies', companyId, 'categories', cat.id);
-      batch.set(ref, cat);
-    });
-
-    await batch.commit();
-  } catch (e) {
-    handleFirestoreError(e, OperationType.WRITE, `companies/${companyId}/defaults`);
-  }
+  await Promise.all(
+    DEFAULT_CATEGORIES.map((category) =>
+      saveCompanyDoc(companyId, 'categories', category.id, category)
+    )
+  );
 }
 
-// Create a new custom company
+async function createCompanyRow(
+  userId: string,
+  userEmail: string,
+  data: { name: string; type: 'personal' | 'business'; color: string; legacyId?: string }
+): Promise<Company> {
+  const normalizedEmail = userEmail.toLowerCase().trim();
+  const { data: row, error } = await supabase
+    .from('companies')
+    .insert({
+      name: data.name.trim(),
+      type: data.type,
+      owner_id: userId,
+      color: data.color || '#4f46e5',
+      legacy_id: data.legacyId || null,
+    })
+    .select('id,name,type,owner_id,color,created_at')
+    .single();
+  if (error) throw error;
+
+  const ownerPermissions = DEFAULT_ROLE_PERMISSIONS.owner;
+  const { error: memberError } = await supabase.from('company_members').insert({
+    company_id: row.id,
+    user_id: userId,
+    email: normalizedEmail,
+    name: normalizedEmail.split('@')[0] || 'Proprietário',
+    role: 'owner',
+    permissions: ownerPermissions,
+  });
+  if (memberError) throw memberError;
+
+  await seedCompanyDefaults(row.id);
+  const hydrated = await hydrateCompanies([row], normalizedEmail);
+  return hydrated[0];
+}
+
+export async function ensureDefaultCompanies(userId: string, userEmail: string): Promise<Company[]> {
+  const existing = await loadAccessibleCompanies(userEmail);
+  if (existing.length > 0) return existing;
+
+  const suffix = userId.slice(0, 8);
+  const defaults = [
+    { name: 'Despesas Pessoais (PF)', type: 'personal' as const, color: '#4f46e5', legacyId: `personal_${suffix}` },
+    { name: 'Minha Empresa Individual (PJ)', type: 'business' as const, color: '#0284c7', legacyId: `individual_${suffix}` },
+    { name: 'Empresa Cacto (PJ)', type: 'business' as const, color: '#059669', legacyId: `cacto_${suffix}` },
+  ];
+
+  const created: Company[] = [];
+  for (const item of defaults) {
+    created.push(await createCompanyRow(userId, userEmail, item));
+  }
+  return created;
+}
+
 export async function createNewCompany(
   userId: string,
   userEmail: string,
   data: { name: string; type: 'personal' | 'business'; color: string }
 ): Promise<Company> {
-  const normalizedEmail = userEmail.toLowerCase().trim();
-  const id = `company_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-  const company: Company = {
-    id,
-    name: data.name,
-    type: data.type,
-    ownerId: userId,
-    ownerEmail: normalizedEmail,
-    memberEmails: [normalizedEmail],
-    color: data.color || '#4f46e5',
-    createdAt: Date.now(),
-  };
-
-  await setDoc(doc(db, 'companies', id), company);
-  await seedCompanyDefaults(id);
-  return company;
+  return createCompanyRow(userId, userEmail, data);
 }
 
-// Add member by email to a company with optional name, role and granular permissions
 export async function addCompanyMember(
   companyId: string,
   email: string,
@@ -167,228 +171,132 @@ export async function addCompanyMember(
   permissions?: MemberPermissions
 ): Promise<void> {
   const normalizedEmail = email.toLowerCase().trim();
-  const companyRef = doc(db, 'companies', companyId);
-  
   const effectivePermissions = permissions || DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS.partner;
-
-  try {
-    const compSnap = await getDoc(companyRef);
-    if (compSnap.exists()) {
-      const currentData = compSnap.data() as Company;
-      const currentMembers = currentData.memberEmails || [];
-      const currentInfo = currentData.membersInfo || [];
-
-      const updatedMembers = Array.from(new Set([...currentMembers, normalizedEmail]));
-      const existingInfoIndex = currentInfo.findIndex((m) => (m.email || '').toLowerCase() === normalizedEmail);
-      const newMemberObj = {
-        email: normalizedEmail,
-        name: name?.trim() || normalizedEmail.split('@')[0],
-        role,
-        permissions: effectivePermissions,
-        addedAt: Date.now(),
-      };
-
-      let updatedInfo = [...currentInfo];
-      if (existingInfoIndex >= 0) {
-        updatedInfo[existingInfoIndex] = { ...updatedInfo[existingInfoIndex], ...newMemberObj };
-      } else {
-        updatedInfo.push(newMemberObj);
-      }
-
-      await updateDoc(companyRef, {
-        memberEmails: updatedMembers,
-        membersInfo: updatedInfo,
-      });
-    }
-  } catch (e) {
-    handleFirestoreError(e, OperationType.UPDATE, `companies/${companyId}`);
-  }
+  const { error } = await supabase.from('company_members').upsert(
+    {
+      company_id: companyId,
+      email: normalizedEmail,
+      name: name?.trim() || normalizedEmail.split('@')[0],
+      role: toDbRole(role),
+      permissions: effectivePermissions,
+    },
+    { onConflict: 'company_id,email' }
+  );
+  if (error) throw error;
 }
 
-// Update existing member permissions and role
 export async function updateCompanyMember(
   companyId: string,
   email: string,
-  updates: {
-    name?: string;
-    role?: CompanyRole;
-    permissions?: MemberPermissions;
-  }
+  updates: { name?: string; role?: CompanyRole; permissions?: MemberPermissions }
 ): Promise<void> {
   const normalizedEmail = email.toLowerCase().trim();
-  const companyRef = doc(db, 'companies', companyId);
-
-  try {
-    const compSnap = await getDoc(companyRef);
-    if (compSnap.exists()) {
-      const currentData = compSnap.data() as Company;
-      const currentInfo = currentData.membersInfo || [];
-      const existingInfoIndex = currentInfo.findIndex((m) => (m.email || '').toLowerCase() === normalizedEmail);
-
-      const effectiveRole = updates.role || (existingInfoIndex >= 0 ? currentInfo[existingInfoIndex].role : 'partner') || 'partner';
-      const effectivePermissions = updates.permissions || (existingInfoIndex >= 0 && currentInfo[existingInfoIndex].permissions ? currentInfo[existingInfoIndex].permissions : DEFAULT_ROLE_PERMISSIONS[effectiveRole]);
-
-      const updatedObj = {
-        email: normalizedEmail,
-        name: updates.name !== undefined ? updates.name.trim() : (existingInfoIndex >= 0 ? currentInfo[existingInfoIndex].name : normalizedEmail.split('@')[0]),
-        role: effectiveRole,
-        permissions: effectivePermissions,
-        addedAt: existingInfoIndex >= 0 && currentInfo[existingInfoIndex].addedAt ? currentInfo[existingInfoIndex].addedAt : Date.now(),
-      };
-
-      let updatedInfo = [...currentInfo];
-      if (existingInfoIndex >= 0) {
-        updatedInfo[existingInfoIndex] = updatedObj;
-      } else {
-        updatedInfo.push(updatedObj);
-      }
-
-      await updateDoc(companyRef, {
-        membersInfo: updatedInfo,
-      });
-    }
-  } catch (e) {
-    handleFirestoreError(e, OperationType.UPDATE, `companies/${companyId}`);
-  }
+  const patch: Record<string, unknown> = {};
+  if (updates.name !== undefined) patch.name = updates.name.trim();
+  if (updates.role !== undefined) patch.role = toDbRole(updates.role);
+  if (updates.permissions !== undefined) patch.permissions = updates.permissions;
+  const { error } = await supabase
+    .from('company_members')
+    .update(patch)
+    .eq('company_id', companyId)
+    .eq('email', normalizedEmail);
+  if (error) throw error;
 }
 
-// Remove member from a company
 export async function removeCompanyMember(companyId: string, email: string): Promise<void> {
-  const normalizedEmail = email.toLowerCase().trim();
-  const companyRef = doc(db, 'companies', companyId);
-
-  try {
-    const compSnap = await getDoc(companyRef);
-    if (compSnap.exists()) {
-      const currentData = compSnap.data() as Company;
-      const updatedMembers = (currentData.memberEmails || []).filter(
-        (m) => (m || '').toLowerCase() !== normalizedEmail
-      );
-      const updatedInfo = (currentData.membersInfo || []).filter(
-        (m) => (m.email || '').toLowerCase() !== normalizedEmail
-      );
-
-      await updateDoc(companyRef, {
-        memberEmails: updatedMembers,
-        membersInfo: updatedInfo,
-      });
-    }
-  } catch (e) {
-    handleFirestoreError(e, OperationType.UPDATE, `companies/${companyId}`);
-  }
+  const { error } = await supabase
+    .from('company_members')
+    .delete()
+    .eq('company_id', companyId)
+    .eq('email', email.toLowerCase().trim());
+  if (error) throw error;
 }
 
-// Subscribe to companies for a user in realtime
 export function subscribeToUserCompanies(
-  userId: string,
+  _userId: string,
   userEmail: string,
   onUpdate: (companies: Company[]) => void
 ) {
-  const normalizedEmail = userEmail.toLowerCase().trim();
-  const companiesRef = collection(db, 'companies');
-
-  // Query where user is owner OR email is in memberEmails
-  const q = query(companiesRef, where('memberEmails', 'array-contains', normalizedEmail));
-
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const list: Company[] = [];
-      snapshot.forEach((d) => list.push(d.data() as Company));
-      list.sort((a, b) => a.createdAt - b.createdAt);
-      onUpdate(list);
-    },
-    (err) => {
-      handleFirestoreError(err, OperationType.LIST, 'companies');
+  let active = true;
+  const load = async () => {
+    try {
+      const companies = await loadAccessibleCompanies(userEmail);
+      if (active) onUpdate(companies);
+    } catch (error) {
+      console.error('[Supabase] Erro ao atualizar empresas:', error);
     }
-  );
+  };
+  void load();
+  const timer = window.setInterval(load, POLL_INTERVAL_MS);
+  return () => {
+    active = false;
+    window.clearInterval(timer);
+  };
 }
 
-// Real-time synchronization for all company collections
+export async function loadCompanySubcollection<T>(companyId: string, collectionName: string): Promise<T[]> {
+  const { data, error } = await supabase
+    .from('company_documents')
+    .select('doc_id,payload,created_at')
+    .eq('company_id', companyId)
+    .eq('collection_name', collectionName)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map((row: any) => ({ ...(row.payload || {}), id: row.payload?.id || row.doc_id } as T));
+}
+
 export function subscribeToCompanySubcollection<T>(
   companyId: string,
-  subcollectionName: string,
+  collectionName: string,
   onUpdate: (items: T[]) => void,
-  onError?: (err: any) => void
+  onError?: (err: unknown) => void
 ) {
-  const colRef = collection(db, 'companies', companyId, subcollectionName);
-  return onSnapshot(
-    colRef,
-    (snapshot) => {
-      const items: T[] = [];
-      snapshot.forEach((d) => items.push(d.data() as T));
-      onUpdate(items);
-    },
-    (err) => {
-      if (onError) onError(err);
-      handleFirestoreError(err, OperationType.LIST, `companies/${companyId}/${subcollectionName}`);
-    }
-  );
-}
-
-// Generic save document to company subcollection
-export async function saveCompanyDoc(companyId: string, subcollection: string, docId: string, data: any) {
-  const path = `companies/${companyId}/${subcollection}/${docId}`;
-  try {
-    const ref = doc(db, 'companies', companyId, subcollection, docId);
-    await setDoc(ref, data, { merge: true });
-  } catch (e) {
-    handleFirestoreError(e, OperationType.WRITE, path);
-  }
-}
-
-// Generic delete document from company subcollection
-export async function deleteCompanyDoc(companyId: string, subcollection: string, docId: string) {
-  const path = `companies/${companyId}/${subcollection}/${docId}`;
-  try {
-    const ref = doc(db, 'companies', companyId, subcollection, docId);
-    await deleteDoc(ref);
-  } catch (e) {
-    handleFirestoreError(e, OperationType.DELETE, path);
-  }
-}
-
-// Clear all financial records for a company (start from scratch)
-export async function clearCompanyData(companyId: string, keepCategories: boolean = true): Promise<void> {
-  const subcollections = [
-    'expenses',
-    'incomes',
-    'transfers',
-    'accounts',
-    'cards',
-    'contacts',
-    'recurring',
-    'goals',
-    'budgets',
-    'costCenters',
-    'proposals',
-    'equipment',
-    'rentals',
-  ];
-
-  if (!keepCategories) {
-    subcollections.push('categories');
-  }
-
-  for (const sub of subcollections) {
+  let active = true;
+  const load = async () => {
     try {
-      const colRef = collection(db, 'companies', companyId, sub);
-      const snap = await getDocs(colRef);
-      if (snap.empty) continue;
-
-      const docs = snap.docs;
-      // Firestore batches support up to 500 writes; chunk into groups of 300
-      for (let i = 0; i < docs.length; i += 300) {
-        const chunk = docs.slice(i, i + 300);
-        if (chunk.length === 0) continue;
-        const batch = writeBatch(db);
-        chunk.forEach((docSnap) => {
-          batch.delete(docSnap.ref);
-        });
-        await batch.commit();
-      }
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `companies/${companyId}/${sub}`);
+      const items = await loadCompanySubcollection<T>(companyId, collectionName);
+      if (active) onUpdate(items);
+    } catch (error) {
+      if (active && onError) onError(error);
+      else console.error(`[Supabase] Erro em ${collectionName}:`, error);
     }
-  }
+  };
+  void load();
+  const timer = window.setInterval(load, POLL_INTERVAL_MS);
+  return () => {
+    active = false;
+    window.clearInterval(timer);
+  };
+}
+
+export async function saveCompanyDoc(companyId: string, collectionName: string, docId: string, data: any) {
+  const payload = { ...(data || {}), id: data?.id || docId };
+  const { error } = await supabase.from('company_documents').upsert(
+    {
+      company_id: companyId,
+      collection_name: collectionName,
+      doc_id: docId,
+      payload,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'company_id,collection_name,doc_id' }
+  );
+  if (error) throw error;
+}
+
+export async function deleteCompanyDoc(companyId: string, collectionName: string, docId: string) {
+  const { error } = await supabase
+    .from('company_documents')
+    .delete()
+    .eq('company_id', companyId)
+    .eq('collection_name', collectionName)
+    .eq('doc_id', docId);
+  if (error) throw error;
+}
+
+export async function clearCompanyData(companyId: string, keepCategories: boolean = true): Promise<void> {
+  let request = supabase.from('company_documents').delete().eq('company_id', companyId);
+  if (keepCategories) request = request.neq('collection_name', 'categories');
+  const { error } = await request;
+  if (error) throw error;
 }
