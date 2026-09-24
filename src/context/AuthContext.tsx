@@ -78,7 +78,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const result = await signInWithPopup(auth, provider);
       setCurrentUser(toAppUser(result.user));
-      await migrateAuthenticatedUser(result.user);
+      void migrateAuthenticatedUser(result.user);
     } finally {
       setLoading(false);
     }
@@ -90,7 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const credential = await signInWithEmailAndPassword(auth, cleanEmail, pass);
       setCurrentUser(toAppUser(credential.user));
-      await migrateAuthenticatedUser(credential.user, pass);
+      void migrateAuthenticatedUser(credential.user, pass);
     } finally {
       setLoading(false);
     }
@@ -110,7 +110,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ...toAppUser(credential.user),
         displayName: cleanName || credential.user.email?.split('@')[0] || 'Usuário',
       });
-      await migrateAuthenticatedUser(credential.user, pass);
+      void migrateAuthenticatedUser(credential.user, pass);
     } finally {
       setLoading(false);
     }
