@@ -8,8 +8,12 @@ import {
   signInWithPopup,
   signOut,
   updateProfile,
+  type User as FirebaseUser,
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
+import { migrateFirebaseDataToSupabase } from '../services/firebaseMigrationService';
+import { establishSupabaseSession } from '../services/supabaseAuthBridge';
 
 export interface AppUser {
   uid: string;
@@ -37,6 +41,20 @@ function toAppUser(user: { uid: string; email: string | null; displayName: strin
   };
 }
 
+async function migrateAuthenticatedUser(user: FirebaseUser, password?: string) {
+  try {
+    await establishSupabaseSession(user, password);
+    const summary = await migrateFirebaseDataToSupabase(user);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('supabaseMigrationLastResult', JSON.stringify(summary));
+      window.localStorage.setItem('supabaseMigrationLastRun', new Date().toISOString());
+    }
+    console.info('[migration] Firebase -> Supabase concluída', summary);
+  } catch (error) {
+    console.error('[migration] Firebase -> Supabase pendente/falhou', error);
+  }
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,6 +63,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user ? toAppUser(user) : null);
       setLoading(false);
+
+      if (user) {
+        void migrateAuthenticatedUser(user);
+      }
     });
 
     return unsubscribe;
@@ -56,6 +78,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const result = await signInWithPopup(auth, provider);
       setCurrentUser(toAppUser(result.user));
+      await migrateAuthenticatedUser(result.user);
     } finally {
       setLoading(false);
     }
@@ -67,6 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const credential = await signInWithEmailAndPassword(auth, cleanEmail, pass);
       setCurrentUser(toAppUser(credential.user));
+      await migrateAuthenticatedUser(credential.user, pass);
     } finally {
       setLoading(false);
     }
@@ -86,6 +110,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ...toAppUser(credential.user),
         displayName: cleanName || credential.user.email?.split('@')[0] || 'Usuário',
       });
+      await migrateAuthenticatedUser(credential.user, pass);
     } finally {
       setLoading(false);
     }
@@ -102,7 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     setLoading(true);
     try {
-      await signOut(auth);
+      await Promise.allSettled([signOut(auth), supabase.auth.signOut()]);
       setCurrentUser(null);
     } finally {
       setLoading(false);
