@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Expense,
   Category,
@@ -31,13 +31,14 @@ import {
   deleteCompanyDoc,
   clearCompanyData,
 } from '../services/companyService';
-import { db } from '../lib/firebase';
-import { doc, writeBatch } from 'firebase/firestore';
+
+type SyncStatus = 'synced' | 'syncing' | 'error';
+
+type Setter<T> = React.Dispatch<React.SetStateAction<T[]>>;
 
 export function useCompanyData(companyId: string | null) {
   const getStorageKey = (prefix: string) => `cg_${companyId || 'default'}_${prefix}`;
 
-  // Local states
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [budgets, setBudgets] = useState<MonthlyBudget>({ [getCurrentYearMonth()]: 0 });
@@ -53,891 +54,487 @@ export function useCompanyData(companyId: string | null) {
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [rentals, setRentals] = useState<Rental[]>([]);
   const [loading, setLoading] = useState(true);
-  const [cloudSyncStatus, setCloudSyncStatus] = useState<'synced' | 'syncing' | 'error'>('synced');
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<SyncStatus>('synced');
   const [lastError, setLastError] = useState<string | null>(null);
 
-  const parseArray = <T>(key: string, fallback: T[]): T[] => {
+  const readArray = <T,>(key: string, fallback: T[] = []): T[] => {
     try {
       const raw = localStorage.getItem(key);
-      if (raw === null) return fallback;
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : fallback;
+      if (!raw) return fallback;
+      const value = JSON.parse(raw);
+      return Array.isArray(value) ? value : fallback;
     } catch {
       return fallback;
     }
   };
 
-  // Load from local cache when company changes
+  const persistLocal = <T,>(prefix: string, items: T[]) => {
+    localStorage.setItem(getStorageKey(prefix), JSON.stringify(items));
+  };
+
   useEffect(() => {
-    if (!companyId) return;
-
-    try {
-      setExpenses(parseArray<Expense>(getStorageKey('expenses'), []));
-      setCategories(parseArray<Category>(getStorageKey('categories'), DEFAULT_CATEGORIES));
-
-      const savedBudg = localStorage.getItem(getStorageKey('budgets'));
-      if (savedBudg) {
-        try {
-          const parsedBudg = JSON.parse(savedBudg);
-          setBudgets(parsedBudg && typeof parsedBudg === 'object' ? parsedBudg : { [getCurrentYearMonth()]: 0 });
-        } catch {
-          setBudgets({ [getCurrentYearMonth()]: 0 });
-        }
-      } else {
-        setBudgets({ [getCurrentYearMonth()]: 0 });
-      }
-
-      setAccounts(parseArray<TreasuryAccount>(getStorageKey('accounts'), []));
-      setIncomes(parseArray<Income>(getStorageKey('incomes'), []));
-      setTransfers(parseArray<AccountTransfer>(getStorageKey('transfers'), []));
-      setCards(parseArray<CreditCard>(getStorageKey('cards'), []));
-      setContacts(parseArray<ContactPerson>(getStorageKey('contacts'), []));
-      setRecurringBills(parseArray<RecurringBill>(getStorageKey('recurring'), []));
-      setGoals(parseArray<FinancialGoal>(getStorageKey('goals'), []));
-      setCostCenters(parseArray<CostCenter>(getStorageKey('costCenters'), []));
-      setProposals(parseArray<Proposal>(getStorageKey('proposals'), []));
-      setEquipment(parseArray<Equipment>(getStorageKey('equipment'), []));
-      setRentals(parseArray<Rental>(getStorageKey('rentals'), []));
-    } catch (e) {
-      console.warn('Erro ao carregar dados locais da empresa:', e);
-    } finally {
+    if (!companyId) {
       setLoading(false);
+      return;
     }
-  }, [companyId]);
 
-  // Firestore real-time listeners with anti-data-loss protection
-  useEffect(() => {
-    if (!companyId) return;
+    setLoading(true);
+    setExpenses(readArray<Expense>(getStorageKey('expenses')));
+    setCategories(readArray<Category>(getStorageKey('categories'), DEFAULT_CATEGORIES));
+    setAccounts(readArray<TreasuryAccount>(getStorageKey('accounts')));
+    setIncomes(readArray<Income>(getStorageKey('incomes')));
+    setTransfers(readArray<AccountTransfer>(getStorageKey('transfers')));
+    setCards(readArray<CreditCard>(getStorageKey('cards')));
+    setContacts(readArray<ContactPerson>(getStorageKey('contacts')));
+    setRecurringBills(readArray<RecurringBill>(getStorageKey('recurring')));
+    setGoals(readArray<FinancialGoal>(getStorageKey('goals')));
+    setCostCenters(readArray<CostCenter>(getStorageKey('costCenters')));
+    setProposals(readArray<Proposal>(getStorageKey('proposals')));
+    setEquipment(readArray<Equipment>(getStorageKey('equipment')));
+    setRentals(readArray<Rental>(getStorageKey('rentals')));
+    try {
+      const saved = localStorage.getItem(getStorageKey('budgets'));
+      setBudgets(saved ? JSON.parse(saved) : { [getCurrentYearMonth()]: 0 });
+    } catch {
+      setBudgets({ [getCurrentYearMonth()]: 0 });
+    }
 
-    const unsubs: (() => void)[] = [];
+    const unsubs: Array<() => void> = [];
 
-    // Expenses: if Firestore has 0 items but local cache has items, rescue local items to Firestore!
-    unsubs.push(
-      subscribeToCompanySubcollection<Expense>(companyId, 'expenses', (items) => {
-        const localSaved = parseArray<Expense>(getStorageKey('expenses'), []);
-        if ((!items || items.length === 0) && localSaved.length > 0) {
-          // Rescue local data: upload to Firestore cloud so it is never lost during updates!
-          localSaved.forEach((exp) => {
-            saveCompanyDoc(companyId, 'expenses', exp.id, exp);
-          });
-          setExpenses(localSaved);
-        } else {
-          const list = items || [];
-          setExpenses(list);
-          localStorage.setItem(getStorageKey('expenses'), JSON.stringify(list));
-        }
-        setCloudSyncStatus('synced');
-        setLastError(null);
-      }, (err) => {
-        setCloudSyncStatus('error');
-        setLastError(err instanceof Error ? err.message : String(err));
-      })
-    );
-
-    // Categories
-    unsubs.push(
-      subscribeToCompanySubcollection<Category>(companyId, 'categories', (items) => {
-        if (!items || items.length === 0) {
-          const localSaved = parseArray<Category>(getStorageKey('categories'), DEFAULT_CATEGORIES);
-          localSaved.forEach((cat) => {
-            saveCompanyDoc(companyId, 'categories', cat.id, cat);
-          });
-          setCategories(localSaved);
-        } else {
-          setCategories(items);
-          localStorage.setItem(getStorageKey('categories'), JSON.stringify(items));
-        }
-      })
-    );
-
-    // Accounts
-    unsubs.push(
-      subscribeToCompanySubcollection<TreasuryAccount>(companyId, 'accounts', (items) => {
-        const localSaved = parseArray<TreasuryAccount>(getStorageKey('accounts'), []);
-        if ((!items || items.length === 0) && localSaved.length > 0) {
-          localSaved.forEach((acc) => {
-            saveCompanyDoc(companyId, 'accounts', acc.id, acc);
-          });
-          setAccounts(localSaved);
-        } else {
-          const list = items || [];
-          setAccounts(list);
-          localStorage.setItem(getStorageKey('accounts'), JSON.stringify(list));
-        }
-      })
-    );
-
-    // Incomes
-    unsubs.push(
-      subscribeToCompanySubcollection<Income>(companyId, 'incomes', (items) => {
-        const localSaved = parseArray<Income>(getStorageKey('incomes'), []);
-        if ((!items || items.length === 0) && localSaved.length > 0) {
-          localSaved.forEach((inc) => {
-            saveCompanyDoc(companyId, 'incomes', inc.id, inc);
-          });
-          setIncomes(localSaved);
-        } else {
-          const list = items || [];
-          setIncomes(list);
-          localStorage.setItem(getStorageKey('incomes'), JSON.stringify(list));
-        }
-      })
-    );
-
-    // Transfers
-    unsubs.push(
-      subscribeToCompanySubcollection<AccountTransfer>(companyId, 'transfers', (items) => {
-        const localSaved = parseArray<AccountTransfer>(getStorageKey('transfers'), []);
-        if ((!items || items.length === 0) && localSaved.length > 0) {
-          localSaved.forEach((trf) => {
-            saveCompanyDoc(companyId, 'transfers', trf.id, trf);
-          });
-          setTransfers(localSaved);
-        } else {
-          const list = items || [];
-          setTransfers(list);
-          localStorage.setItem(getStorageKey('transfers'), JSON.stringify(list));
-        }
-      })
-    );
-
-    // Cards
-    unsubs.push(
-      subscribeToCompanySubcollection<CreditCard>(companyId, 'cards', (items) => {
-        const localSaved = parseArray<CreditCard>(getStorageKey('cards'), []);
-        if ((!items || items.length === 0) && localSaved.length > 0) {
-          localSaved.forEach((c) => {
-            saveCompanyDoc(companyId, 'cards', c.id, c);
-          });
-          setCards(localSaved);
-        } else {
-          const list = items || [];
-          setCards(list);
-          localStorage.setItem(getStorageKey('cards'), JSON.stringify(list));
-        }
-      })
-    );
-
-    // Contacts
-    unsubs.push(
-      subscribeToCompanySubcollection<ContactPerson>(companyId, 'contacts', (items) => {
-        const localSaved = parseArray<ContactPerson>(getStorageKey('contacts'), []);
-        if ((!items || items.length === 0) && localSaved.length > 0) {
-          localSaved.forEach((cp) => {
-            saveCompanyDoc(companyId, 'contacts', cp.id, cp);
-          });
-          setContacts(localSaved);
-        } else {
-          const list = items || [];
-          setContacts(list);
-          localStorage.setItem(getStorageKey('contacts'), JSON.stringify(list));
-        }
-      })
-    );
-
-    // Recurring
-    unsubs.push(
-      subscribeToCompanySubcollection<RecurringBill>(companyId, 'recurring', (items) => {
-        const localSaved = parseArray<RecurringBill>(getStorageKey('recurring'), []);
-        if ((!items || items.length === 0) && localSaved.length > 0) {
-          localSaved.forEach((r) => {
-            saveCompanyDoc(companyId, 'recurring', r.id, r);
-          });
-          setRecurringBills(localSaved);
-        } else {
-          const list = items || [];
-          setRecurringBills(list);
-          localStorage.setItem(getStorageKey('recurring'), JSON.stringify(list));
-        }
-      })
-    );
-
-    // Goals
-    unsubs.push(
-      subscribeToCompanySubcollection<FinancialGoal>(companyId, 'goals', (items) => {
-        const localSaved = parseArray<FinancialGoal>(getStorageKey('goals'), []);
-        if ((!items || items.length === 0) && localSaved.length > 0) {
-          localSaved.forEach((g) => {
-            saveCompanyDoc(companyId, 'goals', g.id, g);
-          });
-          setGoals(localSaved);
-        } else {
-          const list = items || [];
-          setGoals(list);
-          localStorage.setItem(getStorageKey('goals'), JSON.stringify(list));
-        }
-      })
-    );
-
+    const wire = <T extends { id: string }>(
+      collectionName: string,
+      cacheName: string,
+      setter: Setter<T>,
+      fallback: T[] = []
+    ) => {
       unsubs.push(
-        subscribeToCompanySubcollection<CostCenter>(companyId, 'costCenters', (items) => {
-          setCostCenters(items || []);
-          localStorage.setItem(getStorageKey('costCenters'), JSON.stringify(items || []));
-        })
+        subscribeToCompanySubcollection<T>(
+          companyId,
+          collectionName,
+          (remote) => {
+            const cached = readArray<T>(getStorageKey(cacheName), fallback);
+            if (remote.length === 0 && cached.length > 0) {
+              setter(cached);
+              void Promise.all(cached.map((item) => saveCompanyDoc(companyId, collectionName, item.id, item)));
+            } else if (remote.length === 0 && fallback.length > 0) {
+              setter(fallback);
+              persistLocal(cacheName, fallback);
+              void Promise.all(fallback.map((item) => saveCompanyDoc(companyId, collectionName, item.id, item)));
+            } else {
+              setter(remote);
+              persistLocal(cacheName, remote);
+            }
+            setCloudSyncStatus('synced');
+            setLastError(null);
+            setLoading(false);
+          },
+          (error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            setCloudSyncStatus('error');
+            setLastError(message);
+            setLoading(false);
+          }
+        )
       );
-  
-      unsubs.push(
-        subscribeToCompanySubcollection<Proposal>(companyId, 'proposals', (items) => {
-          setProposals(items || []);
-          localStorage.setItem(getStorageKey('proposals'), JSON.stringify(items || []));
-        })
-      );
-  
-      unsubs.push(
-        subscribeToCompanySubcollection<Equipment>(companyId, 'equipment', (items) => {
-          setEquipment(items || []);
-          localStorage.setItem(getStorageKey('equipment'), JSON.stringify(items || []));
-        })
-      );
-  
-      unsubs.push(
-        subscribeToCompanySubcollection<Rental>(companyId, 'rentals', (items) => {
-          setRentals(items || []);
-          localStorage.setItem(getStorageKey('rentals'), JSON.stringify(items || []));
-        })
-      );
-  
-      return () => {
-      unsubs.forEach((unsub) => unsub());
     };
+
+    wire<Expense>('expenses', 'expenses', setExpenses);
+    wire<Category>('categories', 'categories', setCategories, DEFAULT_CATEGORIES);
+    wire<TreasuryAccount>('accounts', 'accounts', setAccounts);
+    wire<Income>('incomes', 'incomes', setIncomes);
+    wire<AccountTransfer>('transfers', 'transfers', setTransfers);
+    wire<CreditCard>('cards', 'cards', setCards);
+    wire<ContactPerson>('contacts', 'contacts', setContacts);
+    wire<RecurringBill>('recurring', 'recurring', setRecurringBills);
+    wire<FinancialGoal>('goals', 'goals', setGoals);
+    wire<CostCenter>('costCenters', 'costCenters', setCostCenters);
+    wire<Proposal>('proposals', 'proposals', setProposals);
+    wire<Equipment>('equipment', 'equipment', setEquipment);
+    wire<Rental>('rentals', 'rentals', setRentals);
+
+    unsubs.push(
+      subscribeToCompanySubcollection<{ id: string; ym: string; amount: number }>(
+        companyId,
+        'budgets',
+        (items) => {
+          const next: MonthlyBudget = {};
+          items.forEach((item) => {
+            if (item.ym) next[item.ym] = Number(item.amount) || 0;
+          });
+          const finalValue = Object.keys(next).length ? next : { [getCurrentYearMonth()]: 0 };
+          setBudgets(finalValue);
+          localStorage.setItem(getStorageKey('budgets'), JSON.stringify(finalValue));
+        }
+      )
+    );
+
+    return () => unsubs.forEach((unsubscribe) => unsubscribe());
   }, [companyId]);
 
-  // Mutations
-  const saveExpense = useCallback(
-    async (expenseData: Omit<Expense, 'id' | 'createdAt'>, expenseId?: string) => {
-      if (!companyId) return;
-      setCloudSyncStatus('syncing');
-      try {
-        const id = expenseId || `exp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-        const newExpense: Expense = {
-          ...expenseData,
-          id,
-          createdAt: expenseId ? (expenses.find((e) => e.id === expenseId)?.createdAt || Date.now()) : Date.now(),
-        };
+  const makeId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-        setExpenses((prev) => {
-          const next = expenseId ? prev.map((e) => (e.id === expenseId ? newExpense : e)) : [newExpense, ...prev];
-          localStorage.setItem(getStorageKey('expenses'), JSON.stringify(next));
-          return next;
-        });
-
-        await saveCompanyDoc(companyId, 'expenses', id, newExpense);
-        setCloudSyncStatus('synced');
-        setLastError(null);
-        console.log(`[useCompanyData] Despesa salva com sucesso: ${id}`);
-        return newExpense;
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        console.error('[useCompanyData] Erro ao salvar despesa:', errorMessage);
-        setCloudSyncStatus('error');
-        setLastError(`Erro ao salvar despesa: ${errorMessage}`);
-        return undefined;
-      }
-    },
-    [companyId, expenses]
-  );
-
-  const deleteExpense = useCallback(
-    async (id: string) => {
-      if (!companyId) return;
-      setCloudSyncStatus('syncing');
-      try {
-        setExpenses((prev) => {
-          const next = prev.filter((e) => e.id !== id);
-          localStorage.setItem(getStorageKey('expenses'), JSON.stringify(next));
-          return next;
-        });
-        await deleteCompanyDoc(companyId, 'expenses', id);
-        setCloudSyncStatus('synced');
-      } catch (err) {
-        console.error('Erro ao excluir despesa:', err);
-        setCloudSyncStatus('error');
-      }
-    },
-    [companyId]
-  );
-
-  const saveIncome = useCallback(
-    async (incomeData: Omit<Income, 'id' | 'createdAt'>, incomeId?: string) => {
-      if (!companyId) return;
-      setCloudSyncStatus('syncing');
-      try {
-        const id = incomeId || `inc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-        const newIncome: Income = {
-          ...incomeData,
-          id,
-          createdAt: incomeId ? (incomes.find((i) => i.id === incomeId)?.createdAt || Date.now()) : Date.now(),
-        };
-
-        setIncomes((prev) => {
-          const next = incomeId ? prev.map((i) => (i.id === incomeId ? newIncome : i)) : [newIncome, ...prev];
-          localStorage.setItem(getStorageKey('incomes'), JSON.stringify(next));
-          return next;
-        });
-
-        await saveCompanyDoc(companyId, 'incomes', id, newIncome);
-        setCloudSyncStatus('synced');
-        setLastError(null);
-        console.log(`[useCompanyData] Receita salva com sucesso: ${id}`);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        console.error('[useCompanyData] Erro ao salvar receita:', errorMessage);
-        setCloudSyncStatus('error');
-        setLastError(`Erro ao salvar receita: ${errorMessage}`);
-      }
-    },
-    [companyId, incomes]
-  );
-
-  const deleteIncome = useCallback(
-    async (id: string) => {
-      if (!companyId) return;
-      setCloudSyncStatus('syncing');
-      try {
-        setIncomes((prev) => {
-          const next = prev.filter((i) => i.id !== id);
-          localStorage.setItem(getStorageKey('incomes'), JSON.stringify(next));
-          return next;
-        });
-        await deleteCompanyDoc(companyId, 'incomes', id);
-        setCloudSyncStatus('synced');
-      } catch (err) {
-        console.error('Erro ao excluir receita:', err);
-        setCloudSyncStatus('error');
-      }
-    },
-    [companyId]
-  );
-
-  const saveTransfer = useCallback(
-    async (transferData: Omit<AccountTransfer, 'id' | 'createdAt'>, transferId?: string) => {
-      if (!companyId) return;
-      setCloudSyncStatus('syncing');
-      try {
-        const id = transferId || `trf-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-        const newTransfer: AccountTransfer = {
-          ...transferData,
-          id,
-          createdAt: transferId ? (transfers.find((t) => t.id === transferId)?.createdAt || Date.now()) : Date.now(),
-        };
-
-        setTransfers((prev) => {
-          const next = transferId ? prev.map((t) => (t.id === transferId ? newTransfer : t)) : [newTransfer, ...prev];
-          localStorage.setItem(getStorageKey('transfers'), JSON.stringify(next));
-          return next;
-        });
-
-        await saveCompanyDoc(companyId, 'transfers', id, newTransfer);
-        setCloudSyncStatus('synced');
-        setLastError(null);
-        console.log(`[useCompanyData] Transferência salva com sucesso: ${id}`);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        console.error('[useCompanyData] Erro ao salvar transferência:', errorMessage);
-        setCloudSyncStatus('error');
-        setLastError(`Erro ao salvar transferência: ${errorMessage}`);
-      }
-    },
-    [companyId, transfers]
-  );
-
-  const deleteTransfer = useCallback(
-    async (id: string) => {
-      if (!companyId) return;
-      setTransfers((prev) => {
-        const next = prev.filter((t) => t.id !== id);
-        localStorage.setItem(getStorageKey('transfers'), JSON.stringify(next));
+  const saveExpense = useCallback(async (data: Omit<Expense, 'id' | 'createdAt'>, expenseId?: string) => {
+    if (!companyId) return;
+    setCloudSyncStatus('syncing');
+    try {
+      const id = expenseId || makeId('exp');
+      const item: Expense = { ...data, id, createdAt: expenseId ? expenses.find((v) => v.id === id)?.createdAt || Date.now() : Date.now() };
+      setExpenses((prev) => {
+        const next = expenseId ? prev.map((v) => (v.id === id ? item : v)) : [item, ...prev];
+        persistLocal('expenses', next);
         return next;
       });
-      await deleteCompanyDoc(companyId, 'transfers', id);
-    },
-    [companyId]
-  );
+      await saveCompanyDoc(companyId, 'expenses', id, item);
+      setCloudSyncStatus('synced');
+      setLastError(null);
+      return item;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCloudSyncStatus('error');
+      setLastError(message);
+      return undefined;
+    }
+  }, [companyId, expenses]);
 
-  const saveAccount = useCallback(
-    async (accData: Omit<TreasuryAccount, 'id'>, accountId?: string) => {
-      if (!companyId) return;
-      setCloudSyncStatus('syncing');
-      try {
-        const id = accountId || `acc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-        const newAcc: TreasuryAccount = { ...accData, id };
-  
-        setAccounts((prev) => {
-          const next = accountId ? prev.map((a) => (a.id === accountId ? newAcc : a)) : [...prev, newAcc];
-          localStorage.setItem(getStorageKey('accounts'), JSON.stringify(next));
-          return next;
-        });
-  
-        await saveCompanyDoc(companyId, 'accounts', id, newAcc);
-        setCloudSyncStatus('synced');
-        setLastError(null);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        console.error('[useCompanyData] Erro ao salvar conta:', errorMessage);
-        setCloudSyncStatus('error');
-        setLastError(`Erro ao salvar conta: ${errorMessage}`);
-      }
-    },
-    [companyId]
-  );
+  const deleteExpense = useCallback(async (id: string) => {
+    if (!companyId) return;
+    setExpenses((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      persistLocal('expenses', next);
+      return next;
+    });
+    await deleteCompanyDoc(companyId, 'expenses', id);
+  }, [companyId]);
 
-  const deleteAccount = useCallback(
-    async (id: string) => {
-      if (!companyId) return;
-      setAccounts((prev) => {
-        const next = prev.filter((a) => a.id !== id);
-        localStorage.setItem(getStorageKey('accounts'), JSON.stringify(next));
-        return next;
-      });
-      await deleteCompanyDoc(companyId, 'accounts', id);
-    },
-    [companyId]
-  );
+  const saveIncome = useCallback(async (data: Omit<Income, 'id' | 'createdAt'>, incomeId?: string) => {
+    if (!companyId) return;
+    const id = incomeId || makeId('inc');
+    const item: Income = { ...data, id, createdAt: incomeId ? incomes.find((v) => v.id === id)?.createdAt || Date.now() : Date.now() };
+    setIncomes((prev) => {
+      const next = incomeId ? prev.map((v) => (v.id === id ? item : v)) : [item, ...prev];
+      persistLocal('incomes', next);
+      return next;
+    });
+    await saveCompanyDoc(companyId, 'incomes', id, item);
+  }, [companyId, incomes]);
 
-  const saveCard = useCallback(
-    async (cardData: Omit<CreditCard, 'id'>, cardId?: string) => {
-      if (!companyId) return;
-      setCloudSyncStatus('syncing');
-      try {
-        const id = cardId || `card-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-        const newCard: CreditCard = { ...cardData, id };
+  const deleteIncome = useCallback(async (id: string) => {
+    if (!companyId) return;
+    setIncomes((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      persistLocal('incomes', next);
+      return next;
+    });
+    await deleteCompanyDoc(companyId, 'incomes', id);
+  }, [companyId]);
 
-        setCards((prev) => {
-          const next = cardId ? prev.map((c) => (c.id === cardId ? newCard : c)) : [...prev, newCard];
-          localStorage.setItem(getStorageKey('cards'), JSON.stringify(next));
-          return next;
-        });
+  const saveTransfer = useCallback(async (data: Omit<AccountTransfer, 'id' | 'createdAt'>, transferId?: string) => {
+    if (!companyId) return;
+    const id = transferId || makeId('trf');
+    const item: AccountTransfer = { ...data, id, createdAt: transferId ? transfers.find((v) => v.id === id)?.createdAt || Date.now() : Date.now() };
+    setTransfers((prev) => {
+      const next = transferId ? prev.map((v) => (v.id === id ? item : v)) : [item, ...prev];
+      persistLocal('transfers', next);
+      return next;
+    });
+    await saveCompanyDoc(companyId, 'transfers', id, item);
+  }, [companyId, transfers]);
 
-        await saveCompanyDoc(companyId, 'cards', id, newCard);
-        setCloudSyncStatus('synced');
-      } catch (err) {
-        console.error('Erro ao salvar cartão:', err);
-        setCloudSyncStatus('error');
-      }
-    },
-    [companyId]
-  );
+  const deleteTransfer = useCallback(async (id: string) => {
+    if (!companyId) return;
+    setTransfers((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      persistLocal('transfers', next);
+      return next;
+    });
+    await deleteCompanyDoc(companyId, 'transfers', id);
+  }, [companyId]);
 
-  const deleteCard = useCallback(
-    async (id: string) => {
-      if (!companyId) return;
-      setCards((prev) => {
-        const next = prev.filter((c) => c.id !== id);
-        localStorage.setItem(getStorageKey('cards'), JSON.stringify(next));
-        return next;
-      });
-      await deleteCompanyDoc(companyId, 'cards', id);
-    },
-    [companyId]
-  );
+  const saveAccount = useCallback(async (data: Omit<TreasuryAccount, 'id'>, accountId?: string) => {
+    if (!companyId) return;
+    const id = accountId || makeId('acc');
+    const item: TreasuryAccount = { ...data, id };
+    setAccounts((prev) => {
+      const next = accountId ? prev.map((v) => (v.id === id ? item : v)) : [...prev, item];
+      persistLocal('accounts', next);
+      return next;
+    });
+    await saveCompanyDoc(companyId, 'accounts', id, item);
+  }, [companyId]);
 
-  const saveContact = useCallback(
-    async (contactData: Omit<ContactPerson, 'id' | 'createdAt'>, contactId?: string) => {
-      if (!companyId) return;
-      setCloudSyncStatus('syncing');
-      try {
-        const id = contactId || `cont-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-        const newContact: ContactPerson = {
-          ...contactData,
-          id,
-          createdAt: contactId ? (contacts.find((c) => c.id === contactId)?.createdAt || Date.now()) : Date.now(),
-        };
+  const deleteAccount = useCallback(async (id: string) => {
+    if (!companyId) return;
+    setAccounts((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      persistLocal('accounts', next);
+      return next;
+    });
+    await deleteCompanyDoc(companyId, 'accounts', id);
+  }, [companyId]);
 
-        setContacts((prev) => {
-          const next = contactId ? prev.map((c) => (c.id === contactId ? newContact : c)) : [...prev, newContact];
-          localStorage.setItem(getStorageKey('contacts'), JSON.stringify(next));
-          return next;
-        });
+  const saveCard = useCallback(async (data: Omit<CreditCard, 'id'>, cardId?: string) => {
+    if (!companyId) return;
+    const id = cardId || makeId('card');
+    const item: CreditCard = { ...data, id };
+    setCards((prev) => {
+      const next = cardId ? prev.map((v) => (v.id === id ? item : v)) : [...prev, item];
+      persistLocal('cards', next);
+      return next;
+    });
+    await saveCompanyDoc(companyId, 'cards', id, item);
+  }, [companyId]);
 
-        await saveCompanyDoc(companyId, 'contacts', id, newContact);
-        setCloudSyncStatus('synced');
-      } catch (err) {
-        console.error('Erro ao salvar contato:', err);
-        setCloudSyncStatus('error');
-      }
-    },
-    [companyId, contacts]
-  );
+  const deleteCard = useCallback(async (id: string) => {
+    if (!companyId) return;
+    setCards((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      persistLocal('cards', next);
+      return next;
+    });
+    await deleteCompanyDoc(companyId, 'cards', id);
+  }, [companyId]);
 
-  const deleteContact = useCallback(
-    async (id: string) => {
-      if (!companyId) return;
-      setCloudSyncStatus('syncing');
-      try {
-        setContacts((prev) => {
-          const next = prev.filter((c) => c.id !== id);
-          localStorage.setItem(getStorageKey('contacts'), JSON.stringify(next));
-          return next;
-        });
-        await deleteCompanyDoc(companyId, 'contacts', id);
-        setCloudSyncStatus('synced');
-      } catch (err) {
-        console.error('Erro ao deletar contato:', err);
-        setCloudSyncStatus('error');
-      }
-    },
-    [companyId]
-  );
+  const saveContact = useCallback(async (data: Omit<ContactPerson, 'id' | 'createdAt'>, contactId?: string) => {
+    if (!companyId) return;
+    const id = contactId || makeId('cont');
+    const item: ContactPerson = { ...data, id, createdAt: contactId ? contacts.find((v) => v.id === id)?.createdAt || Date.now() : Date.now() };
+    setContacts((prev) => {
+      const next = contactId ? prev.map((v) => (v.id === id ? item : v)) : [...prev, item];
+      persistLocal('contacts', next);
+      return next;
+    });
+    await saveCompanyDoc(companyId, 'contacts', id, item);
+  }, [companyId, contacts]);
 
-  const saveRecurring = useCallback(
-    async (billData: Omit<RecurringBill, 'id' | 'createdAt'>, billId?: string) => {
-      if (!companyId) return;
-      setCloudSyncStatus('syncing');
-      try {
-        const id = billId || `rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-        const newBill: RecurringBill = {
-          ...billData,
-          id,
-          createdAt: billId ? (recurringBills.find((b) => b.id === billId)?.createdAt || Date.now()) : Date.now(),
-        };
+  const deleteContact = useCallback(async (id: string) => {
+    if (!companyId) return;
+    setContacts((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      persistLocal('contacts', next);
+      return next;
+    });
+    await deleteCompanyDoc(companyId, 'contacts', id);
+  }, [companyId]);
 
-        setRecurringBills((prev) => {
-          const next = billId ? prev.map((b) => (b.id === billId ? newBill : b)) : [...prev, newBill];
-          localStorage.setItem(getStorageKey('recurring'), JSON.stringify(next));
-          return next;
-        });
+  const saveRecurring = useCallback(async (data: Omit<RecurringBill, 'id' | 'createdAt'>, billId?: string) => {
+    if (!companyId) return;
+    const id = billId || makeId('rec');
+    const item: RecurringBill = { ...data, id, createdAt: billId ? recurringBills.find((v) => v.id === id)?.createdAt || Date.now() : Date.now() };
+    setRecurringBills((prev) => {
+      const next = billId ? prev.map((v) => (v.id === id ? item : v)) : [...prev, item];
+      persistLocal('recurring', next);
+      return next;
+    });
+    await saveCompanyDoc(companyId, 'recurring', id, item);
+  }, [companyId, recurringBills]);
 
-        await saveCompanyDoc(companyId, 'recurring', id, newBill);
-        setCloudSyncStatus('synced');
-      } catch (err) {
-        console.error('Erro ao salvar conta recorrente:', err);
-        setCloudSyncStatus('error');
-      }
-    },
-    [companyId, recurringBills]
-  );
+  const deleteRecurring = useCallback(async (id: string) => {
+    if (!companyId) return;
+    setRecurringBills((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      persistLocal('recurring', next);
+      return next;
+    });
+    await deleteCompanyDoc(companyId, 'recurring', id);
+  }, [companyId]);
 
-  const deleteRecurring = useCallback(
-    async (id: string) => {
-      if (!companyId) return;
-      setRecurringBills((prev) => {
-        const next = prev.filter((b) => b.id !== id);
-        localStorage.setItem(getStorageKey('recurring'), JSON.stringify(next));
-        return next;
-      });
-      await deleteCompanyDoc(companyId, 'recurring', id);
-    },
-    [companyId]
-  );
+  const saveGoal = useCallback(async (data: Omit<FinancialGoal, 'id' | 'createdAt'>, goalId?: string) => {
+    if (!companyId) return;
+    const id = goalId || makeId('goal');
+    const item: FinancialGoal = { ...data, id, createdAt: goalId ? goals.find((v) => v.id === id)?.createdAt || Date.now() : Date.now() };
+    setGoals((prev) => {
+      const next = goalId ? prev.map((v) => (v.id === id ? item : v)) : [...prev, item];
+      persistLocal('goals', next);
+      return next;
+    });
+    await saveCompanyDoc(companyId, 'goals', id, item);
+  }, [companyId, goals]);
 
-  const saveGoal = useCallback(
-    async (goalData: Omit<FinancialGoal, 'id' | 'createdAt'>, goalId?: string) => {
-      if (!companyId) return;
-      setCloudSyncStatus('syncing');
-      try {
-        const id = goalId || `goal-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-        const newGoal: FinancialGoal = {
-          ...goalData,
-          id,
-          createdAt: goalId ? (goals.find((g) => g.id === goalId)?.createdAt || Date.now()) : Date.now(),
-        };
-  
-        setGoals((prev) => {
-          const next = goalId ? prev.map((g) => (g.id === goalId ? newGoal : g)) : [...prev, newGoal];
-          localStorage.setItem(getStorageKey('goals'), JSON.stringify(next));
-          return next;
-        });
-  
-        await saveCompanyDoc(companyId, 'goals', id, newGoal);
-        setCloudSyncStatus('synced');
-        setLastError(null);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        console.error('[useCompanyData] Erro ao salvar meta:', errorMessage);
-        setCloudSyncStatus('error');
-        setLastError(`Erro ao salvar meta: ${errorMessage}`);
-      }
-    },
-    [companyId, goals]
-  );
+  const deleteGoal = useCallback(async (id: string) => {
+    if (!companyId) return;
+    setGoals((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      persistLocal('goals', next);
+      return next;
+    });
+    await deleteCompanyDoc(companyId, 'goals', id);
+  }, [companyId]);
 
-  const deleteGoal = useCallback(
-    async (id: string) => {
-      if (!companyId) return;
-      setGoals((prev) => {
-        const next = prev.filter((g) => g.id !== id);
-        localStorage.setItem(getStorageKey('goals'), JSON.stringify(next));
-        return next;
-      });
-      await deleteCompanyDoc(companyId, 'goals', id);
-    },
-    [companyId]
-  );
+  const saveCostCenter = useCallback(async (data: Omit<CostCenter, 'id' | 'createdAt'>, itemId?: string) => {
+    if (!companyId) return;
+    const id = itemId || makeId('cc');
+    const item: CostCenter = { ...data, id, createdAt: itemId ? costCenters.find((v) => v.id === id)?.createdAt || Date.now() : Date.now() };
+    setCostCenters((prev) => {
+      const next = itemId ? prev.map((v) => (v.id === id ? item : v)) : [...prev, item];
+      persistLocal('costCenters', next);
+      return next;
+    });
+    await saveCompanyDoc(companyId, 'costCenters', id, item);
+  }, [companyId, costCenters]);
 
-  const saveCostCenter = useCallback(
-    async (data: Omit<CostCenter, 'id' | 'createdAt'>, id?: string) => {
-      if (!companyId) return;
-      const docId = id || `cc-${Date.now()}`;
-      const newObj: CostCenter = {
-        ...data,
-        id: docId,
-        createdAt: id ? (costCenters.find((c) => c.id === id)?.createdAt || Date.now()) : Date.now(),
-      };
-      setCostCenters((prev) => {
-        const next = id ? prev.map((c) => (c.id === id ? newObj : c)) : [...prev, newObj];
-        localStorage.setItem(getStorageKey('costCenters'), JSON.stringify(next));
-        return next;
-      });
-      await saveCompanyDoc(companyId, 'costCenters', docId, newObj);
-    },
-    [companyId, costCenters]
-  );
+  const deleteCostCenter = useCallback(async (id: string) => {
+    if (!companyId) return;
+    setCostCenters((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      persistLocal('costCenters', next);
+      return next;
+    });
+    await deleteCompanyDoc(companyId, 'costCenters', id);
+  }, [companyId]);
 
-  const deleteCostCenter = useCallback(
-    async (id: string) => {
-      if (!companyId) return;
-      setCostCenters((prev) => {
-        const next = prev.filter((c) => c.id !== id);
-        localStorage.setItem(getStorageKey('costCenters'), JSON.stringify(next));
-        return next;
-      });
-      await deleteCompanyDoc(companyId, 'costCenters', id);
-    },
-    [companyId]
-  );
+  const saveProposal = useCallback(async (data: Omit<Proposal, 'id' | 'createdAt'>, itemId?: string) => {
+    if (!companyId) return;
+    const id = itemId || makeId('prop');
+    const item: Proposal = { ...data, id, createdAt: itemId ? proposals.find((v) => v.id === id)?.createdAt || Date.now() : Date.now() };
+    setProposals((prev) => {
+      const next = itemId ? prev.map((v) => (v.id === id ? item : v)) : [...prev, item];
+      persistLocal('proposals', next);
+      return next;
+    });
+    await saveCompanyDoc(companyId, 'proposals', id, item);
+  }, [companyId, proposals]);
 
-  const saveProposal = useCallback(
-    async (data: Omit<Proposal, 'id' | 'createdAt'>, id?: string) => {
-      if (!companyId) return;
-      const docId = id || `prop-${Date.now()}`;
-      const newObj: Proposal = {
-        ...data,
-        id: docId,
-        createdAt: id ? (proposals.find((p) => p.id === id)?.createdAt || Date.now()) : Date.now(),
-      };
-      setProposals((prev) => {
-        const next = id ? prev.map((p) => (p.id === id ? newObj : p)) : [...prev, newObj];
-        localStorage.setItem(getStorageKey('proposals'), JSON.stringify(next));
-        return next;
-      });
-      await saveCompanyDoc(companyId, 'proposals', docId, newObj);
-    },
-    [companyId, proposals]
-  );
+  const deleteProposal = useCallback(async (id: string) => {
+    if (!companyId) return;
+    setProposals((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      persistLocal('proposals', next);
+      return next;
+    });
+    await deleteCompanyDoc(companyId, 'proposals', id);
+  }, [companyId]);
 
-  const deleteProposal = useCallback(
-    async (id: string) => {
-      if (!companyId) return;
-      setProposals((prev) => {
-        const next = prev.filter((p) => p.id !== id);
-        localStorage.setItem(getStorageKey('proposals'), JSON.stringify(next));
-        return next;
-      });
-      await deleteCompanyDoc(companyId, 'proposals', id);
-    },
-    [companyId]
-  );
+  const saveEquipment = useCallback(async (data: Omit<Equipment, 'id'>, itemId?: string) => {
+    if (!companyId) return;
+    const id = itemId || makeId('eq');
+    const item: Equipment = { ...data, id };
+    setEquipment((prev) => {
+      const next = itemId ? prev.map((v) => (v.id === id ? item : v)) : [...prev, item];
+      persistLocal('equipment', next);
+      return next;
+    });
+    await saveCompanyDoc(companyId, 'equipment', id, item);
+  }, [companyId]);
 
-  const saveEquipment = useCallback(
-    async (data: Omit<Equipment, 'id'>, id?: string) => {
-      if (!companyId) return;
-      const docId = id || `eq-${Date.now()}`;
-      const newObj: Equipment = { ...data, id: docId };
-      setEquipment((prev) => {
-        const next = id ? prev.map((e) => (e.id === id ? newObj : e)) : [...prev, newObj];
-        localStorage.setItem(getStorageKey('equipment'), JSON.stringify(next));
-        return next;
-      });
-      await saveCompanyDoc(companyId, 'equipment', docId, newObj);
-    },
-    [companyId]
-  );
+  const deleteEquipment = useCallback(async (id: string) => {
+    if (!companyId) return;
+    setEquipment((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      persistLocal('equipment', next);
+      return next;
+    });
+    await deleteCompanyDoc(companyId, 'equipment', id);
+  }, [companyId]);
 
-  const deleteEquipment = useCallback(
-    async (id: string) => {
-      if (!companyId) return;
-      setEquipment((prev) => {
-        const next = prev.filter((e) => e.id !== id);
-        localStorage.setItem(getStorageKey('equipment'), JSON.stringify(next));
-        return next;
-      });
-      await deleteCompanyDoc(companyId, 'equipment', id);
-    },
-    [companyId]
-  );
+  const saveRental = useCallback(async (data: Omit<Rental, 'id' | 'createdAt'>, itemId?: string) => {
+    if (!companyId) return;
+    const id = itemId || makeId('rent');
+    const item: Rental = { ...data, id, createdAt: itemId ? rentals.find((v) => v.id === id)?.createdAt || Date.now() : Date.now() };
+    setRentals((prev) => {
+      const next = itemId ? prev.map((v) => (v.id === id ? item : v)) : [...prev, item];
+      persistLocal('rentals', next);
+      return next;
+    });
+    await saveCompanyDoc(companyId, 'rentals', id, item);
+  }, [companyId, rentals]);
 
-  const saveRental = useCallback(
-    async (data: Omit<Rental, 'id' | 'createdAt'>, id?: string) => {
-      if (!companyId) return;
-      const docId = id || `rent-${Date.now()}`;
-      const newObj: Rental = {
-        ...data,
-        id: docId,
-        createdAt: id ? (rentals.find((r) => r.id === id)?.createdAt || Date.now()) : Date.now(),
-      };
-      setRentals((prev) => {
-        const next = id ? prev.map((r) => (r.id === id ? newObj : r)) : [...prev, newObj];
-        localStorage.setItem(getStorageKey('rentals'), JSON.stringify(next));
-        return next;
-      });
-      await saveCompanyDoc(companyId, 'rentals', docId, newObj);
-    },
-    [companyId, rentals]
-  );
+  const deleteRental = useCallback(async (id: string) => {
+    if (!companyId) return;
+    setRentals((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      persistLocal('rentals', next);
+      return next;
+    });
+    await deleteCompanyDoc(companyId, 'rentals', id);
+  }, [companyId]);
 
-  const deleteRental = useCallback(
-    async (id: string) => {
-      if (!companyId) return;
-      setRentals((prev) => {
-        const next = prev.filter((r) => r.id !== id);
-        localStorage.setItem(getStorageKey('rentals'), JSON.stringify(next));
-        return next;
-      });
-      await deleteCompanyDoc(companyId, 'rentals', id);
-    },
-    [companyId]
-  );
+  const addCategory = useCallback(async (data: Omit<Category, 'id'>) => {
+    if (!companyId) return;
+    const id = makeId('cat');
+    const item: Category = { ...data, id };
+    setCategories((prev) => {
+      const next = [...prev, item];
+      persistLocal('categories', next);
+      return next;
+    });
+    await saveCompanyDoc(companyId, 'categories', id, item);
+  }, [companyId]);
 
-  const addCategory = useCallback(
-    async (catData: Omit<Category, 'id'>) => {
-      if (!companyId) return;
-      const id = `cat-${Date.now()}`;
-      const newCat: Category = { ...catData, id };
+  const deleteCategory = useCallback(async (id: string) => {
+    if (!companyId) return;
+    setCategories((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      persistLocal('categories', next);
+      return next;
+    });
+    await deleteCompanyDoc(companyId, 'categories', id);
+  }, [companyId]);
 
-      setCategories((prev) => {
-        const next = [...prev, newCat];
-        localStorage.setItem(getStorageKey('categories'), JSON.stringify(next));
-        return next;
-      });
+  const updateCategoryBudget = useCallback(async (id: string, budgetLimit?: number) => {
+    if (!companyId) return;
+    const target = categories.find((category) => category.id === id);
+    if (!target) return;
+    const item = { ...target, budgetLimit };
+    setCategories((prev) => {
+      const next = prev.map((category) => (category.id === id ? item : category));
+      persistLocal('categories', next);
+      return next;
+    });
+    await saveCompanyDoc(companyId, 'categories', id, item);
+  }, [companyId, categories]);
 
-      await saveCompanyDoc(companyId, 'categories', id, newCat);
-    },
-    [companyId]
-  );
-
-  const deleteCategory = useCallback(
-    async (id: string) => {
-      if (!companyId) return;
-      setCategories((prev) => {
-        const next = prev.filter((c) => c.id !== id);
-        localStorage.setItem(getStorageKey('categories'), JSON.stringify(next));
-        return next;
-      });
-      await deleteCompanyDoc(companyId, 'categories', id);
-    },
-    [companyId]
-  );
-
-  const updateCategoryBudget = useCallback(
-    async (catId: string, budgetLimit?: number) => {
-      if (!companyId) return;
-      setCategories((prev) => {
-        const next = prev.map((c) => (c.id === catId ? { ...c, budgetLimit } : c));
-        localStorage.setItem(getStorageKey('categories'), JSON.stringify(next));
-        return next;
-      });
-      const target = categories.find((c) => c.id === catId);
-      if (target) {
-        await saveCompanyDoc(companyId, 'categories', catId, { ...target, budgetLimit });
-      }
-    },
-    [companyId, categories]
-  );
-
-  const saveMonthlyBudget = useCallback(
-    async (ym: string, amount: number) => {
-      if (!companyId) return;
-      setBudgets((prev) => {
-        const next = { ...prev, [ym]: amount };
-        localStorage.setItem(getStorageKey('budgets'), JSON.stringify(next));
-        return next;
-      });
-      await saveCompanyDoc(companyId, 'budgets', ym, { amount, ym });
-    },
-    [companyId]
-  );
+  const saveMonthlyBudget = useCallback(async (ym: string, amount: number) => {
+    if (!companyId) return;
+    setBudgets((prev) => {
+      const next = { ...prev, [ym]: amount };
+      localStorage.setItem(getStorageKey('budgets'), JSON.stringify(next));
+      return next;
+    });
+    await saveCompanyDoc(companyId, 'budgets', ym, { id: ym, ym, amount });
+  }, [companyId]);
 
   const resetData = useCallback(() => {
     if (!companyId) return;
-    const initialExp = getInitialExpenses();
-    const initialInc = getInitialIncomes();
-    const initialTrf = getInitialTransfers();
-    setExpenses(initialExp);
+    setExpenses(getInitialExpenses());
     setCategories(DEFAULT_CATEGORIES);
     setBudgets({ [getCurrentYearMonth()]: 3500 });
     setAccounts(DEFAULT_ACCOUNTS);
-    setIncomes(initialInc);
-    setTransfers(initialTrf);
+    setIncomes(getInitialIncomes());
+    setTransfers(getInitialTransfers());
     setCards(DEFAULT_CREDIT_CARDS);
     setContacts(DEFAULT_CONTACTS);
     setRecurringBills(DEFAULT_RECURRING_BILLS);
     setGoals(DEFAULT_GOALS);
-
-    localStorage.removeItem(getStorageKey('expenses'));
-    localStorage.removeItem(getStorageKey('categories'));
-    localStorage.removeItem(getStorageKey('budgets'));
-    localStorage.removeItem(getStorageKey('accounts'));
-    localStorage.removeItem(getStorageKey('incomes'));
-    localStorage.removeItem(getStorageKey('transfers'));
-    localStorage.removeItem(getStorageKey('cards'));
-    localStorage.removeItem(getStorageKey('contacts'));
-    localStorage.removeItem(getStorageKey('recurring'));
-    localStorage.removeItem(getStorageKey('goals'));
   }, [companyId]);
 
-  const clearAllData = useCallback(
-    async (keepDefaultCategories: boolean = true, createCleanDefaultAccount: boolean = true) => {
-      if (!companyId) return;
+  const clearAllData = useCallback(async (keepDefaultCategories = true, createCleanDefaultAccount = true) => {
+    if (!companyId) return;
+    const cleanAccounts: TreasuryAccount[] = createCleanDefaultAccount
+      ? [{ id: `acc-${Date.now()}`, name: 'Conta Corrente Principal', type: 'checking', initialBalance: 0, color: '#4f46e5', bankName: 'Banco Principal' }]
+      : [];
+    const targetCategories = keepDefaultCategories ? DEFAULT_CATEGORIES : [];
 
-      const cleanAccounts: TreasuryAccount[] = createCleanDefaultAccount
-        ? [
-            {
-              id: 'acc_' + Date.now().toString(36),
-              name: 'Conta Corrente Principal',
-              type: 'checking',
-              initialBalance: 0,
-              color: '#4f46e5',
-              bankName: 'Banco Principal',
-            },
-          ]
-        : [];
+    setExpenses([]);
+    setIncomes([]);
+    setTransfers([]);
+    setAccounts(cleanAccounts);
+    setCards([]);
+    setContacts([]);
+    setRecurringBills([]);
+    setGoals([]);
+    setCostCenters([]);
+    setProposals([]);
+    setEquipment([]);
+    setRentals([]);
+    setCategories(targetCategories);
+    setBudgets({ [getCurrentYearMonth()]: 0 });
 
-      const targetCategories = keepDefaultCategories ? DEFAULT_CATEGORIES : [];
-
-      // 1. Immediately clear local state so UI updates in real-time
-      setExpenses([]);
-      setIncomes([]);
-      setTransfers([]);
-      setAccounts(cleanAccounts);
-      setCards([]);
-      setContacts([]);
-      setRecurringBills([]);
-      setGoals([]);
-      setCategories(targetCategories);
-      setBudgets({ [getCurrentYearMonth()]: 0 });
-
-      // 2. Persist in localStorage
-      localStorage.setItem(getStorageKey('expenses'), JSON.stringify([]));
-      localStorage.setItem(getStorageKey('incomes'), JSON.stringify([]));
-      localStorage.setItem(getStorageKey('transfers'), JSON.stringify([]));
-      localStorage.setItem(getStorageKey('accounts'), JSON.stringify(cleanAccounts));
-      localStorage.setItem(getStorageKey('cards'), JSON.stringify([]));
-      localStorage.setItem(getStorageKey('contacts'), JSON.stringify([]));
-      localStorage.setItem(getStorageKey('recurring'), JSON.stringify([]));
-      localStorage.setItem(getStorageKey('goals'), JSON.stringify([]));
-      localStorage.setItem(getStorageKey('categories'), JSON.stringify(targetCategories));
-      localStorage.setItem(getStorageKey('budgets'), JSON.stringify({ [getCurrentYearMonth()]: 0 }));
-
-      // 3. Clear and sync with Firestore safely
-      try {
-        await clearCompanyData(companyId, keepDefaultCategories);
-        if (createCleanDefaultAccount && cleanAccounts[0]) {
-          await saveCompanyDoc(companyId, 'accounts', cleanAccounts[0].id, cleanAccounts[0]);
-        }
-        if (keepDefaultCategories && targetCategories.length > 0) {
-          const batch = writeBatch(db);
-          targetCategories.forEach((cat) => {
-            const ref = doc(db, 'companies', companyId, 'categories', cat.id);
-            batch.set(ref, cat);
-          });
-          await batch.commit();
-        }
-      } catch (err) {
-        console.warn('Aviso ao sincronizar limpeza de dados com Firestore:', err);
-      }
-    },
-    [companyId]
-  );
+    await clearCompanyData(companyId, keepDefaultCategories);
+    if (cleanAccounts[0]) await saveCompanyDoc(companyId, 'accounts', cleanAccounts[0].id, cleanAccounts[0]);
+    if (keepDefaultCategories) {
+      await Promise.all(targetCategories.map((category) => saveCompanyDoc(companyId, 'categories', category.id, category)));
+    }
+  }, [companyId]);
 
   return {
     expenses,
