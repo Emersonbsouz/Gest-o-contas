@@ -1,98 +1,122 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // --- GLOBAL HELPERS ---
-    
     function isSignedIn() {
       return request.auth != null;
     }
-    
+
     function getUserEmail() {
-      return request.auth.token.email != null ? request.auth.token.email.lower() : '';
+      return isSignedIn() && request.auth.token.email != null
+        ? request.auth.token.email.lower()
+        : '';
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    function companyPath(companyId) {
+      return /databases/$(database)/documents/companies/$(companyId);
     }
 
-    function incoming() {
-      return request.resource.data;
+    function companyExists(companyId) {
+      return exists(companyPath(companyId));
     }
-
-    function existing() {
-      return resource.data;
-    }
-
-    // --- RELATIONSHIP HELPERS ---
 
     function getCompany(companyId) {
-      return get(/databases/$(database)/documents/companies/$(companyId)).data;
+      return get(companyPath(companyId)).data;
+    }
+
+    function isCompanyOwner(companyId) {
+      return isSignedIn()
+        && companyExists(companyId)
+        && (
+          getCompany(companyId).ownerId == request.auth.uid
+          || getCompany(companyId).ownerEmail.lower() == getUserEmail()
+        );
     }
 
     function isCompanyMember(companyId) {
-      let company = getCompany(companyId);
-      return company.ownerId == request.auth.uid || getUserEmail() in company.memberEmails;
+      return isSignedIn()
+        && companyExists(companyId)
+        && (
+          getCompany(companyId).ownerId == request.auth.uid
+          || getCompany(companyId).ownerEmail.lower() == getUserEmail()
+          || getUserEmail() in getCompany(companyId).memberEmails
+        );
     }
-
-    function getMemberInfo(companyId) {
-      let company = getCompany(companyId);
-      return company.membersInfo; // Note: Firestore rules can't easily filter arrays, but we check presence
-    }
-
-    // --- VALIDATION HELPERS ---
 
     function isValidCompany(data) {
-      return data.keys().hasAll(['id', 'name', 'type', 'ownerId', 'ownerEmail', 'memberEmails', 'createdAt'])
-        && data.id is string && data.id.size() <= 100
-        && data.name is string && data.name.size() <= 100
+      return data.keys().hasAll([
+          'id',
+          'name',
+          'type',
+          'ownerId',
+          'ownerEmail',
+          'memberEmails',
+          'createdAt'
+        ])
+        && data.id is string
+        && data.id.size() <= 100
+        && data.name is string
+        && data.name.size() <= 100
         && data.type in ['personal', 'business']
         && data.ownerId == request.auth.uid
         && data.ownerEmail.lower() == getUserEmail()
         && data.memberEmails is list
+        && getUserEmail() in data.memberEmails
         && data.createdAt is number;
     }
 
     function isValidExpense(data) {
-      return data.keys().hasAll(['id', 'description', 'amount', 'date', 'categoryId', 'paymentMethod'])
-        && data.id is string && data.id.size() <= 100
-        && data.description is string && data.description.size() <= 200
-        && data.amount is number && data.amount >= 0
-        && data.date is string && data.date.size() <= 10
+      return data.keys().hasAll([
+          'id',
+          'description',
+          'amount',
+          'date',
+          'categoryId',
+          'paymentMethod'
+        ])
+        && data.id is string
+        && data.id.size() <= 100
+        && data.description is string
+        && data.description.size() <= 200
+        && data.amount is number
+        && data.amount >= 0
+        && data.date is string
+        && data.date.size() <= 10
         && data.categoryId is string
         && data.paymentMethod is string;
     }
 
-    // Default deny
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Connection test document
-    match /test/{docId} {
-      allow read, write: if true;
-    }
-
-    // Companies collection
     match /companies/{companyId} {
-      // Permissive read for authenticated users to avoid complex membership check failures during initialization
-      allow read: if isSignedIn();
-      
-      // Allow create if authenticated and ownerId matches
-      allow create: if isSignedIn() && (incoming().ownerId == request.auth.uid || incoming().ownerEmail.lower() == getUserEmail());
-      
-      // Allow update if authenticated (membership check is done in the app, rules provide safety)
-      allow update: if isSignedIn();
-      
-      // Allow delete only for owner
-      allow delete: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow read: if isSignedIn()
+        && (
+          resource.data.ownerId == request.auth.uid
+          || resource.data.ownerEmail.lower() == getUserEmail()
+          || getUserEmail() in resource.data.memberEmails
+        );
 
-      // Subcollections belonging to the company
+      allow create: if isSignedIn() && isValidCompany(request.resource.data);
+
+      allow update: if isCompanyOwner(companyId)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.ownerEmail == resource.data.ownerEmail
+        && request.resource.data.id == resource.data.id;
+
+      allow delete: if isCompanyOwner(companyId);
+
+      match /expenses/{docId} {
+        allow read: if isCompanyMember(companyId);
+        allow create, update: if isCompanyMember(companyId)
+          && isValidExpense(request.resource.data);
+        allow delete: if isCompanyMember(companyId);
+      }
+
       match /{subcollection}/{docId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if subcollection != 'expenses'
+          && isCompanyMember(companyId);
       }
     }
   }
 }
-
-
