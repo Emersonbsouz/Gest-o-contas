@@ -1,22 +1,18 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT || 3000);
 
+  app.disable('x-powered-by');
   app.use(express.json());
 
   app.get('/api/health', (_req, res) => {
-    res.json({
+    res.status(200).json({
       status: 'ok',
-      service: 'Firebase Integrated',
+      service: 'gestao-contas',
       env: process.env.NODE_ENV || 'development',
     });
   });
@@ -28,7 +24,7 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = path.resolve(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
