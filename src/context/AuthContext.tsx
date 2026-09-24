@@ -1,19 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import {
-  createUserWithEmailAndPassword,
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  sendPasswordResetEmail,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-  updateProfile,
-  type User as FirebaseUser,
-} from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { migrateFirebaseDataToSupabase } from '../services/firebaseMigrationService';
-import { establishSupabaseSession } from '../services/supabaseAuthBridge';
 
 export interface AppUser {
   uid: string;
@@ -25,7 +12,6 @@ interface AuthContextType {
   currentUser: AppUser | null;
   loading: boolean;
   login: (email: string, pass: string) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
   signup: (email: string, pass: string, name: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -33,26 +19,18 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function toAppUser(user: { uid: string; email: string | null; displayName: string | null }): AppUser {
-  return {
-    uid: user.uid,
-    email: user.email,
-    displayName: user.displayName || user.email?.split('@')[0] || 'Usuário',
-  };
-}
+function toAppUser(user: User): AppUser {
+  const displayName =
+    (user.user_metadata?.full_name as string | undefined) ||
+    (user.user_metadata?.name as string | undefined) ||
+    user.email?.split('@')[0] ||
+    'Usuário';
 
-async function migrateAuthenticatedUser(user: FirebaseUser, password?: string) {
-  try {
-    await establishSupabaseSession(user, password);
-    const summary = await migrateFirebaseDataToSupabase(user);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('supabaseMigrationLastResult', JSON.stringify(summary));
-      window.localStorage.setItem('supabaseMigrationLastRun', new Date().toISOString());
-    }
-    console.info('[migration] Firebase -> Supabase concluída', summary);
-  } catch (error) {
-    console.error('[migration] Firebase -> Supabase pendente/falhou', error);
-  }
+  return {
+    uid: user.id,
+    email: user.email || null,
+    displayName,
+  };
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -60,37 +38,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user ? toAppUser(user) : null);
-      setLoading(false);
+    let mounted = true;
 
-      if (user) {
-        void migrateAuthenticatedUser(user);
-      }
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!mounted) return;
+      if (error) console.error('[Supabase Auth] Erro ao restaurar sessão:', error);
+      setCurrentUser(data.session?.user ? toAppUser(data.session.user) : null);
+      setLoading(false);
     });
 
-    return unsubscribe;
-  }, []);
-
-  const loginWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
-    setLoading(true);
-    try {
-      const result = await signInWithPopup(auth, provider);
-      setCurrentUser(toAppUser(result.user));
-      void migrateAuthenticatedUser(result.user);
-    } finally {
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      setCurrentUser(session?.user ? toAppUser(session.user) : null);
       setLoading(false);
-    }
-  };
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
 
   const login = async (email: string, pass: string) => {
     const cleanEmail = email.trim().toLowerCase();
     setLoading(true);
     try {
-      const credential = await signInWithEmailAndPassword(auth, cleanEmail, pass);
-      setCurrentUser(toAppUser(credential.user));
-      void migrateAuthenticatedUser(credential.user, pass);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password: pass,
+      });
+      if (error) throw error;
+      if (!data.user) throw new Error('Não foi possível abrir a sessão no Supabase.');
+      setCurrentUser(toAppUser(data.user));
     } finally {
       setLoading(false);
     }
@@ -100,17 +79,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name.trim();
     setLoading(true);
-
     try {
-      const credential = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
-      if (cleanName) {
-        await updateProfile(credential.user, { displayName: cleanName });
-      }
-      setCurrentUser({
-        ...toAppUser(credential.user),
-        displayName: cleanName || credential.user.email?.split('@')[0] || 'Usuário',
+      const { data, error } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password: pass,
+        options: {
+          data: { full_name: cleanName },
+          emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+        },
       });
-      void migrateAuthenticatedUser(credential.user, pass);
+      if (error) throw error;
+      if (data.session?.user) setCurrentUser(toAppUser(data.session.user));
     } finally {
       setLoading(false);
     }
@@ -118,16 +97,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resetPassword = async (email: string) => {
     const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail) {
-      throw new Error('Informe seu e-mail para recuperar a senha.');
-    }
-    await sendPasswordResetEmail(auth, cleanEmail);
+    if (!cleanEmail) throw new Error('Informe seu e-mail para recuperar a senha.');
+
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+    });
+    if (error) throw error;
   };
 
   const logout = async () => {
     setLoading(true);
     try {
-      await Promise.allSettled([signOut(auth), supabase.auth.signOut()]);
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
       setCurrentUser(null);
     } finally {
       setLoading(false);
@@ -135,17 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        currentUser,
-        loading,
-        login,
-        loginWithGoogle,
-        signup,
-        resetPassword,
-        logout,
-      }}
-    >
+    <AuthContext.Provider value={{ currentUser, loading, login, signup, resetPassword, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -153,8 +125,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth deve ser usado dentro de um AuthProvider');
-  }
+  if (!context) throw new Error('useAuth deve ser usado dentro de um AuthProvider');
   return context;
 }
