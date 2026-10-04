@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Hammer, MapPin, Calendar, Info } from 'lucide-react';
 import { CostCenter, ContactPerson } from '../types';
+import { getSaveErrorMessage } from '../utils/saveErrors';
 
 interface CostCenterModalProps {
   isOpen: boolean;
@@ -23,8 +24,13 @@ export const CostCenterModal: React.FC<CostCenterModalProps> = ({
   const [budget, setBudget] = useState(0);
   const [startDate, setStartDate] = useState('');
   const [color, setColor] = useState('#4f46e5');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [notes, setNotes] = useState('');
 
   useEffect(() => {
+    setError('');
+    setNotes(editingCC?.notes || '');
     if (editingCC) {
       setName(editingCC.name);
       setClientId(editingCC.clientId);
@@ -44,17 +50,27 @@ export const CostCenterModal: React.FC<CostCenterModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({
-      name,
-      clientId,
-      status,
-      budget,
-      startDate,
-      color,
-    }, editingCC?.id);
-    onClose();
+    if (!name.trim()) { setError('Informe o nome do centro de custo.'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      await onSave({
+        name: name.trim(),
+        clientId,
+        status,
+        budget,
+        startDate,
+        color,
+        notes: notes.trim() || undefined,
+      }, editingCC?.id);
+      onClose();
+    } catch (err) {
+      setError(getSaveErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -67,7 +83,7 @@ export const CostCenterModal: React.FC<CostCenterModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-slate-900">{editingCC ? 'Editar Centro de Custo' : 'Novo Centro de Custo'}</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Gestão de Obra / Projeto</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Departamento, atividade, obra ou projeto</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-xl transition-colors">
@@ -76,15 +92,17 @@ export const CostCenterModal: React.FC<CostCenterModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-5">
+          {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Nome do Projeto/Obra</label>
+            <label htmlFor="cost-center-name" className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Nome do Centro de Custo</label>
             <input
+              id="cost-center-name"
               autoFocus
               required
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Reforma Apartamento 402 - Ed. Central"
+              placeholder="Ex: Administrativo, Vendas, Obra Central"
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
             />
           </div>
@@ -93,12 +111,12 @@ export const CostCenterModal: React.FC<CostCenterModalProps> = ({
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Cliente Vinculado</label>
               <select
-                required
+                aria-label="Cliente vinculado (opcional)"
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
               >
-                <option value="">Selecione um cliente...</option>
+                <option value="">Sem cliente vinculado (opcional)</option>
                 {contacts.filter(c => c.type === 'client').map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
@@ -163,9 +181,12 @@ export const CostCenterModal: React.FC<CostCenterModalProps> = ({
           <div className="bg-indigo-50 p-4 rounded-2xl flex gap-3">
             <Info className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
             <p className="text-xs text-indigo-800 leading-relaxed">
-              O <strong>Centro de Custo</strong> é o coração da sua gestão. Todos os lançamentos financeiros vinculados a ele comporão a DRE da obra automaticamente.
+              Vincule receitas e despesas a este <strong>Centro de Custo</strong> para acompanhar os valores e o resultado de cada atividade.
             </p>
           </div>
+          <label className="block text-xs font-bold text-slate-500">Observações
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} className="block w-full mt-2 p-3 border rounded-xl" />
+          </label>
 
           <div className="flex gap-3 pt-4">
             <button
@@ -177,9 +198,10 @@ export const CostCenterModal: React.FC<CostCenterModalProps> = ({
             </button>
             <button
               type="submit"
+              disabled={saving}
               className="flex-[2] px-4 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all text-sm"
             >
-              {editingCC ? 'Salvar Alterações' : 'Criar Centro de Custo'}
+              {saving ? 'Salvando...' : editingCC ? 'Salvar Alterações' : 'Criar Centro de Custo'}
             </button>
           </div>
         </form>

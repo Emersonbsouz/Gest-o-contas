@@ -78,6 +78,8 @@ export default function App() {
   // Multi-Company State
   const [companies, setCompanies] = useState<Company[]>([]);
   const [activeCompany, setActiveCompany] = useState<Company | null>(null);
+  const [companiesLoading, setCompaniesLoading] = useState(true);
+  const [companyError, setCompanyError] = useState('');
   const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
   const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
 
@@ -94,6 +96,8 @@ export default function App() {
     }
 
     let isMounted = true;
+    setCompaniesLoading(true);
+    setCompanyError('');
 
     // Ensure starter companies (Personal, Individual, Cacto) exist in cloud
     ensureDefaultCompanies(currentUser.uid, currentUser.email || '')
@@ -113,7 +117,8 @@ export default function App() {
       })
       .catch((err) => {
         console.error('[App] Erro ao carregar empresas iniciais:', err);
-      });
+        if (isMounted) setCompanyError('Não foi possível carregar sua empresa. Seus dados não foram alterados. Tente novamente.');
+      }).finally(() => { if (isMounted) setCompaniesLoading(false); });
 
     // Real-time listener for companies
     const unsubscribe = subscribeToUserCompanies(
@@ -843,6 +848,16 @@ export default function App() {
   if (!currentUser) {
     return <AuthView />;
   }
+  if (!activeCompany) {
+    return <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-6">
+      <div className="max-w-md text-center space-y-4">
+        <h1 className="text-xl font-bold">Preparando sua empresa</h1>
+        <p role={companyError ? 'alert' : undefined}>{companiesLoading ? 'Carregando o ambiente financeiro...' : companyError || 'Nenhuma empresa disponível. Tente carregar novamente.'}</p>
+        {!companiesLoading && <button onClick={() => window.location.reload()} className="px-4 py-2 bg-indigo-600 rounded-lg">Tentar novamente</button>}
+        <button onClick={logout} className="block mx-auto text-sm">Sair</button>
+      </div>
+    </div>;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans text-slate-800 antialiased">
@@ -983,6 +998,10 @@ export default function App() {
 
           {activeView === 'cadastros' && (
             <RegistriesView
+              costCenters={costCenters}
+              incomes={incomes}
+              expenses={expenses}
+              onOpenCostCenterModal={(center) => { setEditingCostCenter(center || null); setIsCostCenterModalOpen(true); }}
               cards={cards}
               contacts={contacts}
               recurringBills={recurringBills}
@@ -1039,6 +1058,8 @@ export default function App() {
         type={financialModalType}
         isOpen={isFinancialModalOpen}
         onClose={() => setIsFinancialModalOpen(false)}
+        onCreateContact={() => handleOpenAddContactModal(undefined, financialModalType === 'income' ? 'client' : 'supplier')}
+        onCreateCostCenter={() => { setEditingCostCenter(null); setIsCostCenterModalOpen(true); }}
         onSave={financialModalType === 'expense' ? handleSaveExpense : handleSaveIncome}
         editingItem={editingFinancialItem}
         categories={categories}

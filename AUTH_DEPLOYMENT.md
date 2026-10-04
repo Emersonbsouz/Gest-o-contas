@@ -45,3 +45,30 @@ a recuperação e concluir a alteração pelo e-mail. Não registrar credenciais
 nos logs ou no repositório.
 
 Referência: https://supabase.com/docs/reference/javascript/auth-resetpasswordforemail
+
+## Criação da empresa e cadastros
+
+A migração `fix_company_owner_select_during_insert` foi aplicada ao projeto:
+
+```sql
+ALTER POLICY companies_select ON public.companies TO authenticated
+USING (owner_id = (select auth.uid()) OR public.is_company_member(id));
+```
+
+O teste de criação com `INSERT ... RETURNING` falhava com `42501` porque a
+função de membro consultava a empresa antes de ela ficar visível no mesmo
+comando. A condição direta de proprietário permite devolver a empresa recém
+criada; membros mantêm o mesmo acesso e terceiros continuam sem acesso.
+RLS permanece habilitada. Não há novos privilégios, funções privilegiadas
+ou alterações de dados nesta migração.
+
+Cadastros e lançamentos só aparecem como salvos após confirmação do servidor.
+A ausência de empresa ativa gera erro explícito. A criação inicial tem
+proteção contra duas chamadas simultâneas e inclui uma conta Caixa com saldo
+zero, além das categorias padrão.
+
+Receitas identificam o cliente/origem; despesas identificam o fornecedor ou
+favorecido. Ambas usam centro de custo, e despesas podem ser rateadas. Centros
+podem representar departamentos e atividades sem cliente vinculado. O painel
+de centros mostra valores previstos de todos os períodos, incluindo contas
+pendentes e excluindo cancelados/rejeitados; não representa saldo bancário.

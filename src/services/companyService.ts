@@ -95,6 +95,9 @@ async function loadAccessibleCompanies(userEmail: string): Promise<Company[]> {
 }
 
 async function seedCompanyDefaults(companyId: string) {
+  await saveCompanyDoc(companyId, 'accounts', 'acc-caixa', {
+    id: 'acc-caixa', name: 'Caixa', type: 'cash', initialBalance: 0, color: '#4f46e5',
+  });
   await Promise.all(
     DEFAULT_CATEGORIES.map((category) =>
       saveCompanyDoc(companyId, 'categories', category.id, category)
@@ -137,7 +140,17 @@ async function createCompanyRow(
   return hydrated[0];
 }
 
-export async function ensureDefaultCompanies(userId: string, userEmail: string): Promise<Company[]> {
+const initialCompanyRequests = new Map<string, Promise<Company[]>>();
+
+export function ensureDefaultCompanies(userId: string, userEmail: string): Promise<Company[]> {
+  const existingRequest = initialCompanyRequests.get(userId);
+  if (existingRequest) return existingRequest;
+  const request = createInitialCompanies(userId, userEmail).finally(() => initialCompanyRequests.delete(userId));
+  initialCompanyRequests.set(userId, request);
+  return request;
+}
+
+async function createInitialCompanies(userId: string, userEmail: string): Promise<Company[]> {
   const existing = await loadAccessibleCompanies(userEmail);
   if (existing.length > 0) return existing;
 

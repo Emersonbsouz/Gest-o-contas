@@ -49,6 +49,7 @@ export const IncomeList: React.FC<IncomeListProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedCostCenter, setSelectedCostCenter] = useState('all');
   const [sortBy, setSortBy] = useState<SortOption>('date_desc');
 
   const contactMap = useMemo(() => {
@@ -69,12 +70,14 @@ export const IncomeList: React.FC<IncomeListProps> = ({
       .filter((i) => {
         const matchesSearch =
           i.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (i.notes && i.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+          (i.notes && i.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (contactMap.get(i.contactId || '') || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (costCenterMap.get(i.costCenterId || '') || '').toLowerCase().includes(searchTerm.toLowerCase());
 
         const matchesCategory =
           selectedCategory === 'all' || i.categoryId === selectedCategory;
 
-        return matchesSearch && matchesCategory;
+        return matchesSearch && matchesCategory && (selectedCostCenter === 'all' || i.costCenterId === selectedCostCenter);
       })
       .sort((a, b) => {
         if (sortBy === 'date_desc') return b.date.localeCompare(a.date);
@@ -83,7 +86,7 @@ export const IncomeList: React.FC<IncomeListProps> = ({
         if (sortBy === 'amount_asc') return a.amount - b.amount;
         return 0;
       });
-  }, [monthIncomes, searchTerm, selectedCategory, sortBy]);
+  }, [monthIncomes, searchTerm, selectedCategory, selectedCostCenter, sortBy, contactMap, costCenterMap]);
 
   const filteredTotal = filteredIncomes.reduce((sum, i) => sum + i.amount, 0);
 
@@ -121,6 +124,10 @@ export const IncomeList: React.FC<IncomeListProps> = ({
           </button>
         </div>
 
+        <select aria-label="Filtrar por centro de custo" value={selectedCostCenter} onChange={e => setSelectedCostCenter(e.target.value)} className="w-full rounded-lg border border-slate-200 p-2 text-xs bg-white">
+          <option value="all">Todos os centros de custo</option>
+          {costCenters.map(center => <option key={center.id} value={center.id}>{center.name}</option>)}
+        </select>
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 pt-1">
           <div className="sm:col-span-6 relative">
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
@@ -172,7 +179,7 @@ export const IncomeList: React.FC<IncomeListProps> = ({
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
                 <th className="py-3 px-4">Data</th>
-                <th className="py-3 px-4">Descrição / Obra</th>
+                <th className="py-3 px-4">Descrição / Origem / Centro de Custo</th>
                 <th className="py-3 px-4">Categoria</th>
                 <th className="py-3 px-4 text-right">Valor</th>
                 <th className="py-3 px-4 text-center w-24">Ações</th>
@@ -221,7 +228,7 @@ export const IncomeList: React.FC<IncomeListProps> = ({
                         {income.costCenterId && (
                           <span className="inline-flex items-center gap-1 text-indigo-600 font-medium">
                             <Building2 className="w-3 h-3" />
-                            Obra: {costCenterMap.get(income.costCenterId)}
+                            Centro de custo: {costCenterMap.get(income.costCenterId) || 'Cadastro indisponível'}
                           </span>
                         )}
                         {income.contactId && (

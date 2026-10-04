@@ -1,3 +1,4 @@
+import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState, useEffect } from 'react';
 import { X, Target, Calendar, DollarSign, Tag, TrendingUp } from 'lucide-react';
 import { FinancialGoal } from '../types';

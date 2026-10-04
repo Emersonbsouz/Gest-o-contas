@@ -52,6 +52,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedPayment, setSelectedPayment] = useState<string>('all');
+  const [selectedCostCenter, setSelectedCostCenter] = useState('all');
   const [sortBy, setSortBy] = useState<SortOption>('date_desc');
 
   const safeAccounts = accounts || [];
@@ -88,7 +89,9 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
       .filter((e) => {
         const matchesSearch =
           e.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (e.notes && e.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+          (e.notes && e.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (contactMap.get(e.contactId || '') || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (costCenterMap.get(e.costCenterId || '') || '').toLowerCase().includes(searchTerm.toLowerCase());
 
         const matchesCategory =
           selectedCategory === 'all' || e.categoryId === selectedCategory;
@@ -96,7 +99,8 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
         const matchesPayment =
           selectedPayment === 'all' || e.paymentMethod === selectedPayment;
 
-        return matchesSearch && matchesCategory && matchesPayment;
+        return matchesSearch && matchesCategory && matchesPayment &&
+          (selectedCostCenter === 'all' || e.costCenterId === selectedCostCenter || e.splits?.some(s => s.costCenterId === selectedCostCenter));
       })
       .sort((a, b) => {
         if (sortBy === 'date_desc') return b.date.localeCompare(a.date);
@@ -105,7 +109,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
         if (sortBy === 'amount_asc') return a.amount - b.amount;
         return 0;
       });
-  }, [monthExpenses, searchTerm, selectedCategory, selectedPayment, sortBy]);
+  }, [monthExpenses, searchTerm, selectedCategory, selectedPayment, selectedCostCenter, sortBy, contactMap, costCenterMap]);
 
   const filteredTotal = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
@@ -149,6 +153,10 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
         </div>
 
         {/* Filter controls row */}
+        <select aria-label="Filtrar por centro de custo" value={selectedCostCenter} onChange={e => setSelectedCostCenter(e.target.value)} className="w-full rounded-lg border border-slate-200 p-2 text-xs bg-white">
+          <option value="all">Todos os centros de custo</option>
+          {costCenters.map(center => <option key={center.id} value={center.id}>{center.name}</option>)}
+        </select>
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 pt-1">
           {/* Search Input */}
           <div className="sm:col-span-5 relative">
@@ -311,7 +319,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                           ) : (
                             expense.costCenterId && (
                               <span className="text-indigo-600 font-bold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
-                                Obra: {costCenterMap.get(expense.costCenterId)}
+                                Centro de custo: {costCenterMap.get(expense.costCenterId) || 'Cadastro indisponível'}
                               </span>
                             )
                           )}
