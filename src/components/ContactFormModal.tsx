@@ -1,3 +1,4 @@
+import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState, useEffect } from 'react';
 import { X, Users, Phone, Mail, FileText, QrCode, Tag, MapPin } from 'lucide-react';
 import { ContactPerson, ContactType } from '../types';
@@ -84,7 +85,7 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
       );
       onClose();
     } catch (err) {
-      setError('Erro ao salvar. Tente novamente.');
+      setError(getSaveErrorMessage(err));
     } finally {
       setIsLoading(false);
     }

@@ -1,3 +1,4 @@
+import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState, useEffect } from 'react';
 import { X, RefreshCw, Calendar, DollarSign, Wallet, CreditCard as CreditCardIcon, Users } from 'lucide-react';
 import {
@@ -41,6 +42,7 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
   const [active, setActive] = useState(true);
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (editingBill) {
@@ -73,11 +75,11 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
       setNotes('');
     }
     setError('');
-  }, [editingBill, isOpen, categories, accounts, cards]);
+  }, [editingBill, isOpen]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!description.trim()) {
       setError('Informe a descrição ou nome da conta fixa/recorrente.');
@@ -96,7 +98,10 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
       return;
     }
 
-    onSave(
+    setSaving(true);
+    setError('');
+    try {
+    await onSave(
       {
         description: description.trim(),
         type,
@@ -113,6 +118,11 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
     );
 
     onClose();
+    } catch (err) {
+      setError(getSaveErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -384,6 +394,7 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
             </button>
             <button
               type="submit"
+              disabled={saving}
               className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-xs transition-colors"
             >
               {editingBill ? 'Salvar Alterações' : 'Cadastrar Conta Recorrente'}

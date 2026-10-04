@@ -1,3 +1,4 @@
+import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState } from 'react';
 import { 
   X, Check, DollarSign, ArrowDownLeft, ArrowUpRight, 
@@ -31,6 +32,8 @@ interface FinancialFormModalProps {
   contacts?: ContactPerson[];
   costCenters?: CostCenter[];
   defaultDate?: string;
+  onCreateContact?: () => void;
+  onCreateCostCenter?: () => void;
 }
 
 export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
@@ -45,13 +48,15 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   contacts = [],
   costCenters = [],
   defaultDate,
+  onCreateContact,
+  onCreateCostCenter,
 }) => {
   // State
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(type === 'expense' ? 'credit_card' : 'transfer');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('transfer');
   const [accountId, setAccountId] = useState('');
   const [cardId, setCardId] = useState('');
   const [contactId, setContactId] = useState('');
@@ -90,7 +95,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       setAmount(editingItem.amount.toString());
       setDate(editingItem.date);
       setCategoryId(editingItem.categoryId);
-      setPaymentMethod(editingItem.paymentMethod || (type === 'expense' ? 'credit_card' : 'transfer'));
+      setPaymentMethod(editingItem.paymentMethod || ('transfer'));
       setAccountId(editingItem.accountId || accounts?.[0]?.id || '');
       setCardId(editingItem.cardId || cards?.[0]?.id || '');
       setContactId(editingItem.contactId || '');
@@ -129,7 +134,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       setAmount('');
       setDate(defaultDate || today);
       setCategoryId(filteredCategories?.[0]?.id || '');
-      setPaymentMethod(type === 'expense' ? 'credit_card' : 'transfer');
+      setPaymentMethod('transfer');
       setAccountId(accounts?.[0]?.id || '');
       setCardId(cards?.[0]?.id || '');
       setContactId('');
@@ -152,7 +157,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
     }
     setActiveStep(1);
     setError('');
-  }, [editingItem, isOpen, type, categories]);
+  }, [editingItem, isOpen, type]);
 
   const handleToggleRecurring = () => {
     const nextValue = !isRecurring;
@@ -208,10 +213,25 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const err = validateStep(activeStep);
-    if (err) {
-      setError(err);
+    const err = validateStep(1);
+    if (err) { setError(err); setActiveStep(1); return; }
+    if (!contactId || !contacts.some(c => c.id === contactId)) {
+      setError(type === 'income' ? 'Selecione o cliente ou a origem desta receita.' : 'Selecione o fornecedor ou favorecido desta despesa.');
       return;
+    }
+    if (showSplits && type === 'expense') {
+      if (!splits.length || splits.some(s => !costCenters.some(cc => cc.id === s.costCenterId) || s.amount <= 0)) {
+        setError('Informe um centro de custo válido e um valor positivo em cada parte do rateio.'); return;
+      }
+    } else if (!costCenters.some(cc => cc.id === costCenterId)) {
+      setError('Selecione um centro de custo para identificar este lançamento.'); return;
+    }
+    if (['paid', 'liquidated', 'PAGO'].includes(status) &&
+      !(paymentMethod === 'credit_card' ? cards.some(c => c.id === cardId) : accounts.some(a => a.id === accountId))) {
+      setError('Selecione a conta ou o cartão utilizado no pagamento ou recebimento.'); return;
+    }
+    if (isInstallment && (!Number.isInteger(Number(totalInstallments)) || Number(totalInstallments) < 1 || Number(totalInstallments) > 120)) {
+      setError('Informe entre 1 e 120 parcelas.'); return;
     }
 
     const numAmount = parseFloat(amount.replace(',', '.'));
@@ -296,7 +316,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       }
       onClose();
     } catch (err) {
-      setError('Erro ao salvar. Tente novamente.');
+      setError(getSaveErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -396,7 +416,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                 </div>
                 {isRecurring && (
                   <p className="text-[10px] text-slate-500 leading-relaxed italic">
-                    Este lançamento será clonado mensalmente. O Centro de Custo padrão será "Escritório/Administrativo" se não houver rateio.
+                    Marque para identificar um lançamento recorrente. Selecione o centro de custo correspondente.
                   </p>
                 )}
               </div>
@@ -432,7 +452,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <LayoutGrid className="w-4 h-4 text-indigo-600" />
-                    <span className="text-xs font-bold text-slate-800 uppercase tracking-tight">Destinação (Obras)</span>
+                    <span className="text-xs font-bold text-slate-800 uppercase tracking-tight">Centro de custo / Destinação</span>
                   </div>
                   {type === 'expense' && (
                     <button
@@ -448,15 +468,18 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                   )}
                 </div>
 
+                {onCreateCostCenter && <button type="button" onClick={onCreateCostCenter} className="text-xs font-bold text-indigo-600">+ Cadastrar centro de custo</button>}
+                {costCenters.length === 0 && <p className="text-xs text-amber-700">Cadastre um centro de custo em Cadastros, como Administrativo, Vendas ou um projeto.</p>}
                 {!showSplits ? (
                   <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-500">Centro de Custo / Obra *</label>
+                    <label className="text-[11px] font-bold text-slate-500">Centro de Custo *</label>
                     <select
+                      aria-label="Centro de Custo"
                       value={costCenterId}
                       onChange={(e) => setCostCenterId(e.target.value)}
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-indigo-500/20"
                     >
-                      <option value="">Selecione uma obra</option>
+                      <option value="">Selecione um centro de custo</option>
                       {costCenters.map(cc => (
                         <option key={cc.id} value={cc.id}>{cc.name}</option>
                       ))}
@@ -473,7 +496,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                             onChange={(e) => updateSplit(index, 'costCenterId', e.target.value)}
                             className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-[11px] bg-slate-50"
                           >
-                            <option value="">Obra...</option>
+                            <option value="">Centro de custo...</option>
                             {costCenters.map(cc => (
                               <option key={cc.id} value={cc.id}>{cc.name}</option>
                             ))}
@@ -507,7 +530,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                       className="w-full py-2 border-2 border-dashed border-slate-200 rounded-xl text-[10px] font-bold text-slate-500 hover:border-indigo-300 hover:text-indigo-600 transition-all flex items-center justify-center gap-2"
                     >
                       <Plus className="w-3 h-3" />
-                      Adicionar Obra ao Rateio
+                      Adicionar Centro de Custo ao Rateio
                     </button>
                     
                     <div className="flex items-center justify-between px-2 py-1.5 bg-indigo-50/50 rounded-lg border border-indigo-100">
@@ -591,17 +614,19 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">{type === 'expense' ? 'Fornecedor' : 'Cliente'}</label>
+                  <label className="text-xs font-bold text-slate-700">{type === 'expense' ? 'Fornecedor / Favorecido *' : 'Cliente / Origem da Receita *'}</label>
                   <select
+                    aria-label={type === 'income' ? 'Cliente / Origem da Receita' : 'Fornecedor / Favorecido'}
                     value={contactId}
                     onChange={(e) => setContactId(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white"
                   >
-                    <option value="">Não informado</option>
-                    {contacts.map(c => (
+                    <option value="">Selecione quem paga ou recebe</option>
+                    {contacts.filter(c => c.id === contactId || c.type === 'other' || (type === 'income' ? c.type === 'client' : c.type !== 'client')).map(c => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
+                  {onCreateContact && <button type="button" onClick={onCreateContact} className="text-xs font-bold text-indigo-600">{type === 'income' ? '+ Cadastrar cliente / origem' : '+ Cadastrar fornecedor / favorecido'}</button>}
                 </div>
               </div>
 

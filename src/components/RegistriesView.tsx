@@ -53,8 +53,10 @@ import {
   DEFAULT_ROLE_PERMISSIONS,
   CompanyMemberInfo,
   Equipment,
+  CostCenter,
 } from '../types';
 import { formatCurrency, formatDateBR } from '../utils/formatters';
+import { CostCenterRegistry } from './CostCenterRegistry';
 import { CategoryIcon } from './CategoryIcon';
 import { EditMemberPermissionsModal } from './EditMemberPermissionsModal';
 
@@ -66,6 +68,10 @@ interface RegistriesViewProps {
   accounts: TreasuryAccount[];
   categories: Category[];
   equipment: Equipment[];
+  costCenters?: CostCenter[];
+  incomes?: Income[];
+  expenses?: Expense[];
+  onOpenCostCenterModal?: (center?: CostCenter) => void;
   currentYearMonth: string;
 
   activeCompany?: Company | null;
@@ -115,7 +121,7 @@ interface RegistriesViewProps {
   onDeleteEquipment: (id: string) => void;
 }
 
-type ActiveRegistryTab = 'cards' | 'contacts' | 'recurring' | 'goals' | 'accounts' | 'categories' | 'members' | 'equipment';
+type ActiveRegistryTab = 'cards' | 'contacts' | 'recurring' | 'goals' | 'accounts' | 'categories' | 'members' | 'equipment' | 'costCenters';
 
 export const RegistriesView: React.FC<RegistriesViewProps> = ({
   cards = [],
@@ -125,6 +131,10 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
   accounts = [],
   categories = [],
   equipment = [],
+  costCenters = [],
+  incomes = [],
+  expenses = [],
+  onOpenCostCenterModal,
   currentYearMonth,
   activeCompany,
   currentUserEmail,
@@ -343,7 +353,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
               Central de Cadastros Financeiros
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Gerencie cartões de crédito, fornecedores, contas recorrentes, metas de economia, categorias e contas bancárias.
+              Cadastre clientes, fornecedores e centros de custo para identificar a origem das receitas e o destino das despesas.
             </p>
           </div>
 
@@ -375,18 +385,20 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                   else if (activeTab === 'accounts') onOpenAccountModal();
                   else if (activeTab === 'categories') onOpenCategoryModal();
                   else if (activeTab === 'equipment') onOpenEquipmentModal();
+                  else if (activeTab === 'costCenters') onOpenCostCenterModal?.();
                 }}
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 {activeTab === 'cards' && 'Novo Cartão'}
-                {activeTab === 'contacts' && 'Novo Contato / Fornecedor'}
+                {activeTab === 'contacts' && 'Novo Cliente / Fornecedor'}
                 {activeTab === 'recurring' && 'Nova Conta Recorrente'}
                 {activeTab === 'goals' && 'Nova Meta Financeira'}
                 {activeTab === 'accounts' && 'Nova Conta / Cota Caixa'}
                 {activeTab === 'categories' && 'Nova Categoria'}
                 {activeTab === 'members' && 'Convidar Sócio'}
                 {activeTab === 'equipment' && 'Novo Equipamento'}
+                {activeTab === 'costCenters' && 'Novo Centro de Custo'}
               </button>
           </div>
         </div>
@@ -419,6 +431,14 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
         </div>
       </div>
 
+      <button type="button" onClick={() => { setActiveTab('costCenters'); setSearchQuery(''); }}
+        className={`px-4 py-3 rounded-xl text-sm font-bold border ${activeTab === 'costCenters' ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-700 border-indigo-200'}`}>
+        Centros de Custo ({costCenters.length})
+      </button>
+      {activeTab === 'costCenters' && (
+        <CostCenterRegistry centers={costCenters} contacts={contacts} incomes={incomes} expenses={expenses}
+          onEdit={(center) => onOpenCostCenterModal?.(center)} onCreate={() => onOpenCostCenterModal?.()} />
+      )}
       {/* Tabs Selector Navigation (Grouped) */}
       <div className="space-y-4">
         <div className="flex flex-col gap-4">
@@ -458,7 +478,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                 }`}
               >
                 <Users className="w-3.5 h-3.5" />
-                Favorecidos ({contacts.length})
+                Clientes e Fornecedores ({contacts.length})
               </button>
 
               <button
@@ -728,7 +748,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
               >
                 <option value="all">Todos os Contatos</option>
                 <option value="supplier">Apenas Fornecedores / Favorecidos</option>
-                <option value="customer">Apenas Clientes / Pagadores</option>
+                <option value="client">Apenas Clientes / Pagadores</option>
                 <option value="service_provider">Apenas Prestadores de Serviços</option>
                 <option value="other">Outros Contatos</option>
               </select>
@@ -761,14 +781,14 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                   {filteredContacts.map((contact) => {
                     const badgeStyles = {
                       supplier: 'bg-rose-50 text-rose-700 border-rose-200',
-                      customer: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                      client: 'bg-emerald-50 text-emerald-700 border-emerald-200',
                       service_provider: 'bg-purple-50 text-purple-700 border-purple-200',
                       other: 'bg-slate-100 text-slate-700 border-slate-200',
                     }[contact.type] || 'bg-slate-100 text-slate-700 border-slate-200';
 
                     const typeLabels = {
                       supplier: 'Fornecedor',
-                      customer: 'Cliente',
+                      client: 'Cliente',
                       service_provider: 'Prestador',
                       other: 'Contato',
                     }[contact.type] || 'Contato';
