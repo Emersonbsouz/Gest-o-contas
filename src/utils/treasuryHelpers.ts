@@ -87,8 +87,8 @@ export function getTreasuryMonthSummary(
   const safeTransfers = transfers || [];
   const safeMonth = yearMonth || '';
 
-  const monthIncomes = safeIncomes.filter((i) => isSettled(i.status) && (safeMonth ? i.date.startsWith(safeMonth) : true));
-  const monthExpenses = safeExpenses.filter((e) => isSettled(e.status) && (safeMonth ? e.date.startsWith(safeMonth) : true));
+  const monthIncomes = safeIncomes.filter((i) => isSettled(i.status) && (safeMonth ? (i.settlementDate || i.date).startsWith(safeMonth) : true));
+  const monthExpenses = safeExpenses.filter((e) => isSettled(e.status) && (safeMonth ? (e.settlementDate || e.date).startsWith(safeMonth) : true));
   const monthTransfers = safeTransfers.filter((t) => (safeMonth ? t.date.startsWith(safeMonth) : true));
 
   const monthInflow = monthIncomes.reduce((acc, curr) => acc + curr.amount, 0);
@@ -139,7 +139,7 @@ export function getUnifiedTransactions(
     list.push({
       id: inc.id,
       type: 'income',
-      date: inc.date,
+      date: isSettled(inc.status) ? inc.settlementDate || inc.date : inc.date,
       description: inc.description,
       amount: inc.amount,
       accountId: inc.accountId,
@@ -159,7 +159,7 @@ export function getUnifiedTransactions(
     list.push({
       id: exp.id,
       type: 'expense',
-      date: exp.date,
+      date: isSettled(exp.status) ? exp.settlementDate || exp.date : exp.date,
       description: exp.description,
       amount: exp.amount,
       accountId: accId,
@@ -245,8 +245,8 @@ export function getTreasuryCashflowHistory(
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const ym = `${y}-${m}`;
 
-    const monthIncomes = safeIncomes.filter((inc) => isSettled(inc.status) && inc.date.startsWith(ym));
-    const monthExpenses = safeExpenses.filter((exp) => isSettled(exp.status) && exp.date.startsWith(ym));
+    const monthIncomes = safeIncomes.filter((inc) => isSettled(inc.status) && (inc.settlementDate || inc.date).startsWith(ym));
+    const monthExpenses = safeExpenses.filter((exp) => isSettled(exp.status) && (exp.settlementDate || exp.date).startsWith(ym));
 
     const inflow = monthIncomes.reduce((acc, curr) => acc + curr.amount, 0);
     const outflow = monthExpenses.reduce((acc, curr) => acc + curr.amount, 0);

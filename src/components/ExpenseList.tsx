@@ -1,4 +1,4 @@
-import { isOpen } from '../utils/financialStatus';
+import { isOpen, isSettled, isCancelled } from '../utils/financialStatus';
 import React, { useState, useMemo } from 'react';
 import {
   Search,
@@ -54,6 +54,8 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedPayment, setSelectedPayment] = useState<string>('all');
   const [selectedCostCenter, setSelectedCostCenter] = useState('all');
+  const [periodScope, setPeriodScope] = useState('all');
+  const [statusScope, setStatusScope] = useState('all');
   const [sortBy, setSortBy] = useState<SortOption>('date_desc');
 
   const safeAccounts = accounts || [];
@@ -80,14 +82,17 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
 
   // Filter expenses for current month
   const monthExpenses = useMemo(() => {
-    const ym = currentYearMonth || '';
+    const ym = periodScope === 'month' ? currentYearMonth || '' : '';
     return safeExpenses.filter((e) => (ym ? e.date.startsWith(ym) : true));
-  }, [safeExpenses, currentYearMonth]);
+  }, [safeExpenses, currentYearMonth, periodScope]);
 
   // Filter and sort
   const filteredExpenses = useMemo(() => {
     return monthExpenses
       .filter((e) => {
+        if (statusScope === 'open' && !isOpen(e.status)) return false;
+        if (statusScope === 'settled' && !isSettled(e.status)) return false;
+        if (statusScope === 'cancelled' && !isCancelled(e.status)) return false;
         const matchesSearch =
           e.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (e.notes && e.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -110,7 +115,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
         if (sortBy === 'amount_asc') return a.amount - b.amount;
         return 0;
       });
-  }, [monthExpenses, searchTerm, selectedCategory, selectedPayment, selectedCostCenter, sortBy, contactMap, costCenterMap]);
+  }, [monthExpenses, searchTerm, selectedCategory, selectedPayment, selectedCostCenter, statusScope, sortBy, contactMap, costCenterMap]);
 
   const filteredTotal = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
@@ -133,7 +138,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
           <div>
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <Receipt className="w-5 h-5 text-indigo-600" />
-              Lançamentos do Mês
+              Despesas cadastradas
             </h2>
             <p className="text-xs text-slate-500">
               {filteredExpenses.length} de {monthExpenses.length} despesas encontradas
@@ -154,6 +159,10 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
         </div>
 
         {/* Filter controls row */}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="text-xs font-semibold text-slate-600">Período da consulta<select aria-label="Período da consulta" value={periodScope} onChange={e => setPeriodScope(e.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2"><option value="all">Todo o histórico</option><option value="month">Mês selecionado ({currentYearMonth})</option></select></label>
+          <label className="text-xs font-semibold text-slate-600">Situação<select aria-label="Situação da consulta" value={statusScope} onChange={e => setStatusScope(e.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2"><option value="all">Todas as situações</option><option value="open">Em aberto / Vencidas</option><option value="settled">Pagas / Recebidas</option><option value="cancelled">Canceladas / Rejeitadas</option></select></label>
+        </div>
         <select aria-label="Filtrar por centro de custo" value={selectedCostCenter} onChange={e => setSelectedCostCenter(e.target.value)} className="w-full rounded-lg border border-slate-200 p-2 text-xs bg-white">
           <option value="all">Todos os centros de custo</option>
           {costCenters.map(center => <option key={center.id} value={center.id}>{center.name}</option>)}
@@ -232,7 +241,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
           <h3 className="text-sm font-semibold text-slate-800">Nenhum gasto encontrado</h3>
           <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
             {monthExpenses.length === 0
-              ? 'Você ainda não registrou despesas neste mês. Clique em "Nova Despesa" para começar!'
+              ? 'Nenhuma despesa encontrada no período consultado. Clique em "Nova Despesa" para começar.'
               : 'Nenhum lançamento corresponde aos filtros de busca selecionados.'}
           </p>
           {monthExpenses.length === 0 && (

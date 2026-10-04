@@ -1,4 +1,4 @@
-import { isOpen } from '../utils/financialStatus';
+import { isOpen, isSettled, isCancelled } from '../utils/financialStatus';
 import React, { useState, useMemo } from 'react';
 import {
   Search,
@@ -51,6 +51,8 @@ export const IncomeList: React.FC<IncomeListProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedCostCenter, setSelectedCostCenter] = useState('all');
+  const [periodScope, setPeriodScope] = useState('all');
+  const [statusScope, setStatusScope] = useState('all');
   const [sortBy, setSortBy] = useState<SortOption>('date_desc');
 
   const contactMap = useMemo(() => {
@@ -62,13 +64,16 @@ export const IncomeList: React.FC<IncomeListProps> = ({
   }, [costCenters]);
 
   const monthIncomes = useMemo(() => {
-    const ym = currentYearMonth || '';
+    const ym = periodScope === 'month' ? currentYearMonth || '' : '';
     return incomes.filter((i) => (ym ? i.date.startsWith(ym) : true));
-  }, [incomes, currentYearMonth]);
+  }, [incomes, currentYearMonth, periodScope]);
 
   const filteredIncomes = useMemo(() => {
     return monthIncomes
       .filter((i) => {
+        if (statusScope === 'open' && !isOpen(i.status)) return false;
+        if (statusScope === 'settled' && !isSettled(i.status)) return false;
+        if (statusScope === 'cancelled' && !isCancelled(i.status)) return false;
         const matchesSearch =
           i.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (i.notes && i.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -87,7 +92,7 @@ export const IncomeList: React.FC<IncomeListProps> = ({
         if (sortBy === 'amount_asc') return a.amount - b.amount;
         return 0;
       });
-  }, [monthIncomes, searchTerm, selectedCategory, selectedCostCenter, sortBy, contactMap, costCenterMap]);
+  }, [monthIncomes, searchTerm, selectedCategory, selectedCostCenter, statusScope, sortBy, contactMap, costCenterMap]);
 
   const filteredTotal = filteredIncomes.reduce((sum, i) => sum + i.amount, 0);
 
@@ -125,6 +130,10 @@ export const IncomeList: React.FC<IncomeListProps> = ({
           </button>
         </div>
 
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="text-xs font-semibold text-slate-600">Período da consulta<select aria-label="Período da consulta" value={periodScope} onChange={e => setPeriodScope(e.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2"><option value="all">Todo o histórico</option><option value="month">Mês selecionado ({currentYearMonth})</option></select></label>
+          <label className="text-xs font-semibold text-slate-600">Situação<select aria-label="Situação da consulta" value={statusScope} onChange={e => setStatusScope(e.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2"><option value="all">Todas as situações</option><option value="open">Em aberto / Vencidas</option><option value="settled">Pagas / Recebidas</option><option value="cancelled">Canceladas / Rejeitadas</option></select></label>
+        </div>
         <select aria-label="Filtrar por centro de custo" value={selectedCostCenter} onChange={e => setSelectedCostCenter(e.target.value)} className="w-full rounded-lg border border-slate-200 p-2 text-xs bg-white">
           <option value="all">Todos os centros de custo</option>
           {costCenters.map(center => <option key={center.id} value={center.id}>{center.name}</option>)}

@@ -1,3 +1,4 @@
+import { dailyCashSummary, localToday, validCalendarDate } from '../utils/dailyCash';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Expense,
@@ -15,6 +16,7 @@ import {
   Proposal,
   Equipment,
   Rental,
+  DailyCashClosing,
 } from '../types';
 import { DEFAULT_CATEGORIES } from '../data/defaultCategories';
 import { getInitialExpenses } from '../data/sampleExpenses';
@@ -29,6 +31,8 @@ import { getCurrentYearMonth } from '../utils/formatters';
 import {
   subscribeToCompanySubcollection,
   saveCompanyDoc,
+  createCompanyDoc,
+  loadCompanySubcollection,
   deleteCompanyDoc,
   clearCompanyData,
 } from '../services/companyService';
@@ -54,6 +58,7 @@ export function useCompanyData(companyId: string | null) {
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
+  const [cashClosings, setCashClosings] = useState<DailyCashClosing[]>([]);
   const [rentals, setRentals] = useState<Rental[]>([]);
   const [loading, setLoading] = useState(true);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<SyncStatus>('synced');
@@ -94,6 +99,7 @@ export function useCompanyData(companyId: string | null) {
     setCostCenters(readArray<CostCenter>(getStorageKey('costCenters')));
     setProposals(readArray<Proposal>(getStorageKey('proposals')));
     setEquipment(readArray<Equipment>(getStorageKey('equipment')));
+    setCashClosings(readArray<DailyCashClosing>(getStorageKey('cashClosings')));
     setRentals(readArray<Rental>(getStorageKey('rentals')));
     try {
       const saved = localStorage.getItem(getStorageKey('budgets'));
@@ -103,6 +109,14 @@ export function useCompanyData(companyId: string | null) {
     }
 
     const unsubs: Array<() => void> = [];
+    const readErrors = new Map<string,string>();
+    const reportRead = (name: string, error?: unknown) => {
+      if (error) readErrors.set(name, error instanceof Error ? error.message : String(error));
+      else readErrors.delete(name);
+      setLastError(readErrors.size ? [...readErrors].map(([name,message]) => `${name}: ${message}`).join('; ') : null);
+      setCloudSyncStatus(readErrors.size ? 'error' : 'synced');
+      setLoading(false);
+    };
 
     const wire = <T extends { id: string }>(
       collectionName: string,
@@ -116,7 +130,7 @@ export function useCompanyData(companyId: string | null) {
           collectionName,
           (remote) => {
             const cached = readArray<T>(getStorageKey(cacheName), fallback);
-            if (remote.length === 0 && cached.length > 0) {
+            if (collectionName !== 'cashClosings' && remote.length === 0 && cached.length > 0) {
               setter(cached);
               void Promise.all(cached.map((item) => saveCompanyDoc(companyId, collectionName, item.id, item)));
             } else if (remote.length === 0 && fallback.length > 0) {
@@ -127,15 +141,10 @@ export function useCompanyData(companyId: string | null) {
               setter(remote);
               persistLocal(cacheName, remote);
             }
-            setCloudSyncStatus('synced');
-            setLastError(null);
-            setLoading(false);
+            reportRead(collectionName);
           },
           (error) => {
-            const message = error instanceof Error ? error.message : String(error);
-            setCloudSyncStatus('error');
-            setLastError(message);
-            setLoading(false);
+            reportRead(collectionName,error);
           }
         )
       );
@@ -155,6 +164,7 @@ export function useCompanyData(companyId: string | null) {
     wire<Proposal>('proposals', 'proposals', setProposals);
     wire<Equipment>('equipment', 'equipment', setEquipment);
     wire<Rental>('rentals', 'rentals', setRentals);
+    wire<DailyCashClosing>('cashClosings', 'cashClosings', setCashClosings);
 
     unsubs.push(
       subscribeToCompanySubcollection<{ id: string; ym: string; amount: number }>(
@@ -583,6 +593,32 @@ export function useCompanyData(companyId: string | null) {
 
   }, [companyId]);
 
+  const saveCashClosing = useCallback(async (accountId: string, date: string, countedBalance: number, closedBy: string, notes?: string, signature?: string) => {
+    if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');
+    if (!validCalendarDate(date) || date > localToday()) throw new Error('Selecione uma data válida até hoje.');
+    if (!Number.isFinite(countedBalance) || countedBalance < 0) throw new Error('Informe um saldo contado válido.');
+    const [remoteAccounts, remoteIncomes, remoteExpenses, remoteTransfers] = await Promise.all([
+      loadCompanySubcollection<TreasuryAccount>(companyId, 'accounts'),
+      loadCompanySubcollection<Income>(companyId, 'incomes'),
+      loadCompanySubcollection<Expense>(companyId, 'expenses'),
+      loadCompanySubcollection<AccountTransfer>(companyId, 'transfers'),
+    ]);
+    const account = remoteAccounts.find(a => a.id === accountId && a.type === 'cash');
+    if (!account) throw new Error('Selecione um caixa cadastrado nesta empresa.');
+    const summary = dailyCashSummary(account,date,remoteIncomes,remoteExpenses,remoteTransfers);
+    if (signature && signature !== summary.movementSignature) throw new Error('Os movimentos mudaram. Confira os valores atualizados antes de fechar.');
+    if (Math.round((countedBalance-summary.expectedBalance)*100) !== 0 && !notes?.trim()) throw new Error('Descreva o motivo da diferença antes de fechar.');
+    const {movements, ...totals} = summary;
+    const roundedCounted = Math.round(countedBalance * 100) / 100;
+    const item: DailyCashClosing = { ...totals, id: `closing-${accountId}-${date}`, accountId, accountName:account.name, date,
+      countedBalance:roundedCounted, difference:Math.round((roundedCounted-summary.expectedBalance)*100)/100,
+      closedAt:new Date().toISOString(), closedBy, notes:notes?.trim() || undefined };
+    // Insert-only: the unique document key rejects a second closing for the same day.
+    await createCompanyDoc(companyId,'cashClosings',item.id,item);
+    setCashClosings(prev => {const next = [...prev,item]; persistLocal('cashClosings',next);return next;});
+    return item;
+  }, [companyId]);
+
   const resetData = useCallback(() => {
     if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');
     setExpenses(getInitialExpenses());
@@ -617,6 +653,7 @@ export function useCompanyData(companyId: string | null) {
     setProposals([]);
     setEquipment([]);
     setRentals([]);
+    setCashClosings([]);
     setCategories(targetCategories);
     setBudgets({ [getCurrentYearMonth()]: 0 });
 
@@ -644,6 +681,8 @@ export function useCompanyData(companyId: string | null) {
     proposals,
     equipment,
     rentals,
+    cashClosings,
+    saveCashClosing,
     loading,
     cloudSyncStatus,
     lastError,

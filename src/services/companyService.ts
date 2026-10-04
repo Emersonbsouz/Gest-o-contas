@@ -297,6 +297,13 @@ export async function saveCompanyDoc(companyId: string, collectionName: string, 
   if (error) throw error;
 }
 
+export async function createCompanyDoc(companyId: string, collectionName: string, docId: string, payload: unknown) {
+  const { error } = await supabase.from('company_documents').insert({
+    company_id: companyId, collection_name: collectionName, doc_id: docId, payload,
+  });
+  if (error) throw error;
+}
+
 export async function deleteCompanyDoc(companyId: string, collectionName: string, docId: string) {
   const { error } = await supabase
     .from('company_documents')

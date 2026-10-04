@@ -15,6 +15,7 @@ import {
   Proposal,
   Equipment,
   Rental,
+  DailyCashClosing,
 } from '../types';
 import { supabase } from '../lib/supabase';
 import {
@@ -40,6 +41,7 @@ export interface CompanyFullBackup {
   proposals?: Proposal[];
   equipment?: Equipment[];
   rentals?: Rental[];
+  cashClosings?: DailyCashClosing[];
 }
 
 export interface SystemBackupFile {
@@ -56,7 +58,7 @@ export async function generateFullSystemBackup(
   const companiesBackup: CompanyFullBackup[] = [];
 
   for (const company of userCompanies) {
-    const [expenses, incomes, transfers, accounts, cards, categories, contacts, recurring, goals, budgetRows, treasuries, costCenters, proposals, equipment, rentals] =
+    const [expenses, incomes, transfers, accounts, cards, categories, contacts, recurring, goals, budgetRows, treasuries, costCenters, proposals, equipment, rentals, cashClosings] =
       await Promise.all([
         loadCompanySubcollection<Expense>(company.id, 'expenses'),
         loadCompanySubcollection<Income>(company.id, 'incomes'),
@@ -73,6 +75,7 @@ export async function generateFullSystemBackup(
         loadCompanySubcollection<Proposal>(company.id, 'proposals'),
         loadCompanySubcollection<Equipment>(company.id, 'equipment'),
         loadCompanySubcollection<Rental>(company.id, 'rentals'),
+        loadCompanySubcollection<DailyCashClosing>(company.id, 'cashClosings'),
       ]);
 
     const budgets: MonthlyBudget = {};
@@ -92,12 +95,12 @@ export async function generateFullSystemBackup(
       recurring,
       goals,
       budgets,
-      treasuries, costCenters, proposals, equipment, rentals,
+      treasuries, costCenters, proposals, equipment, rentals, cashClosings,
     });
   }
 
   return {
-    version: 3,
+    version: 4,
     exportedAt: new Date().toISOString(),
     exportedBy: userEmail,
     companies: companiesBackup,
@@ -180,6 +183,7 @@ export async function restoreSystemBackup(
     await saveList('proposals', companyBackup.proposals || []);
     await saveList('equipment', companyBackup.equipment || []);
     await saveList('rentals', companyBackup.rentals || []);
+    await saveList('cashClosings', companyBackup.cashClosings || []);
 
     if (companyBackup.budgets) {
       await Promise.all(

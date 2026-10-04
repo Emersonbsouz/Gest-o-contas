@@ -1,3 +1,5 @@
+import { isSettled } from '../utils/financialStatus';
+import { localToday, validCalendarDate } from '../utils/dailyCash';
 import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState } from 'react';
 import { 
@@ -60,6 +62,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   const [accountId, setAccountId] = useState('');
   const [cardId, setCardId] = useState('');
   const [contactId, setContactId] = useState('');
+  const [settlementDate,setSettlementDate] = useState(localToday);
   const [status, setStatus] = useState<PaymentStatus>('pending');
   const [notes, setNotes] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
@@ -99,7 +102,8 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       setAccountId(editingItem.accountId || accounts?.[0]?.id || '');
       setCardId(editingItem.cardId || cards?.[0]?.id || '');
       setContactId(editingItem.contactId || '');
-      setStatus(editingItem.status || 'pending');
+      setStatus(isSettled(editingItem.status) ? 'paid' : editingItem.status || 'pending');
+      setSettlementDate(editingItem.settlementDate || editingItem.date);
       setNotes(editingItem.notes || '');
       setIsRecurring(editingItem.isRecurring || false);
       setCostCenterId(editingItem.costCenterId || '');
@@ -139,6 +143,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       setCardId(cards?.[0]?.id || '');
       setContactId('');
       setStatus('pending');
+      setSettlementDate(localToday());
       setNotes('');
       setIsRecurring(false);
       setCostCenterId('');
@@ -213,6 +218,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSettled(status) && !validCalendarDate(settlementDate)) {setError('Informe a data do pagamento ou recebimento.'); return;}
     const err = validateStep(1);
     if (err) { setError(err); setActiveStep(1); return; }
     if (!contactId || !contacts.some(c => c.id === contactId)) {
@@ -270,6 +276,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
             contactId: contactId || undefined,
             costCenterId: costCenterId || undefined,
             status,
+          settlementDate: isSettled(status) ? settlementDate : undefined,
             notes: notes.trim() || undefined,
             isRecurring,
             installmentNumber: i + 1,
@@ -300,6 +307,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
           contactId: contactId || undefined,
           costCenterId: costCenterId || undefined,
           status,
+          settlementDate: isSettled(status) ? settlementDate : undefined,
           notes: notes.trim() || undefined,
           billetData,
           installments: installmentsData,
@@ -594,6 +602,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                 </div>
               </div>
 
+              {isSettled(status) && <label className="block text-sm font-bold">{type === 'expense' ? 'Data do pagamento' : 'Data do recebimento'}<input aria-label={type === 'expense' ? 'Data do pagamento' : 'Data do recebimento'} type="date" value={settlementDate} onChange={e => setSettlementDate(e.target.value)} className="mt-1 w-full rounded-xl border p-3" required /></label>}
               {/* Status & Contact Group */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
@@ -601,7 +610,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                   <select
                     aria-label="Situação do lançamento"
                     value={status}
-                    onChange={(e) => setStatus(e.target.value as PaymentStatus)}
+                    onChange={(e) => {setStatus(e.target.value as PaymentStatus); if (isSettled(e.target.value as PaymentStatus)) setSettlementDate(localToday());}}
                     className={`w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white font-bold ${
                       status === 'paid' || status === 'PAGO' ? 'text-emerald-600' : 
                       status === 'pending' || status === 'PENDENTE' ? 'text-amber-600' : 
