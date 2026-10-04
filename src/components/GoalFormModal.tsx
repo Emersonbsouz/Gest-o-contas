@@ -34,6 +34,7 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
   const [category, setCategory] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (editingGoal) {
@@ -58,7 +59,7 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
       setError('Por favor, dê um título para a meta financeira.');
@@ -77,7 +78,10 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
       return;
     }
 
-    onSave(
+    setSaving(true);
+    setError('');
+    try {
+    await onSave(
       {
         title: title.trim(),
         targetAmount: parsedTarget,
@@ -91,6 +95,11 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
     );
 
     onClose();
+    } catch (err) {
+      setError(getSaveErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -260,6 +269,7 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
             </button>
             <button
               type="submit"
+              disabled={saving}
               className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs transition-colors"
             >
               {editingGoal ? 'Salvar Alterações' : 'Cadastrar Meta'}

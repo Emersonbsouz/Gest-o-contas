@@ -54,6 +54,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   const [accountNumber, setAccountNumber] = useState('');
   const [color, setColor] = useState(COLOR_PRESETS[0]);
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (editingAccount) {
@@ -76,7 +77,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const cleanName = name.trim();
@@ -91,7 +92,10 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
       return;
     }
 
-    onSave(
+    setSaving(true);
+    setError('');
+    try {
+    await onSave(
       {
         name: cleanName,
         type,
@@ -103,6 +107,11 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
       editingAccount ? editingAccount.id : undefined
     );
     onClose();
+    } catch (err) {
+      setError(getSaveErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -273,6 +282,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
             </button>
             <button
               type="submit"
+              disabled={saving}
               id="btn-save-account"
               className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
             >

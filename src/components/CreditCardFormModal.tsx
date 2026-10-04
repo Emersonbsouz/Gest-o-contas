@@ -48,6 +48,7 @@ export const CreditCardFormModal: React.FC<CreditCardFormModalProps> = ({
   const [linkedAccountId, setLinkedAccountId] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (editingCard) {
@@ -70,11 +71,11 @@ export const CreditCardFormModal: React.FC<CreditCardFormModalProps> = ({
       setNotes('');
     }
     setError('');
-  }, [editingCard, isOpen, accounts]);
+  }, [editingCard, isOpen]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       setError('Por favor, informe o nome de identificação do cartão.');
@@ -100,7 +101,10 @@ export const CreditCardFormModal: React.FC<CreditCardFormModalProps> = ({
       return;
     }
 
-    onSave(
+    setSaving(true);
+    setError('');
+    try {
+    await onSave(
       {
         name: name.trim(),
         brand,
@@ -115,6 +119,11 @@ export const CreditCardFormModal: React.FC<CreditCardFormModalProps> = ({
     );
 
     onClose();
+    } catch (err) {
+      setError(getSaveErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -339,6 +348,7 @@ export const CreditCardFormModal: React.FC<CreditCardFormModalProps> = ({
             </button>
             <button
               type="submit"
+              disabled={saving}
               className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors"
             >
               {editingCard ? 'Salvar Alterações' : 'Cadastrar Cartão'}
