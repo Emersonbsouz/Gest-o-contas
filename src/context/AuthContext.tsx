@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
@@ -11,6 +11,9 @@ export interface AppUser {
 interface AuthContextType {
   currentUser: AppUser | null;
   loading: boolean;
+  recoveringPassword: boolean;
+  sessionError: string;
+  updatePassword: (password: string) => Promise<void>;
   login: (email: string, pass: string) => Promise<void>;
   signup: (email: string, pass: string, name: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -36,20 +39,45 @@ function toAppUser(user: User): AppUser {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionError, setSessionError] = useState('');
+  const [recoveringPassword, setRecoveringPassword] = useState(
+    () => sessionStorage.getItem('gestao-contas:password-recovery') === 'true'
+  );
+  const recoveryRef = useRef(recoveringPassword);
 
   useEffect(() => {
     let mounted = true;
 
-    supabase.auth.getSession().then(({ data, error }) => {
+    const restoreSession = supabase.auth.getSession();
+    restoreSession.then(({ data, error }) => {
       if (!mounted) return;
       if (error) console.error('[Supabase Auth] Erro ao restaurar sessão:', error);
-      setCurrentUser(data.session?.user ? toAppUser(data.session.user) : null);
+      if (error) setSessionError('Não foi possível restaurar sua sessão. Tente entrar novamente.');
+      if (!data.session) {
+        recoveryRef.current = false;
+        setRecoveringPassword(false);
+        sessionStorage.removeItem('gestao-contas:password-recovery');
+      }
+      setCurrentUser(data.session?.user && !recoveryRef.current ? toAppUser(data.session.user) : null);
+      setLoading(false);
+    }).catch(() => {
+      if (!mounted) return;
+      setSessionError('Não foi possível restaurar sua sessão. Tente entrar novamente.');
       setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
-      setCurrentUser(session?.user ? toAppUser(session.user) : null);
+      if (event === 'PASSWORD_RECOVERY') {
+        recoveryRef.current = true;
+        sessionStorage.setItem('gestao-contas:password-recovery', 'true');
+        setRecoveringPassword(true);
+      } else if (event === 'SIGNED_OUT') {
+        recoveryRef.current = false;
+        sessionStorage.removeItem('gestao-contas:password-recovery');
+        setRecoveringPassword(false);
+      }
+      setCurrentUser(session?.user && !recoveryRef.current ? toAppUser(session.user) : null);
       setLoading(false);
     });
 
@@ -61,38 +89,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, pass: string) => {
     const cleanEmail = email.trim().toLowerCase();
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password: pass,
-      });
-      if (error) throw error;
-      if (!data.user) throw new Error('Não foi possível abrir a sessão no Supabase.');
-      setCurrentUser(toAppUser(data.user));
-    } finally {
-      setLoading(false);
-    }
+    setSessionError('');
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password: pass,
+    });
+    if (error) throw error;
+    if (!data.session?.user) throw new Error('Não foi possível abrir a sessão no Supabase.');
+    setCurrentUser(toAppUser(data.session.user));
   };
 
   const signup = async (email: string, pass: string, name: string) => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name.trim();
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email: cleanEmail,
-        password: pass,
-        options: {
-          data: { full_name: cleanName },
-          emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
-        },
-      });
-      if (error) throw error;
-      if (data.session?.user) setCurrentUser(toAppUser(data.session.user));
-    } finally {
-      setLoading(false);
-    }
+    setSessionError('');
+    const { data, error } = await supabase.auth.signUp({
+      email: cleanEmail,
+      password: pass,
+      options: {
+        data: { full_name: cleanName },
+        emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+      },
+    });
+    if (error) throw error;
+    if (data.session?.user) setCurrentUser(toAppUser(data.session.user));
   };
 
   const resetPassword = async (email: string) => {
@@ -106,18 +126,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      setCurrentUser(null);
-    } finally {
-      setLoading(false);
-    }
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+    recoveryRef.current = false;
+    sessionStorage.removeItem('gestao-contas:password-recovery');
+    setRecoveringPassword(false);
+    setCurrentUser(null);
+  };
+
+  const updatePassword = async (password: string) => {
+    if (!recoveryRef.current) throw new Error('Abra o link de recuperação enviado ao seu e-mail.');
+    const { data, error } = await supabase.auth.updateUser({ password });
+    if (error) throw error;
+    recoveryRef.current = false;
+    sessionStorage.removeItem('gestao-contas:password-recovery');
+    setRecoveringPassword(false);
+    setCurrentUser(toAppUser(data.user));
   };
 
   return (
-    <AuthContext.Provider value={{ currentUser, loading, login, signup, resetPassword, logout }}>
+    <AuthContext.Provider value={{ currentUser, loading, recoveringPassword, sessionError, updatePassword, login, signup, resetPassword, logout }}>
       {children}
     </AuthContext.Provider>
   );
