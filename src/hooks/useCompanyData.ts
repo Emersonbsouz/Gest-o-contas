@@ -4,6 +4,7 @@ import {
   Category,
   MonthlyBudget,
   TreasuryAccount,
+  TreasuryGroup,
   Income,
   AccountTransfer,
   CreditCard,
@@ -42,6 +43,7 @@ export function useCompanyData(companyId: string | null) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [budgets, setBudgets] = useState<MonthlyBudget>({ [getCurrentYearMonth()]: 0 });
+  const [treasuries, setTreasuries] = useState<TreasuryGroup[]>([]);
   const [accounts, setAccounts] = useState<TreasuryAccount[]>([]);
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [transfers, setTransfers] = useState<AccountTransfer[]>([]);
@@ -81,6 +83,7 @@ export function useCompanyData(companyId: string | null) {
     setLoading(true);
     setExpenses(readArray<Expense>(getStorageKey('expenses')));
     setCategories(readArray<Category>(getStorageKey('categories'), DEFAULT_CATEGORIES));
+    setTreasuries(readArray<TreasuryGroup>(getStorageKey('treasuries')));
     setAccounts(readArray<TreasuryAccount>(getStorageKey('accounts')));
     setIncomes(readArray<Income>(getStorageKey('incomes')));
     setTransfers(readArray<AccountTransfer>(getStorageKey('transfers')));
@@ -140,6 +143,7 @@ export function useCompanyData(companyId: string | null) {
 
     wire<Expense>('expenses', 'expenses', setExpenses);
     wire<Category>('categories', 'categories', setCategories, DEFAULT_CATEGORIES);
+    wire<TreasuryGroup>('treasuries', 'treasuries', setTreasuries);
     wire<TreasuryAccount>('accounts', 'accounts', setAccounts);
     wire<Income>('incomes', 'incomes', setIncomes);
     wire<AccountTransfer>('transfers', 'transfers', setTransfers);
@@ -278,6 +282,23 @@ export function useCompanyData(companyId: string | null) {
     return item;
 
   }, [companyId]);
+
+  const saveTreasury = useCallback(async (data: Omit<TreasuryGroup, 'id'>, treasuryId?: string) => {
+    if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');
+    const name = data.name.trim();
+    if (!name) throw new Error('Informe o nome da tesouraria.');
+    if (treasuries.some(t => t.id !== treasuryId && t.name.toLocaleLowerCase('pt-BR') === name.toLocaleLowerCase('pt-BR'))) {
+      throw new Error('Já existe uma tesouraria com esse nome.');
+    }
+    const item: TreasuryGroup = { ...data, name, id: treasuryId || makeId('treasury') };
+    await saveCompanyDoc(companyId, 'treasuries', item.id, item);
+    setTreasuries(prev => {
+      const next = treasuryId ? prev.map(t => t.id === treasuryId ? item : t) : [...prev, item];
+      persistLocal('treasuries', next);
+      return next;
+    });
+    return item;
+  }, [companyId, treasuries]);
 
   const deleteAccount = useCallback(async (id: string) => {
     if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');
@@ -587,6 +608,7 @@ export function useCompanyData(companyId: string | null) {
     setIncomes([]);
     setTransfers([]);
     setAccounts(cleanAccounts);
+    setTreasuries([]);
     setCards([]);
     setContacts([]);
     setRecurringBills([]);
@@ -610,6 +632,8 @@ export function useCompanyData(companyId: string | null) {
     categories,
     budgets,
     accounts,
+    treasuries,
+    saveTreasury,
     incomes,
     transfers,
     cards,

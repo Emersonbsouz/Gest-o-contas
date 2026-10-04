@@ -10,6 +10,11 @@ import {
   FinancialGoal,
   AccountTransfer,
   MonthlyBudget,
+  TreasuryGroup,
+  CostCenter,
+  Proposal,
+  Equipment,
+  Rental,
 } from '../types';
 import { supabase } from '../lib/supabase';
 import {
@@ -30,6 +35,11 @@ export interface CompanyFullBackup {
   recurring: RecurringBill[];
   goals: FinancialGoal[];
   budgets?: MonthlyBudget;
+  treasuries?: TreasuryGroup[];
+  costCenters?: CostCenter[];
+  proposals?: Proposal[];
+  equipment?: Equipment[];
+  rentals?: Rental[];
 }
 
 export interface SystemBackupFile {
@@ -46,7 +56,7 @@ export async function generateFullSystemBackup(
   const companiesBackup: CompanyFullBackup[] = [];
 
   for (const company of userCompanies) {
-    const [expenses, incomes, transfers, accounts, cards, categories, contacts, recurring, goals, budgetRows] =
+    const [expenses, incomes, transfers, accounts, cards, categories, contacts, recurring, goals, budgetRows, treasuries, costCenters, proposals, equipment, rentals] =
       await Promise.all([
         loadCompanySubcollection<Expense>(company.id, 'expenses'),
         loadCompanySubcollection<Income>(company.id, 'incomes'),
@@ -58,6 +68,11 @@ export async function generateFullSystemBackup(
         loadCompanySubcollection<RecurringBill>(company.id, 'recurring'),
         loadCompanySubcollection<FinancialGoal>(company.id, 'goals'),
         loadCompanySubcollection<{ id: string; ym: string; amount: number }>(company.id, 'budgets'),
+        loadCompanySubcollection<TreasuryGroup>(company.id, 'treasuries'),
+        loadCompanySubcollection<CostCenter>(company.id, 'costCenters'),
+        loadCompanySubcollection<Proposal>(company.id, 'proposals'),
+        loadCompanySubcollection<Equipment>(company.id, 'equipment'),
+        loadCompanySubcollection<Rental>(company.id, 'rentals'),
       ]);
 
     const budgets: MonthlyBudget = {};
@@ -77,11 +92,12 @@ export async function generateFullSystemBackup(
       recurring,
       goals,
       budgets,
+      treasuries, costCenters, proposals, equipment, rentals,
     });
   }
 
   return {
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     exportedBy: userEmail,
     companies: companiesBackup,
@@ -159,6 +175,11 @@ export async function restoreSystemBackup(
     await saveList('contacts', companyBackup.contacts);
     await saveList('recurring', companyBackup.recurring);
     await saveList('goals', companyBackup.goals);
+    await saveList('treasuries', companyBackup.treasuries || []);
+    await saveList('costCenters', companyBackup.costCenters || []);
+    await saveList('proposals', companyBackup.proposals || []);
+    await saveList('equipment', companyBackup.equipment || []);
+    await saveList('rentals', companyBackup.rentals || []);
 
     if (companyBackup.budgets) {
       await Promise.all(

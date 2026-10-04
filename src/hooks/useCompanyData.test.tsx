@@ -60,3 +60,28 @@ test('an expense write failure rejects and does not appear as saved', async () =
   expect(result.current.expenses).toEqual([]);
   expect(result.current.cloudSyncStatus).toBe('error');
 });
+
+test('treasury and cash associations are confirmed on the server and survive a reload', async () => {
+  service.saveCompanyDoc.mockResolvedValue(undefined);
+  const { result, unmount } = renderHook(() => useCompanyData('company-treasury'));
+  let treasuryId = '';
+  await act(async () => {
+    const treasury = await result.current.saveTreasury({name:'Tesouraria Principal'});
+    treasuryId = treasury.id;
+    await result.current.saveAccount({name:'Caixa loja',type:'cash',initialBalance:0,color:'#123456',treasuryId});
+  });
+  expect(service.saveCompanyDoc).toHaveBeenCalledWith('company-treasury','treasuries',treasuryId,expect.objectContaining({name:'Tesouraria Principal'}));
+  expect(result.current.accounts[0].treasuryId).toBe(treasuryId);
+  unmount();
+  const reloaded = renderHook(() => useCompanyData('company-treasury'));
+  expect(reloaded.result.current.treasuries[0].id).toBe(treasuryId);
+  expect(reloaded.result.current.accounts[0].treasuryId).toBe(treasuryId);
+});
+
+test('failed treasury save creates no local phantom registry', async () => {
+  service.saveCompanyDoc.mockRejectedValueOnce(new Error('offline'));
+  const { result } = renderHook(() => useCompanyData('company-treasury'));
+  await act(async () => {await expect(result.current.saveTreasury({name:'Principal'})).rejects.toThrow('offline');});
+  expect(result.current.treasuries).toEqual([]);
+  expect(localStorage.getItem('cg_company-treasury_treasuries')).toBeNull();
+});

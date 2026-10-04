@@ -10,7 +10,8 @@ import {
 import { 
   Expense, 
   Income, 
-  TreasuryAccount, 
+  TreasuryAccount,
+  TreasuryGroup, 
   AccountTransfer, 
   Category,
   CreditCard,
@@ -25,6 +26,7 @@ interface FinancialViewProps {
   expenses: Expense[];
   incomes: Income[];
   accounts: TreasuryAccount[];
+  treasuries?: TreasuryGroup[];
   transfers: AccountTransfer[];
   categories: Category[];
   cards: CreditCard[];
@@ -51,6 +53,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
   expenses,
   incomes,
   accounts,
+  treasuries = [],
   transfers,
   categories,
   cards,
@@ -115,6 +118,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
 
       {subTab === 'tesouraria' && (
         <TreasuryView
+          treasuries={treasuries}
           accounts={accounts}
           incomes={incomes}
           expenses={expenses}

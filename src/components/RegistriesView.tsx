@@ -54,8 +54,12 @@ import {
   CompanyMemberInfo,
   Equipment,
   CostCenter,
+  TreasuryGroup,
+  AccountTransfer,
 } from '../types';
 import { formatCurrency, formatDateBR } from '../utils/formatters';
+import { TreasuryRegistry } from './TreasuryRegistry';
+import { calculateAccountBalances } from '../utils/treasuryHelpers';
 import { CostCenterRegistry } from './CostCenterRegistry';
 import { CategoryIcon } from './CategoryIcon';
 import { EditMemberPermissionsModal } from './EditMemberPermissionsModal';
@@ -72,6 +76,10 @@ interface RegistriesViewProps {
   incomes?: Income[];
   expenses?: Expense[];
   onOpenCostCenterModal?: (center?: CostCenter) => void;
+  treasuries?: TreasuryGroup[];
+  transfers?: AccountTransfer[];
+  onSaveTreasury?: (data: Omit<TreasuryGroup, 'id'>, id?: string) => Promise<unknown>;
+  onOpenCashModal?: () => void;
   currentYearMonth: string;
 
   activeCompany?: Company | null;
@@ -121,7 +129,7 @@ interface RegistriesViewProps {
   onDeleteEquipment: (id: string) => void;
 }
 
-type ActiveRegistryTab = 'cards' | 'contacts' | 'recurring' | 'goals' | 'accounts' | 'categories' | 'members' | 'equipment' | 'costCenters';
+type ActiveRegistryTab = 'cards' | 'contacts' | 'recurring' | 'goals' | 'accounts' | 'categories' | 'members' | 'equipment' | 'costCenters' | 'treasuries';
 
 export const RegistriesView: React.FC<RegistriesViewProps> = ({
   cards = [],
@@ -135,6 +143,10 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
   incomes = [],
   expenses = [],
   onOpenCostCenterModal,
+  treasuries = [],
+  transfers = [],
+  onSaveTreasury,
+  onOpenCashModal,
   currentYearMonth,
   activeCompany,
   currentUserEmail,
@@ -161,7 +173,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
   onOpenEquipmentModal,
   onDeleteEquipment,
 }) => {
-  const [activeTab, setActiveTab] = useState<ActiveRegistryTab>('cards');
+  const [activeTab, setActiveTab] = useState<ActiveRegistryTab>('contacts');
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
 
@@ -333,275 +345,40 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
       .reduce((sum, b) => sum + b.amount, 0);
   }, [safeRecurring]);
 
+  const accountBalances = useMemo(() => calculateAccountBalances(accounts, incomes, expenses, transfers), [accounts, incomes, expenses, transfers]);
+
   const totalCreditLimit = useMemo(() => {
     return safeCards.reduce((sum, c) => sum + c.limit, 0);
   }, [safeCards]);
 
   return (
     <div className="space-y-6">
-      {/* Top Banner & Hub Title */}
-      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-2xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold uppercase tracking-wider border border-indigo-100">
-                Hub de Configuração & Parâmetros
-              </span>
-              <span className="text-xs text-slate-400">• Cadastre tudo necessário</span>
-            </div>
-            <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-              Central de Cadastros Financeiros
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Cadastre clientes, fornecedores e centros de custo para identificar a origem das receitas e o destino das despesas.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            {onOpenIncomeModal && (
-              <button
-                onClick={onOpenIncomeModal}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors"
-              >
-                <ArrowDownLeft className="w-4 h-4" />
-                Nova Receita
-              </button>
-            )}
-            {onOpenExpenseModal && (
-              <button
-                onClick={onOpenExpenseModal}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors"
-              >
-                <ArrowUpRight className="w-4 h-4" />
-                Nova Despesa
-              </button>
-            )}
-              <button
-                onClick={() => {
-                  if (activeTab === 'cards') onOpenCardModal();
-                  else if (activeTab === 'contacts') onOpenContactModal();
-                  else if (activeTab === 'recurring') onOpenRecurringModal();
-                  else if (activeTab === 'goals') onOpenGoalModal();
-                  else if (activeTab === 'accounts') onOpenAccountModal();
-                  else if (activeTab === 'categories') onOpenCategoryModal();
-                  else if (activeTab === 'equipment') onOpenEquipmentModal();
-                  else if (activeTab === 'costCenters') onOpenCostCenterModal?.();
-                }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                {activeTab === 'cards' && 'Novo Cartão'}
-                {activeTab === 'contacts' && 'Novo Cliente / Fornecedor'}
-                {activeTab === 'recurring' && 'Nova Conta Recorrente'}
-                {activeTab === 'goals' && 'Nova Meta Financeira'}
-                {activeTab === 'accounts' && 'Nova Conta / Cota Caixa'}
-                {activeTab === 'categories' && 'Nova Categoria'}
-                {activeTab === 'members' && 'Convidar Sócio'}
-                {activeTab === 'equipment' && 'Novo Equipamento'}
-                {activeTab === 'costCenters' && 'Novo Centro de Custo'}
-              </button>
-          </div>
-        </div>
-
-        {/* Quick KPI Bar for Registered Entities */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-5 border-t border-slate-100">
-          <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-100">
-            <span className="text-[11px] font-semibold text-slate-500 block">Cartões de Crédito</span>
-            <span className="text-base font-bold text-slate-900">{cards.length} cadastrados</span>
-            <span className="text-[10px] text-slate-400 block mt-0.5">Limite: {formatCurrency(totalCreditLimit)}</span>
-          </div>
-
-          <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-100">
-            <span className="text-[11px] font-semibold text-slate-500 block">Favorecidos & Fornecedores</span>
-            <span className="text-base font-bold text-slate-900">{contacts.length} cadastrados</span>
-            <span className="text-[10px] text-slate-400 block mt-0.5">Comércios, clientes e prestadores</span>
-          </div>
-
-          <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-100">
-            <span className="text-[11px] font-semibold text-slate-500 block">Contas Fixas / Mês</span>
-            <span className="text-base font-bold text-slate-900">{formatCurrency(totalRecurringExpenses)}</span>
-            <span className="text-[10px] text-slate-400 block mt-0.5">Receitas fixas: {formatCurrency(totalRecurringIncomes)}</span>
-          </div>
-
-          <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-100">
-            <span className="text-[11px] font-semibold text-slate-500 block">Metas em Progresso</span>
-            <span className="text-base font-bold text-slate-900">{goals.length} objetivos</span>
-            <span className="text-[10px] text-slate-400 block mt-0.5">Reservas e projetos de vida</span>
-          </div>
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Organização financeira</p><h2 className="mt-1 text-2xl font-bold text-slate-900">Central de Cadastros Financeiros</h2><p className="mt-2 text-sm text-slate-500">Pessoas, centros de custo e locais onde você movimenta seu dinheiro.</p></div>
+          <div className="flex gap-2">{onOpenIncomeModal && <button onClick={onOpenIncomeModal} className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">Nova Receita</button>}{onOpenExpenseModal && <button onClick={onOpenExpenseModal} className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">Nova Despesa</button>}</div>
         </div>
       </div>
-
-      <button type="button" onClick={() => { setActiveTab('costCenters'); setSearchQuery(''); }}
-        className={`px-4 py-3 rounded-xl text-sm font-bold border ${activeTab === 'costCenters' ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-700 border-indigo-200'}`}>
-        Centros de Custo ({costCenters.length})
-      </button>
-      {activeTab === 'costCenters' && (
-        <CostCenterRegistry centers={costCenters} contacts={contacts} incomes={incomes} expenses={expenses}
-          onEdit={(center) => onOpenCostCenterModal?.(center)} onCreate={() => onOpenCostCenterModal?.()} />
-      )}
-      {/* Tabs Selector Navigation (Grouped) */}
-      <div className="space-y-4">
-        <div className="flex flex-col gap-4">
-          {/* Group 1: Gestão Operacional */}
-          <div className="space-y-2">
-            <h4 className="text-[10px] uppercase font-bold text-slate-400 tracking-widest flex items-center gap-2 px-1">
-              <SlidersHorizontal className="w-3 h-3" />
-              Gestão Operacional & Base
-            </h4>
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-              <button
-                onClick={() => {
-                  setActiveTab('cards');
-                  setSearchQuery('');
-                  setTypeFilter('all');
-                }}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
-                  activeTab === 'cards'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
-                }`}
-              >
-                <CreditCardIcon className="w-3.5 h-3.5" />
-                Cartões ({cards.length})
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveTab('contacts');
-                  setSearchQuery('');
-                  setTypeFilter('all');
-                }}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
-                  activeTab === 'contacts'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5" />
-                Clientes e Fornecedores ({contacts.length})
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveTab('categories');
-                  setSearchQuery('');
-                  setTypeFilter('all');
-                }}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
-                  activeTab === 'categories'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
-                }`}
-              >
-                <Tag className="w-3.5 h-3.5" />
-                Categorias ({categories.length})
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveTab('members');
-                  setSearchQuery('');
-                  setTypeFilter('all');
-                }}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
-                  activeTab === 'members'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
-                }`}
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                Acessos ({activeCompany?.memberEmails?.length || 1})
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveTab('equipment');
-                  setSearchQuery('');
-                  setTypeFilter('all');
-                }}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
-                  activeTab === 'equipment'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
-                }`}
-              >
-                <Package className="w-3.5 h-3.5" />
-                Patrimônio ({equipment.length})
-              </button>
-            </div>
-          </div>
-
-          {/* Group 2: Planejamento Financeiro */}
-          <div className="space-y-2">
-            <h4 className="text-[10px] uppercase font-bold text-slate-400 tracking-widest flex items-center gap-2 px-1">
-              <TrendingUp className="w-3 h-3" />
-              Planejamento & Tesouraria
-            </h4>
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-              <button
-                onClick={() => {
-                  setActiveTab('recurring');
-                  setSearchQuery('');
-                  setTypeFilter('all');
-                }}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
-                  activeTab === 'recurring'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
-                }`}
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                Contas Recorrentes ({recurringBills.length})
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveTab('goals');
-                  setSearchQuery('');
-                  setTypeFilter('all');
-                }}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
-                  activeTab === 'goals'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
-                }`}
-              >
-                <Target className="w-3.5 h-3.5" />
-                Metas & Sonhos ({goals.length})
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveTab('accounts');
-                  setSearchQuery('');
-                  setTypeFilter('all');
-                }}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
-                  activeTab === 'accounts'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80'
-                }`}
-              >
-                <Wallet className="w-3.5 h-3.5" />
-                Contas Bancárias ({accounts.length})
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Search bar specifically for registries */}
-        <div className="relative w-full border-t border-slate-100 pt-3">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-6" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Pesquisar nos cadastros selecionados..."
-            className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500/20 outline-none"
-          />
-        </div>
-      </div>
-
+      <nav aria-label="Áreas de cadastro" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {([
+          ['contacts', 'Clientes e Fornecedores', 'Pessoas e empresas', contacts.length, Users],
+          ['costCenters', 'Centros de Custo', 'Departamentos e projetos', costCenters.length, BarChart3],
+          ['accounts', 'Contas e Caixas', 'Bancos e dinheiro em espécie', accounts.length, Wallet],
+          ['treasuries', 'Tesourarias', 'Agrupe contas e caixas', treasuries.length, DollarSign],
+          ['categories', 'Categorias', 'Classifique seus lançamentos', categories.length, Tag],
+          ['cards', 'Cartões', 'Limites e vencimentos', cards.length, CreditCardIcon],
+          ['recurring', 'Contas Recorrentes', 'Compromissos mensais', recurringBills.length, RefreshCw],
+          ['goals', 'Metas', 'Objetivos financeiros', goals.length, Target],
+          ['equipment', 'Patrimônio', 'Equipamentos e ferramentas', equipment.length, Package],
+          ['members', 'Acessos', 'Equipe e permissões', activeCompany?.memberEmails?.length || 1, Users],
+        ] as const).map(([tab, title, description, count, Icon]) => <button key={tab} aria-label={`${title} (${count})`} aria-pressed={activeTab === tab} onClick={() => {setActiveTab(tab); setSearchQuery(''); setTypeFilter('all');}}
+          className={`rounded-2xl border p-4 text-left transition-colors ${activeTab === tab ? 'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600' : 'border-slate-200 bg-white hover:border-indigo-300'}`}>
+          <div className="mb-3 flex items-center justify-between"><Icon className="h-5 w-5 text-indigo-600" /><span className="rounded-full bg-slate-100 px-2 text-xs font-bold text-slate-600">{count}</span></div><span className="block text-sm font-bold text-slate-900">{title}</span><span className="mt-1 block text-xs text-slate-500">{description}</span>
+        </button>)}
+      </nav>
+      {!['costCenters', 'members'].includes(activeTab) && <input aria-label="Pesquisar cadastros" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Pesquisar nesta área..." className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" />}
+      {activeTab === 'costCenters' && <CostCenterRegistry centers={costCenters} contacts={contacts} incomes={incomes} expenses={expenses} onEdit={center => onOpenCostCenterModal?.(center)} onCreate={() => onOpenCostCenterModal?.()} />}
+      {activeTab === 'treasuries' && onSaveTreasury && <TreasuryRegistry treasuries={treasuries} accounts={accounts} incomes={incomes} expenses={expenses} transfers={transfers} search={searchQuery} onSave={onSaveTreasury} />}
       {/* TAB 1: CARTÕES DE CRÉDITO */}
       {activeTab === 'cards' && (
         <div className="space-y-4">
@@ -1259,8 +1036,9 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
             </button>
           </div>
 
+          {onOpenCashModal && <button onClick={onOpenCashModal} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white">+ Novo Caixa</button>}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {accounts.map((acc) => {
+            {accounts.filter(a => `${a.name} ${a.bankName || ""} ${treasuries.find(t => t.id === a.treasuryId)?.name || ""}`.toLowerCase().includes(searchQuery.toLowerCase())).map((acc) => {
               const typeLabels = {
                 checking: 'Conta Corrente',
                 cash: 'Caixa Físico / Espécie',
@@ -1288,6 +1066,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                     </div>
 
                     <h4 className="text-sm font-bold text-slate-900">{acc.name}</h4>
+                    <p className="mt-1 text-xs text-indigo-600">{treasuries.find(t => t.id === acc.treasuryId)?.name || "Sem tesouraria vinculada"}</p>
                     {acc.bankName && (
                       <p className="text-xs text-slate-500 mt-0.5">{acc.bankName}</p>
                     )}
@@ -1298,9 +1077,9 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                     )}
 
                     <div className="mt-3 pt-3 border-t border-slate-100">
-                      <span className="text-[10px] text-slate-400 block">Saldo Inicial</span>
+                      <span className="text-[10px] text-slate-400 block">Saldo Atual</span>
                       <span className="text-base font-bold text-slate-800">
-                        {formatCurrency(acc.initialBalance)}
+                        {formatCurrency(accountBalances[acc.id] || 0)}
                       </span>
                     </div>
                   </div>

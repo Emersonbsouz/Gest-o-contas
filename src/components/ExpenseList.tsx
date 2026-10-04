@@ -1,3 +1,4 @@
+import { isOpen } from '../utils/financialStatus';
 import React, { useState, useMemo } from 'react';
 import {
   Search,
@@ -387,7 +388,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                     {/* Actions */}
                     <td className="py-3 px-4 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1 opacity-80 group-hover:opacity-100">
-                        {expense.status === 'pending' && onLiquidateExpense && (
+                        {isOpen(expense.status) && onLiquidateExpense && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();

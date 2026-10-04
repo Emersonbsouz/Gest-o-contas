@@ -1,3 +1,4 @@
+import { isOpen } from '../utils/financialStatus';
 import React, { useState, useMemo } from 'react';
 import {
   Search,
@@ -205,7 +206,7 @@ export const IncomeList: React.FC<IncomeListProps> = ({
                             Pendente
                           </span>
                         )}
-                        {(income.status === 'paid' || income.status === 'PAGO') && (
+                        {(income.status === 'paid' || income.status === 'PAGO' || income.status === 'liquidated') && (
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
                             Pago
                           </span>
@@ -254,7 +255,7 @@ export const IncomeList: React.FC<IncomeListProps> = ({
                     </td>
                     <td className="py-3 px-4 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1">
-                        {income.status === 'pending' && onLiquidateIncome && (
+                        {isOpen(income.status) && onLiquidateIncome && (
                           <button
                             onClick={(e) => { e.stopPropagation(); onLiquidateIncome(income); }}
                             className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"

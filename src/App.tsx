@@ -152,6 +152,8 @@ export default function App() {
     categories,
     budgets,
     accounts,
+    treasuries,
+    saveTreasury,
     incomes,
     transfers,
     cards,
@@ -214,6 +216,7 @@ export default function App() {
   const [preselectedTransferAccountId, setPreselectedTransferAccountId] = useState<string | undefined>();
 
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [accountDefaultType, setAccountDefaultType] = useState<"checking" | "cash">("checking");
   const [editingAccount, setEditingAccount] = useState<TreasuryAccount | null>(null);
 
   const [isCardModalOpen, setIsCardModalOpen] = useState(false);
@@ -462,7 +465,10 @@ export default function App() {
       alert('Você não tem permissão para liquidar lançamentos nesta empresa.');
       return;
     }
-    await saveExpense({ ...expense, status: 'liquidated' }, expense.id);
+    setFinancialModalType('expense');
+    setEditingFinancialItem({ ...expense, status: 'paid' });
+    setFinancialPreselectedAccountId(expense.accountId);
+    setIsFinancialModalOpen(true);
   };
 
   // --- Handlers for Treasury Incomes ---
@@ -520,7 +526,10 @@ export default function App() {
       alert('Você não tem permissão para liquidar lançamentos nesta empresa.');
       return;
     }
-    await saveIncome({ ...income, status: 'liquidated' }, income.id);
+    setFinancialModalType('income');
+    setEditingFinancialItem({ ...income, status: 'paid' });
+    setFinancialPreselectedAccountId(income.accountId);
+    setIsFinancialModalOpen(true);
   };
 
   // --- Handlers for Treasury Transfers ---
@@ -577,6 +586,7 @@ export default function App() {
       alert('Você não tem permissão para gerenciar contas bancárias nesta empresa.');
       return;
     }
+    setAccountDefaultType("checking");
     setEditingAccount(account || null);
     setIsAccountModalOpen(true);
   };
@@ -998,6 +1008,10 @@ export default function App() {
 
           {activeView === 'cadastros' && (
             <RegistriesView
+              treasuries={treasuries}
+              transfers={transfers}
+              onSaveTreasury={saveTreasury}
+              onOpenCashModal={() => { setAccountDefaultType("cash"); setEditingAccount(null); setIsAccountModalOpen(true); }}
               costCenters={costCenters}
               incomes={incomes}
               expenses={expenses}
@@ -1042,6 +1056,10 @@ export default function App() {
 
           {activeView === 'relatorios' && (
             <ReportsView
+              companyName={activeCompany?.name}
+              contacts={contacts}
+              costCenters={costCenters}
+              treasuries={treasuries}
               expenses={expenses}
               incomes={incomes}
               categories={categories}
@@ -1098,6 +1116,8 @@ export default function App() {
       />
 
       <AccountFormModal
+        treasuries={treasuries}
+        defaultType={accountDefaultType}
         isOpen={isAccountModalOpen}
         onClose={() => setIsAccountModalOpen(false)}
         onSave={saveAccount}

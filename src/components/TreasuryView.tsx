@@ -1,3 +1,4 @@
+import { isOpen, statusLabel } from '../utils/financialStatus';
 import React, { useState, useMemo } from 'react';
 import {
   Landmark,
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react';
 import {
   TreasuryAccount,
+  TreasuryGroup,
   Income,
   Expense,
   AccountTransfer,
@@ -43,6 +45,7 @@ import { TreasuryCharts } from './TreasuryCharts';
 
 interface TreasuryViewProps {
   accounts?: TreasuryAccount[];
+  treasuries?: TreasuryGroup[];
   incomes?: Income[];
   expenses?: Expense[];
   transfers?: AccountTransfer[];
@@ -78,10 +81,11 @@ const ACCOUNT_TYPE_CONFIG: Record<
 };
 
 export const TreasuryView: React.FC<TreasuryViewProps> = ({
-  accounts = [],
-  incomes = [],
-  expenses = [],
-  transfers = [],
+  accounts: allAccounts = [],
+  treasuries = [],
+  incomes: allIncomes = [],
+  expenses: allExpenses = [],
+  transfers: allTransfers = [],
   categories = [],
   selectedMonth,
   currentYearMonth,
@@ -102,6 +106,12 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
   onLiquidateExpense,
   onLiquidateIncome,
 }) => {
+  const [filterTreasury, setFilterTreasury] = useState('all');
+  const accounts = useMemo(() => allAccounts.filter(a => filterTreasury === 'all' || a.treasuryId === filterTreasury), [allAccounts, filterTreasury]);
+  const included = new Set(accounts.map(a => a.id));
+  const incomes = allIncomes.filter(i => filterTreasury === 'all' || included.has(i.accountId));
+  const expenses = allExpenses.filter(e => filterTreasury === 'all' || included.has(e.accountId || ''));
+  const transfers = allTransfers.filter(t => filterTreasury === 'all' || included.has(t.fromAccountId) || included.has(t.toAccountId));
   const handleOpenIncome = onOpenIncomeModal || onOpenAddIncomeModal || (() => {});
   const handleOpenTransfer = onOpenTransferModal || onOpenAddTransferModal || (() => {});
   const activeMonth = selectedMonth || currentYearMonth || new Date().toISOString().slice(0, 7);
@@ -193,7 +203,7 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
             <div className="px-3 py-1 flex items-center gap-2">
               <Calendar className="w-4 h-4 text-slate-500" />
               <span className="text-sm font-bold text-slate-800">
-                {formatMonthYearLabel(selectedMonth)}
+                {formatMonthYearLabel(activeMonth)}
               </span>
             </div>
             <button
@@ -254,6 +264,11 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-white p-4">
+        <label className="text-sm font-semibold">Tesouraria <select aria-label="Filtrar tesouraria" value={filterTreasury} onChange={e => {setFilterTreasury(e.target.value); setFilterAccount('all');}} className="ml-2 rounded-lg border bg-white p-2">
+          <option value="all">Todas as tesourarias</option>{treasuries.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select></label><span className="text-xs text-slate-500">O saldo considera apenas valores pagos e recebidos. Cadastre e vincule caixas na Central de Cadastros.</span>
+      </div>
       {/* 4 Treasury Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Treasury Balance */}
@@ -386,6 +401,7 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
                         <h4 className="text-xs font-bold text-slate-900 truncate" title={acc.name}>
                           {acc.name}
                         </h4>
+                        <span className="block text-[10px] text-indigo-600">{treasuries.find(t => t.id === acc.treasuryId)?.name || "Sem vínculo"}</span>
                         <span className="text-[10px] text-slate-500 block truncate">
                           {acc.bankName || typeLabel}
                         </span>
@@ -462,7 +478,7 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
           accounts={accounts}
           incomes={incomes}
           expenses={expenses}
-          currentYearMonth={selectedMonth}
+          currentYearMonth={activeMonth}
           balances={balances}
         />
       )}
@@ -477,7 +493,7 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
                 Livro-Caixa & Extrato Geral da Tesouraria
               </h3>
               <p className="text-xs text-slate-500">
-                Lançamentos de {formatMonthYearLabel(selectedMonth)} • {transactions.length} movimentações encontradas
+                Lançamentos de {formatMonthYearLabel(activeMonth)} • {transactions.length} movimentações encontradas
               </p>
             </div>
 
@@ -674,6 +690,7 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
                           {isExpense && '-'}
                           {isTransfer && '⇄ '}
                           {formatCurrency(tr.amount)}
+                          {!isTransfer && <span className="block text-[10px] font-medium text-slate-500">{statusLabel((isIncome ? incomes.find(i => i.id === tr.id) : expenses.find(e => e.id === tr.id))?.status, isIncome ? "income" : "expense")}</span>}
                         </span>
                       </td>
 
@@ -682,7 +699,7 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
                         <div className="flex items-center justify-center gap-1">
                           {isIncome && (
                             <>
-                              {incomes.find(i => i.id === tr.id)?.status === 'pending' && onLiquidateIncome && (
+                              {isOpen(incomes.find(i => i.id === tr.id)?.status) && onLiquidateIncome && (
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -723,7 +740,7 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
 
                           {isExpense && (
                             <>
-                              {expenses.find(exp => exp.id === tr.id)?.status === 'pending' && onLiquidateExpense && (
+                              {isOpen(expenses.find(exp => exp.id === tr.id)?.status) && onLiquidateExpense && (
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
