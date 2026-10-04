@@ -1,3 +1,4 @@
+import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState } from 'react';
 import { X, Plus, Trash2, Tag, Check, Palette } from 'lucide-react';
 import { Category } from '../types';
@@ -43,6 +44,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   const [newCatLimit, setNewCatLimit] = useState('');
   const [newCatParentId, setNewCatParentId] = useState('');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   if (!isOpen) return null;
 
@@ -51,7 +53,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   // Potential parents (only top-level categories)
   const potentialParents = filteredCategories.filter(c => !c.parentId);
 
-  const handleCreateCategory = (e: React.FormEvent) => {
+  const handleCreateCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanName = newCatName.trim();
     if (!cleanName) {
@@ -66,7 +68,10 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
 
     const limit = newCatLimit ? parseFloat(newCatLimit) : undefined;
 
-    onAddCategory({
+    setSaving(true);
+    setError('');
+    try {
+    await onAddCategory({
       name: cleanName,
       color: newCatColor,
       icon: newCatIcon,
@@ -80,6 +85,11 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
     setNewCatParentId('');
     setIsCreating(false);
     setError('');
+    } catch (err) {
+      setError(getSaveErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -252,7 +262,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
 
               <div className="pt-2 flex justify-end">
                 <button
-                  type="submit"
+                  type="submit" disabled={saving}
                   className={`px-4 py-1.5 text-white rounded-lg text-xs font-semibold flex items-center gap-1 ${
                     activeTab === 'expense' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'
                   }`}

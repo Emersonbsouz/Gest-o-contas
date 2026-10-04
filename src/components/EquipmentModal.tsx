@@ -1,3 +1,4 @@
+import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState, useEffect } from 'react';
 import { X, Package, Shield, Hash, DollarSign } from 'lucide-react';
 import { Equipment } from '../types';
@@ -21,6 +22,8 @@ export const EquipmentModal: React.FC<EquipmentModalProps> = ({
   const [dailyRate, setDailyRate] = useState(0);
   const [status, setStatus] = useState<'available' | 'rented' | 'maintenance' | 'broken'>('available');
   const [notes, setNotes] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (editingItem) {
@@ -42,9 +45,12 @@ export const EquipmentModal: React.FC<EquipmentModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({
+    setSaving(true);
+    setError('');
+    try {
+    await onSave({
       name,
       brand: brand || undefined,
       serialNumber: serialNumber || undefined,
@@ -53,6 +59,11 @@ export const EquipmentModal: React.FC<EquipmentModalProps> = ({
       notes: notes || undefined
     }, editingItem?.id);
     onClose();
+    } catch (err) {
+      setError(getSaveErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -74,6 +85,7 @@ export const EquipmentModal: React.FC<EquipmentModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-5">
+          {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Descrição do Equipamento</label>
             <input
@@ -159,7 +171,7 @@ export const EquipmentModal: React.FC<EquipmentModalProps> = ({
               Cancelar
             </button>
             <button
-              type="submit"
+              type="submit" disabled={saving}
               className="flex-[2] px-4 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all text-sm"
             >
               {editingItem ? 'Salvar Alterações' : 'Cadastrar Equipamento'}
