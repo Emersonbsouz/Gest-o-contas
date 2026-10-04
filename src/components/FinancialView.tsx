@@ -18,11 +18,17 @@ import {
   ContactPerson,
   CostCenter
 } from '../types';
+import { DailyCashView } from './DailyCashView';
+import type { DailyCashClosing } from '../types';
 import { TreasuryView } from './TreasuryView';
 import { ExpenseList } from './ExpenseList';
 import { IncomeList } from './IncomeList';
 
 interface FinancialViewProps {
+  cashClosings?: DailyCashClosing[];
+  canCloseCash?: boolean;
+  companyName?: string;
+  onCloseDay?: (accountId: string, date: string, counted: number, notes?: string, signature?: string) => Promise<unknown>;
   expenses: Expense[];
   incomes: Income[];
   accounts: TreasuryAccount[];
@@ -50,6 +56,7 @@ interface FinancialViewProps {
 }
 
 export const FinancialView: React.FC<FinancialViewProps> = ({
+  cashClosings = [], canCloseCash = false, companyName, onCloseDay,
   expenses,
   incomes,
   accounts,
@@ -75,17 +82,18 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
   onOpenAccountModal,
   onDeleteAccount
 }) => {
-  const [subTab, setSubTab] = useState<'pagar' | 'receber' | 'tesouraria'>('tesouraria');
+  const [subTab, setSubTab] = useState<'pagar' | 'receber' | 'tesouraria' | 'fechamento'>('pagar');
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Gestão Financeira</h2>
-          <p className="text-slate-500 text-sm">Operação diária, contas e tesouraria.</p>
+          <p className="text-slate-500 text-sm">{companyName} · Operação diária, contas e tesouraria.</p>
         </div>
         
-        <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+        <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <button onClick={() => setSubTab('fechamento')} className={`px-4 py-2 rounded-lg text-xs font-bold ${subTab === 'fechamento' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}>Fechamento diário</button>
           <button
             onClick={() => setSubTab('tesouraria')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
@@ -115,6 +123,8 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
           </button>
         </div>
       </div>
+
+      {subTab === 'fechamento' && onCloseDay && <DailyCashView accounts={accounts} incomes={incomes} expenses={expenses} transfers={transfers} closings={cashClosings} canClose={canCloseCash} companyName={companyName} onCloseDay={onCloseDay} />}
 
       {subTab === 'tesouraria' && (
         <TreasuryView

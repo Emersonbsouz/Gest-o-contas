@@ -33,6 +33,13 @@ test('pending receipts and payments do not move cash and internal transfers pres
 test('legacy records without status remain settled and open states include Portuguese aliases', () => {
   expect(isSettled(undefined)).toBe(true); expect(isOpen('VENCIDO')).toBe(true); expect(isOpen('approved')).toBe(true); expect(isOpen('rejected')).toBe(false);
 });
+
+test('treasury cashflow uses the payment date for an old settled invoice', () => {
+ const paid={...expense('old invoice','paid',80),settlementDate:'2026-10-04'};
+ expect(getTreasuryMonthSummary([],[],[paid],[],'2026-10').monthOutflow).toBe(80);
+ expect(getTreasuryMonthSummary([],[],[paid],[],'2026-01').monthOutflow).toBe(0);
+ expect(getTreasuryCashflowHistory([],[paid],'2026-10',1)[0].outflow).toBe(80);
+});
 test('month ranges include leap years and exports quote separators, line breaks and formula text', () => {
   expect(monthRange('2024-02')).toEqual({start:'2024-02-01',end:'2024-02-29'});
   expect(csvCell('Fornecedor; "A"\nB')).toBe('"Fornecedor; ""A""\nB"');

@@ -1,3 +1,4 @@
+import { localToday } from './utils/dailyCash';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Header } from './components/Header';
 import { ExpenseSummaryCards } from './components/ExpenseSummaryCards';
@@ -154,6 +155,7 @@ export default function App() {
     accounts,
     treasuries,
     saveTreasury,
+    cashClosings, saveCashClosing,
     incomes,
     transfers,
     cards,
@@ -466,7 +468,7 @@ export default function App() {
       return;
     }
     setFinancialModalType('expense');
-    setEditingFinancialItem({ ...expense, status: 'paid' });
+    setEditingFinancialItem({ ...expense, status: 'paid', settlementDate: localToday() });
     setFinancialPreselectedAccountId(expense.accountId);
     setIsFinancialModalOpen(true);
   };
@@ -527,7 +529,7 @@ export default function App() {
       return;
     }
     setFinancialModalType('income');
-    setEditingFinancialItem({ ...income, status: 'paid' });
+    setEditingFinancialItem({ ...income, status: 'paid', settlementDate: localToday() });
     setFinancialPreselectedAccountId(income.accountId);
     setIsFinancialModalOpen(true);
   };
@@ -979,7 +981,16 @@ export default function App() {
           )}
 
           {activeView === 'financeiro' && (
-            <FinancialView 
+            <FinancialView
+              key={activeCompany?.id}
+              treasuries={treasuries}
+              companyName={activeCompany?.name}
+              cashClosings={cashClosings}
+              canCloseCash={currentUserPermissions.canCreateTransactions}
+              onCloseDay={async (accountId,date,counted,notes,signature) => {
+                if (!currentUserPermissions.canCreateTransactions) throw new Error('Sem permissão para fechar o caixa.');
+                return saveCashClosing(accountId,date,counted,currentUser?.email || '',notes,signature);
+              }} 
               expenses={expenses}
               incomes={incomes}
               accounts={accounts}
@@ -1055,7 +1066,7 @@ export default function App() {
           )}
 
           {activeView === 'relatorios' && (
-            <ReportsView
+            <ReportsView key={activeCompany?.id}
               companyName={activeCompany?.name}
               contacts={contacts}
               costCenters={costCenters}

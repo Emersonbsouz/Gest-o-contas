@@ -160,6 +160,7 @@ export interface BilletData {
 }
 
 export interface Income {
+  settlementDate?: string;
   id: string;
   description: string;
   amount: number;
@@ -202,6 +203,7 @@ export interface Category {
 }
 
 export interface Expense {
+  settlementDate?: string;
   id: string;
   description: string;
   amount: number;
@@ -336,3 +338,23 @@ export interface Company {
 }
 
 
+
+export interface DailyCashClosing {
+  id: string;
+  accountId: string;
+  accountName: string;
+  date: string;
+  openingBalance: number;
+  incomeTotal: number;
+  expenseTotal: number;
+  transferIn: number;
+  transferOut: number;
+  expectedBalance: number;
+  countedBalance: number;
+  difference: number;
+  movementSignature: string;
+  movementCount: number;
+  notes?: string;
+  closedAt: string;
+  closedBy: string;
+}
