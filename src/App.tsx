@@ -21,6 +21,7 @@ import { ManageMembersModal } from './components/ManageMembersModal';
 import { ResetConfirmModal } from './components/ResetConfirmModal';
 import { BackupSecurityModal } from './components/BackupSecurityModal';
 import { AuthView } from './components/AuthView';
+import { PasswordRecoveryView } from './components/PasswordRecoveryView';
 import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './components/DashboardView';
 import { CommercialView } from './components/CommercialView';
@@ -72,7 +73,7 @@ import { calculateAccountBalances } from './utils/treasuryHelpers';
 import { RotateCcw, ShieldCheck, Loader2, Building2, User, Database } from 'lucide-react';
 
 export default function App() {
-  const { currentUser, loading: authLoading, logout } = useAuth();
+  const { currentUser, loading: authLoading, recoveringPassword, logout } = useAuth();
 
   // Multi-Company State
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -826,7 +827,7 @@ export default function App() {
     document.body.removeChild(link);
   };
 
-  // If Firebase auth is loading
+  // Restore the initial Supabase session before choosing a screen.
   if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white">
@@ -835,6 +836,8 @@ export default function App() {
       </div>
     );
   }
+
+  if (recoveringPassword) return <PasswordRecoveryView />;
 
   // If user is not authenticated, show AuthView
   if (!currentUser) {

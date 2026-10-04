@@ -6,7 +6,7 @@ interface AuthViewProps {
   onSuccess?: () => void;
 }
 
-function getAuthErrorMessage(error: unknown): string {
+export function getAuthErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error || '');
   const normalized = message.toLowerCase();
 
@@ -15,18 +15,21 @@ function getAuthErrorMessage(error: unknown): string {
   if (normalized.includes('user already registered')) return 'Este e-mail já possui uma conta.';
   if (normalized.includes('password should be')) return 'A senha deve ter pelo menos 6 caracteres.';
   if (normalized.includes('rate limit')) return 'Muitas tentativas. Aguarde um pouco e tente novamente.';
+  if (normalized.includes('failed to fetch') || normalized.includes('network') || normalized.includes('load failed')) {
+    return 'Não foi possível conectar ao serviço de login. Verifique sua conexão. Se persistir, o serviço pode estar temporariamente indisponível.';
+  }
 
   return message || 'Não foi possível concluir a autenticação.';
 }
 
 export const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
-  const { login, signup, resetPassword } = useAuth();
+  const { login, signup, resetPassword, sessionError } = useAuth();
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(sessionError);
   const [message, setMessage] = useState('');
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -42,7 +45,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
       setError('Informe seu nome.');
       return;
     }
-    if (password.length < 6) {
+    if (isRegistering && password.length < 6) {
       setError('A senha deve ter pelo menos 6 caracteres.');
       return;
     }
@@ -75,7 +78,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
     setLoading(true);
     try {
       await resetPassword(email);
-      setMessage('O Supabase enviou as instruções de recuperação para o seu e-mail.');
+      setMessage('Se este e-mail possui uma conta, você receberá instruções para definir uma nova senha.');
     } catch (authError) {
       setError(getAuthErrorMessage(authError));
     } finally {
