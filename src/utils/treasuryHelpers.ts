@@ -1,3 +1,4 @@
+import { isSettled } from './financialStatus';
 import {
   TreasuryAccount,
   Income,
@@ -45,17 +46,16 @@ export function calculateAccountBalances(
   });
 
   // Add all incomes
-  safeIncomes.forEach((inc) => {
+  safeIncomes.filter(inc => isSettled(inc.status)).forEach((inc) => {
     if (balances[inc.accountId] !== undefined) {
       balances[inc.accountId] += inc.amount;
-    } else if (safeAccounts.length > 0 && safeAccounts[0]) {
-      balances[safeAccounts[0].id] = (balances[safeAccounts[0].id] || 0) + inc.amount;
+
     }
   });
 
   // Subtract all expenses
-  safeExpenses.forEach((exp) => {
-    const accId = exp.accountId || (safeAccounts.length > 0 && safeAccounts[0] ? safeAccounts[0].id : '');
+  safeExpenses.filter(exp => isSettled(exp.status)).forEach((exp) => {
+    const accId = exp.accountId || '';
     if (accId && balances[accId] !== undefined) {
       balances[accId] -= exp.amount;
     }
@@ -87,8 +87,8 @@ export function getTreasuryMonthSummary(
   const safeTransfers = transfers || [];
   const safeMonth = yearMonth || '';
 
-  const monthIncomes = safeIncomes.filter((i) => (safeMonth ? i.date.startsWith(safeMonth) : true));
-  const monthExpenses = safeExpenses.filter((e) => (safeMonth ? e.date.startsWith(safeMonth) : true));
+  const monthIncomes = safeIncomes.filter((i) => isSettled(i.status) && (safeMonth ? i.date.startsWith(safeMonth) : true));
+  const monthExpenses = safeExpenses.filter((e) => isSettled(e.status) && (safeMonth ? e.date.startsWith(safeMonth) : true));
   const monthTransfers = safeTransfers.filter((t) => (safeMonth ? t.date.startsWith(safeMonth) : true));
 
   const monthInflow = monthIncomes.reduce((acc, curr) => acc + curr.amount, 0);
@@ -154,7 +154,7 @@ export function getUnifiedTransactions(
 
   // Expenses
   safeExpenses.forEach((exp) => {
-    const accId = exp.accountId || (safeAccounts.length > 0 && safeAccounts[0] ? safeAccounts[0].id : '');
+    const accId = exp.accountId || '';
     const cat = categoryMap.get(exp.categoryId);
     list.push({
       id: exp.id,
@@ -245,8 +245,8 @@ export function getTreasuryCashflowHistory(
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const ym = `${y}-${m}`;
 
-    const monthIncomes = safeIncomes.filter((inc) => inc.date.startsWith(ym));
-    const monthExpenses = safeExpenses.filter((exp) => exp.date.startsWith(ym));
+    const monthIncomes = safeIncomes.filter((inc) => isSettled(inc.status) && inc.date.startsWith(ym));
+    const monthExpenses = safeExpenses.filter((exp) => isSettled(exp.status) && exp.date.startsWith(ym));
 
     const inflow = monthIncomes.reduce((acc, curr) => acc + curr.amount, 0);
     const outflow = monthExpenses.reduce((acc, curr) => acc + curr.amount, 0);

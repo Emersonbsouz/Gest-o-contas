@@ -1,1 +1,15 @@
 @import "tailwindcss";
+
+@media print {
+  body:has(#financial-report) aside,
+  body:has(#financial-report) header,
+  body:has(#financial-report) main > :not(#financial-report) { display: none !important; }
+  body:has(#financial-report) main { margin: 0 !important; padding: 0 !important; overflow: visible !important; }
+  body:has(#financial-report) { background: white; }
+  body:has(#financial-report) #root > div { display: block !important; }
+  body:has(#financial-report) div:has(> main) { overflow: visible !important; }
+  #financial-report table { font-size: 9pt; }
+  #financial-report thead { display: table-header-group; }
+  #financial-report tr { break-inside: avoid; }
+  #financial-report .overflow-x-auto { overflow: visible; }
+}

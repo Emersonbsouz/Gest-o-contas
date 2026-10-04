@@ -1,12 +1,14 @@
 import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState, useEffect } from 'react';
 import { X, Check, Landmark, DollarSign, Palette, ShieldCheck } from 'lucide-react';
-import { TreasuryAccount, AccountType } from '../types';
+import { TreasuryAccount, AccountType, TreasuryGroup } from '../types';
 
 interface AccountFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (accountData: Omit<TreasuryAccount, 'id'>, accountId?: string) => void;
+  treasuries?: TreasuryGroup[];
+  defaultType?: AccountType;
   editingAccount?: TreasuryAccount | null;
 }
 
@@ -46,10 +48,13 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   onClose,
   onSave,
   editingAccount,
+  treasuries = [],
+  defaultType = "checking",
 }) => {
   const [name, setName] = useState('');
   const [type, setType] = useState<AccountType>('checking');
   const [initialBalance, setInitialBalance] = useState('');
+  const [treasuryId, setTreasuryId] = useState('');
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [color, setColor] = useState(COLOR_PRESETS[0]);
@@ -58,6 +63,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
 
   useEffect(() => {
     if (editingAccount) {
+      setTreasuryId(editingAccount.treasuryId || '');
       setName(editingAccount.name);
       setType(editingAccount.type);
       setInitialBalance(editingAccount.initialBalance.toString());
@@ -66,14 +72,15 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
       setColor(editingAccount.color || COLOR_PRESETS[0]);
     } else {
       setName('');
-      setType('checking');
+      setType(defaultType);
+      setTreasuryId('');
       setInitialBalance('0');
       setBankName('');
       setAccountNumber('');
       setColor(COLOR_PRESETS[0]);
     }
     setError('');
-  }, [editingAccount, isOpen]);
+  }, [editingAccount, isOpen, defaultType]);
 
   if (!isOpen) return null;
 
@@ -92,12 +99,17 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
       return;
     }
 
+    if (treasuryId && !treasuries.some(t => t.id === treasuryId)) {
+      setError('Selecione uma tesouraria válida.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
     await onSave(
       {
         name: cleanName,
+        treasuryId: treasuryId || undefined,
         type,
         initialBalance: Math.round(numBalance * 100) / 100,
         color,
@@ -196,6 +208,13 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
             </div>
           </div>
 
+          <label className="block text-xs font-semibold text-slate-700">Tesouraria vinculada
+            <select aria-label="Tesouraria vinculada" value={treasuryId} onChange={e => setTreasuryId(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-sm">
+              <option value="">Sem vínculo</option>
+              {treasuries.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            <span className="mt-1 block text-xs font-normal text-slate-500">Cadastre tesourarias em Cadastros → Tesourarias. O caixa mantém seu próprio saldo.</span>
+          </label>
           {/* Initial Balance */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">

@@ -599,6 +599,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-700">Situação</label>
                   <select
+                    aria-label="Situação do lançamento"
                     value={status}
                     onChange={(e) => setStatus(e.target.value as PaymentStatus)}
                     className={`w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white font-bold ${
@@ -608,7 +609,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                     }`}
                   >
                     <option value="pending">PENDENTE (Aberto)</option>
-                    <option value="paid">PAGO (Recebido)</option>
+                    <option value="paid">{type === "income" ? "RECEBIDO" : "PAGO"}</option>
                     <option value="overdue">VENCIDO</option>
                     <option value="cancelled">CANCELADO</option>
                   </select>

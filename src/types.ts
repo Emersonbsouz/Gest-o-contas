@@ -75,7 +75,14 @@ export interface TransactionSplit {
 
 export type CardBrand = 'mastercard' | 'visa' | 'elo' | 'amex' | 'hipercard' | 'other';
 
+export interface TreasuryGroup {
+  id: string;
+  name: string;
+  notes?: string;
+}
+
 export interface TreasuryAccount {
+  treasuryId?: string;
   id: string;
   name: string;
   type: AccountType;

@@ -1,481 +1,85 @@
-import React, { useState, useMemo } from 'react';
-import {
-  TrendingUp,
-  TrendingDown,
-  ArrowUpRight,
-  ArrowDownLeft,
-  Calendar,
-  Filter,
-  Download,
-  BarChart3,
-  PieChart as PieChartIcon,
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  FilterX,
-  Target,
-  Clock,
-  CheckCircle2,
-  AlertCircle
-} from 'lucide-react';
-import {
-  Expense,
-  Income,
-  Category,
-  TreasuryAccount,
-  PaymentStatus
-} from '../types';
-import {
-  formatCurrency,
-  formatDateBR,
-  formatMonthYearLabel,
-  getRelativeMonth
-} from '../utils/formatters';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend
-} from 'recharts';
+import React, { useEffect, useMemo, useState } from 'react';
+import { BarChart3, Download, Printer } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import type { Expense, Income, Category, TreasuryAccount, ContactPerson, CostCenter, TreasuryGroup } from '../types';
+import { formatCurrency, formatDateBR, getRelativeMonth } from '../utils/formatters';
+import { csvCell, monthRange, reportRows, ReportFilters } from '../utils/financialReports';
+import { isCancelled, isOpen, isSettled, statusLabel } from '../utils/financialStatus';
 
 interface ReportsViewProps {
-  expenses: Expense[];
-  incomes: Income[];
-  categories: Category[];
-  accounts: TreasuryAccount[];
-  selectedMonth: string;
-  onMonthChange: (month: string) => void;
+  expenses: Expense[]; incomes: Income[]; categories: Category[]; accounts: TreasuryAccount[];
+  contacts?: ContactPerson[]; costCenters?: CostCenter[]; treasuries?: TreasuryGroup[];
+  companyName?: string;
+  selectedMonth: string; onMonthChange: (month: string) => void;
 }
-
-export const ReportsView: React.FC<ReportsViewProps> = ({
-  expenses = [],
-  incomes = [],
-  categories = [],
-  accounts = [],
-  selectedMonth,
-  onMonthChange,
-}) => {
-  const [reportType, setReportType] = useState<'monthly' | 'categories' | 'status'>('monthly');
-  const [searchTerm, setSearchTerm] = useState('');
-
-  const activeMonth = selectedMonth || new Date().toISOString().slice(0, 7);
-
-  // Filtered data for the active month
-  const monthExpenses = useMemo(() => 
-    expenses.filter(e => e.date.startsWith(activeMonth)),
-    [expenses, activeMonth]
-  );
-
-  const monthIncomes = useMemo(() => 
-    incomes.filter(i => i.date.startsWith(activeMonth)),
-    [incomes, activeMonth]
-  );
-
-  // Totals
-  const totalExpenses = monthExpenses.reduce((acc, curr) => acc + curr.amount, 0);
-  const totalIncomes = monthIncomes.reduce((acc, curr) => acc + curr.amount, 0);
-  const netResult = totalIncomes - totalExpenses;
-
-  // Category Distribution
-  const categoryData = useMemo(() => {
-    const expenseCats = categories.filter(c => c.type === 'expense');
-    const data = expenseCats.map(cat => {
-      const amount = monthExpenses
-        .filter(e => e.categoryId === cat.id)
-        .reduce((sum, e) => sum + e.amount, 0);
-      return {
-        name: cat.name,
-        value: amount,
-        color: cat.color
-      };
-    }).filter(d => d.value > 0)
-      .sort((a, b) => b.value - a.value);
-    
-    return data;
-  }, [monthExpenses, categories]);
-
-  // Status Distribution
-  const statusData = useMemo(() => {
-    const statusCounts = {
-      paid: monthExpenses.filter(e => e.status === 'paid').reduce((sum, e) => sum + e.amount, 0),
-      liquidated: monthExpenses.filter(e => e.status === 'liquidated').reduce((sum, e) => sum + e.amount, 0),
-      pending: monthExpenses.filter(e => e.status === 'pending').reduce((sum, e) => sum + e.amount, 0),
-    };
-
-    return [
-      { name: 'Liquidado', value: statusCounts.liquidated + statusCounts.paid, color: '#10b981' },
-      { name: 'Aberto', value: statusCounts.pending, color: '#f59e0b' },
-    ].filter(d => d.value > 0);
-  }, [monthExpenses]);
-
-  const handleExportCSV = () => {
-    const headers = ['Data', 'Tipo', 'Descrição', 'Categoria', 'Valor (R$)', 'Situação'];
-    const data = [
-      ...monthIncomes.map(i => [i.date, 'Receita', i.description, categories.find(c => c.id === i.categoryId)?.name || '', i.amount.toFixed(2), i.status || 'Pago']),
-      ...monthExpenses.map(e => [e.date, 'Despesa', e.description, categories.find(c => c.id === e.categoryId)?.name || '', (-e.amount).toFixed(2), e.status || 'Pago'])
-    ];
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...data.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `relatorio_financeiro_${activeMonth}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+const statusNames = {all: 'Ativos (pagos e em aberto)', open: 'Em aberto', settled: 'Pagos / Recebidos', cancelled: 'Cancelados / Rejeitados'};
+export const ReportsView: React.FC<ReportsViewProps> = ({ expenses = [], incomes = [], categories = [], accounts = [], contacts = [], costCenters = [], treasuries = [], selectedMonth, companyName = '' }) => {
+  const month = selectedMonth || new Date().toISOString().slice(0, 7);
+  const [range, setRange] = useState(() => monthRange(month));
+  const [preset, setPreset] = useState('month');
+  const [status, setStatus] = useState<ReportFilters['status']>('all');
+  const [kind, setKind] = useState<ReportFilters['kind']>('all');
+  const [accountId, setAccountId] = useState('all');
+  const [costCenterId, setCostCenterId] = useState('all');
+  const [treasuryId, setTreasuryId] = useState('all');
+  const [search, setSearch] = useState('');
+  const name = (items: {id: string; name: string}[], id?: string) => items.find(item => item.id === id)?.name || '';
+  const centerNames = (item: Income | Expense) => {
+    const splits = (item as Expense).splits;
+    return splits?.length ? splits.map(s => `${name(costCenters, s.costCenterId) || 'Centro indisponível'} (${formatCurrency(s.amount)})`).join(' / ') : name(costCenters, item.costCenterId);
   };
-
-  return (
-    <div className="space-y-6">
-      {/* Header & Month Selector */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-indigo-600" />
-            Relatórios de Despesas e Receitas
-          </h2>
-          <p className="text-xs text-slate-500">Acompanhamento detalhado do seu desempenho financeiro</p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="flex items-center bg-slate-100 rounded-xl p-1 border border-slate-200">
-            <button
-              onClick={() => onMonthChange(getRelativeMonth(activeMonth, -1))}
-              className="p-1.5 rounded-lg hover:bg-white text-slate-600 hover:text-slate-900 transition-all"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <div className="px-3 flex items-center gap-2 text-xs font-bold text-slate-800 min-w-[120px] justify-center">
-              <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-              {formatMonthYearLabel(activeMonth)}
-            </div>
-            <button
-              onClick={() => onMonthChange(getRelativeMonth(activeMonth, 1))}
-              className="p-1.5 rounded-lg hover:bg-white text-slate-600 hover:text-slate-900 transition-all"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          <button
-            onClick={handleExportCSV}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all shadow-2xs"
-          >
-            <Download className="w-4 h-4 text-slate-400" />
-            Exportar Relatório
-          </button>
-        </div>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total de Receitas</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <TrendingUp className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-emerald-600">
-            {formatCurrency(totalIncomes)}
-          </div>
-          <div className="mt-1 text-[10px] text-slate-400 font-medium">
-            {monthIncomes.length} lançamentos de entrada
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total de Despesas</span>
-            <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
-              <TrendingDown className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-rose-600">
-            {formatCurrency(totalExpenses)}
-          </div>
-          <div className="mt-1 text-[10px] text-slate-400 font-medium">
-            {monthExpenses.length} lançamentos de saída
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Saldo do Período</span>
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${netResult >= 0 ? 'bg-indigo-50 text-indigo-600' : 'bg-rose-50 text-rose-600'}`}>
-              <PieChartIcon className="w-4 h-4" />
-            </div>
-          </div>
-          <div className={`text-2xl font-black ${netResult >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>
-            {formatCurrency(netResult)}
-          </div>
-          <div className="mt-1 flex items-center gap-1.5">
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${netResult >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-              {netResult >= 0 ? 'Superávit' : 'Déficit'}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Charts & Table */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Visualizations */}
-        <div className="lg:col-span-8 space-y-6">
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-indigo-600" />
-                Análise Visual
-              </h3>
-              <div className="flex bg-slate-100 p-1 rounded-xl">
-                <button
-                  onClick={() => setReportType('monthly')}
-                  className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${reportType === 'monthly' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500'}`}
-                >
-                  Comparativo
-                </button>
-                <button
-                  onClick={() => setReportType('categories')}
-                  className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${reportType === 'categories' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500'}`}
-                >
-                  Categorias
-                </button>
-                <button
-                  onClick={() => setReportType('status')}
-                  className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${reportType === 'status' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500'}`}
-                >
-                  Situação
-                </button>
-              </div>
-            </div>
-
-            <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                {reportType === 'monthly' ? (
-                  <BarChart data={[{ name: formatMonthYearLabel(activeMonth), entradas: totalIncomes, saídas: totalExpenses }]}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#64748b' }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(v) => `R$ ${v}`} />
-                    <Tooltip 
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                      formatter={(value: number) => [formatCurrency(value), '']}
-                    />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: 10, fontWeight: 600, paddingTop: 20 }} />
-                    <Bar dataKey="entradas" fill="#10b981" radius={[4, 4, 0, 0]} barSize={40} />
-                    <Bar dataKey="saídas" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={40} />
-                  </BarChart>
-                ) : reportType === 'categories' ? (
-                  categoryData.length > 0 ? (
-                    <PieChart>
-                      <Pie
-                        data={categoryData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={100}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {categoryData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                      <Legend iconType="circle" wrapperStyle={{ fontSize: 10, fontWeight: 600 }} />
-                    </PieChart>
-                  ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                      <FilterX className="w-10 h-10 mb-2 opacity-20" />
-                      <p className="text-xs">Sem dados para exibir este gráfico</p>
-                    </div>
-                  )
-                ) : (
-                  <PieChart>
-                    <Pie
-                      data={statusData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {statusData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: 10, fontWeight: 600 }} />
-                  </PieChart>
-                )}
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* List of Transactions */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900">Extrato Detalhado do Relatório</h3>
-              <div className="relative w-full max-w-[200px]">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Filtrar lançamentos..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-[11px] focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </div>
-            </div>
-            
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-50/50 text-slate-500 font-bold border-b border-slate-100">
-                    <th className="py-3 px-4">Data</th>
-                    <th className="py-3 px-4">Descrição</th>
-                    <th className="py-3 px-4">Categoria</th>
-                    <th className="py-3 px-4 text-right">Valor</th>
-                    <th className="py-3 px-4 text-center">Situação</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {[...monthIncomes, ...monthExpenses]
-                    .filter(item => 
-                      item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                      categories.find(c => c.id === item.categoryId)?.name.toLowerCase().includes(searchTerm.toLowerCase())
-                    )
-                    .sort((a, b) => b.date.localeCompare(a.date))
-                    .map((item) => {
-                      const isIncome = incomes.some(i => i.id === item.id);
-                      const cat = categories.find(c => c.id === item.categoryId);
-                      const status = item.status || 'paid';
-
-                      return (
-                        <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="py-3 px-4 font-medium text-slate-500">{formatDateBR(item.date)}</td>
-                          <td className="py-3 px-4">
-                            <span className="font-bold text-slate-800">{item.description}</span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-semibold text-[10px]">
-                              {cat?.name || 'Geral'}
-                            </span>
-                          </td>
-                          <td className={`py-3 px-4 text-right font-black ${isIncome ? 'text-emerald-600' : 'text-rose-600'}`}>
-                            {isIncome ? '+' : '-'}{formatCurrency(item.amount)}
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            {(status === 'paid' || status === 'liquidated') && (
-                              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                                <CheckCircle2 className="w-2.5 h-2.5" /> Liquidado
-                              </span>
-                            )}
-                            {status === 'pending' && (
-                              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
-                                <Clock className="w-2.5 h-2.5" /> Aberto
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column: Insights & Stats */}
-        <div className="lg:col-span-4 space-y-6">
-          {/* Top Categories Card */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-            <h3 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <Target className="w-4 h-4 text-rose-500" />
-              Maiores Gastos
-            </h3>
-            <div className="space-y-4">
-              {categoryData.slice(0, 5).map((cat, idx) => (
-                <div key={idx}>
-                  <div className="flex items-center justify-between text-xs mb-1.5">
-                    <span className="font-bold text-slate-700">{cat.name}</span>
-                    <span className="font-black text-slate-900">{formatCurrency(cat.value)}</span>
-                  </div>
-                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full rounded-full transition-all duration-1000"
-                      style={{ 
-                        width: `${(cat.value / totalExpenses) * 100}%`,
-                        backgroundColor: cat.color
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-              {categoryData.length === 0 && (
-                <p className="text-xs text-slate-400 text-center py-4 italic">Nenhuma despesa este mês</p>
-              )}
-            </div>
-          </div>
-
-          {/* Pending Items Card */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-            <h3 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-amber-500" />
-              Pendências do Período
-            </h3>
-            <div className="space-y-3">
-              {[...monthIncomes, ...monthExpenses]
-                .filter(i => i.status === 'pending')
-                .slice(0, 5)
-                .map((item) => {
-                  const isIncome = incomes.some(i => i.id === item.id);
-                  return (
-                    <div key={item.id} className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
-                      <div className="min-w-0">
-                        <span className="text-[11px] font-bold text-slate-800 block truncate">{item.description}</span>
-                        <span className="text-[10px] text-slate-400">{formatDateBR(item.date)}</span>
-                      </div>
-                      <span className={`text-[11px] font-black shrink-0 ${isIncome ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {formatCurrency(item.amount)}
-                      </span>
-                    </div>
-                  );
-                })}
-              {[...monthIncomes, ...monthExpenses].filter(i => i.status === 'pending').length === 0 && (
-                <div className="flex flex-col items-center justify-center py-4 text-center">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-100 mb-2" />
-                  <p className="text-[11px] text-slate-400">Tudo em dia! Nenhuma pendência.</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Financial Health Tip */}
-          <div className="bg-indigo-600 p-5 rounded-2xl text-white shadow-lg shadow-indigo-200">
-            <div className="flex items-center gap-2 mb-2">
-              <Sparkles className="w-4 h-4 text-indigo-200" />
-              <span className="text-xs font-bold uppercase tracking-wider text-indigo-100">Dica Financeira</span>
-            </div>
-            <p className="text-xs leading-relaxed font-medium">
-              {netResult >= 0 
-                ? "Parabéns! Você está com superávit este mês. Considere aportar o excedente em suas metas financeiras na aba de cadastros."
-                : "Atenção: Suas despesas superaram suas receitas este mês. Revise suas categorias de maiores gastos para identificar onde economizar."}
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  const invalidRange = !!(range.start && range.end && range.start > range.end);
+  const rows = useMemo(() => invalidRange ? [] : reportRows(incomes, expenses,
+    { ...range, status, kind, accountId, costCenterId, search }, item => `${name(contacts, item.contactId)} ${centerNames(item)} ${name(accounts, item.accountId)}`)
+    .filter(({item}) => treasuryId === 'all' || accounts.find(a => a.id === item.accountId)?.treasuryId === treasuryId),
+    [incomes, expenses, range, status, kind, accountId, costCenterId, search, contacts, costCenters, accounts, treasuryId, invalidRange]);
+  const total = (type: 'income' | 'expense', predicate: typeof isOpen) => rows.filter(row => row.kind === type && predicate(row.item.status)).reduce((sum, row) => sum + row.item.amount, 0);
+  const received = total('income', isSettled), paid = total('expense', isSettled), receivable = total('income', isOpen), payable = total('expense', isOpen);
+  const chartData = useMemo(() => {
+    const months = new Map<string, {name: string; Recebido: number; Pago: number; 'A receber': number; 'A pagar': number}>();
+    rows.forEach(({item, kind: type}) => {
+      if (isCancelled(item.status)) return;
+      const key = item.date.slice(0, 7), data = months.get(key) || {name: key, Recebido: 0, Pago: 0, 'A receber': 0, 'A pagar': 0};
+      const field = isSettled(item.status) ? (type === 'income' ? 'Recebido' : 'Pago') : (type === 'income' ? 'A receber' : 'A pagar');
+      data[field] += item.amount; months.set(key, data);
+    });
+    return [...months.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows]);
+  useEffect(() => {
+    if (preset === 'month') setRange(monthRange(month));
+    if (preset === 'quarter') setRange({start: `${getRelativeMonth(month, -2)}-01`, end: monthRange(month).end});
+    if (preset === 'year') setRange({start: `${month.slice(0, 4)}-01-01`, end: `${month.slice(0, 4)}-12-31`});
+    if (preset === 'all') setRange({start: '', end: ''});
+  }, [month, preset]);
+  function choosePeriod(value: string) { setPreset(value); }
+  const periodLabel = `${range.start ? formatDateBR(range.start) : 'Início do histórico'} a ${range.end ? formatDateBR(range.end) : 'Fim do histórico'}`;
+  function exportReport() {
+    const headers = ['Vencimento', 'Tipo', 'Descrição', 'Cliente / Fornecedor', 'Centro de custo', 'Conta / Caixa', 'Tesouraria', 'Categoria', 'Valor (R$)', 'Situação'];
+    const data = rows.map(({item, kind: type}) => [formatDateBR(item.date), type === 'income' ? 'Receita' : 'Despesa', item.description, name(contacts, item.contactId), centerNames(item), name(accounts, item.accountId), name(treasuries, accounts.find(a => a.id === item.accountId)?.treasuryId), name(categories, item.categoryId), item.amount.toFixed(2).replace('.', ','), statusLabel(item.status, type)]);
+    const metadata = [['Relatório financeiro'], ['Empresa', companyName], ['Período', periodLabel], ['Situação', statusNames[status]], ['Tipo', kind === 'all' ? 'Receitas e despesas' : kind === 'income' ? 'Receitas' : 'Despesas'], ['Conta / Caixa', accountId === 'all' ? 'Todas' : name(accounts, accountId)], ['Tesouraria', treasuryId === 'all' ? 'Todas' : name(treasuries, treasuryId)], ['Centro de custo', costCenterId === 'all' ? 'Todos' : name(costCenters, costCenterId)], ['Busca', search], ['Recebido', received.toFixed(2).replace('.', ',')], ['Pago', paid.toFixed(2).replace('.', ',')], ['A receber', receivable.toFixed(2).replace('.', ',')], ['A pagar', payable.toFixed(2).replace('.', ',')], []];
+    const blob = new Blob(['\uFEFF' + [...metadata, headers, ...data].map(row => row.map(csvCell).join(';')).join('\r\n')], {type: 'text/csv;charset=utf-8'});
+    const url = URL.createObjectURL(blob), link = document.createElement('a');
+    link.href = url; link.download = `relatorio_${range.start || 'inicio'}_${range.end || 'fim'}_${status}.csv`;
+    document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+  }
+  const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800';
+  return <section className="space-y-5" id="financial-report">
+    <div className="flex flex-wrap justify-between gap-3"><div><h2 className="flex items-center gap-2 text-2xl font-bold text-slate-900"><BarChart3 className="text-indigo-600" />Relatórios financeiros</h2><p className="mt-1 text-sm text-slate-500">Escolha o período e acompanhe valores realizados e em aberto.</p>{companyName && <p className="mt-1 text-sm font-semibold text-indigo-700">{companyName}</p>}</div>
+      <div className="flex items-center gap-2 print:hidden"><button onClick={() => window.print()} disabled={invalidRange} className="flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm"><Printer size={16} />Imprimir / PDF</button><button onClick={exportReport} disabled={invalidRange} className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"><Download size={16} />Exportar relatório</button></div></div>
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 print:hidden"><div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <label className="space-y-1 text-xs font-semibold text-slate-600">Período<select aria-label="Período" value={preset} onChange={e => choosePeriod(e.target.value)} className={inputClass}><option value="month">Mês selecionado</option><option value="quarter">Últimos 3 meses</option><option value="year">Ano selecionado</option><option value="all">Todo o histórico</option><option value="custom">Personalizado</option></select></label>
+      <label className="space-y-1 text-xs font-semibold text-slate-600">Data inicial<input aria-label="Data inicial" type="date" value={range.start} onChange={e => {setPreset('custom'); setRange({...range, start: e.target.value});}} className={inputClass} /></label>
+      <label className="space-y-1 text-xs font-semibold text-slate-600">Data final<input aria-label="Data final" type="date" value={range.end} onChange={e => {setPreset('custom'); setRange({...range, end: e.target.value});}} className={inputClass} /></label>
+      <label className="space-y-1 text-xs font-semibold text-slate-600">Situação<select aria-label="Situação do relatório" value={status} onChange={e => setStatus(e.target.value as ReportFilters['status'])} className={inputClass}>{Object.entries(statusNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label className="space-y-1 text-xs font-semibold text-slate-600">Tipo<select aria-label="Tipo do relatório" value={kind} onChange={e => setKind(e.target.value as ReportFilters['kind'])} className={inputClass}><option value="all">Receitas e despesas</option><option value="income">Receitas</option><option value="expense">Despesas</option></select></label>
+      <label className="space-y-1 text-xs font-semibold text-slate-600">Conta / Caixa<select aria-label="Conta / Caixa" value={accountId} onChange={e => setAccountId(e.target.value)} className={inputClass}><option value="all">Todas as contas e caixas</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
+      <label className="space-y-1 text-xs font-semibold text-slate-600">Centro de custo<select aria-label="Centro de custo do relatório" value={costCenterId} onChange={e => setCostCenterId(e.target.value)} className={inputClass}><option value="all">Todos os centros</option>{costCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+      <label className="space-y-1 text-xs font-semibold text-slate-600">Tesouraria<select aria-label="Tesouraria do relatório" value={treasuryId} onChange={e => setTreasuryId(e.target.value)} className={inputClass}><option value="all">Todas as tesourarias</option>{treasuries.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+    </div><input aria-label="Buscar no relatório" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar descrição, cliente, fornecedor ou centro..." className={`${inputClass} mt-4`} />{invalidRange && <p role="alert" className="mt-3 text-sm text-rose-600">A data final deve ser igual ou posterior à data inicial.</p>}</div>
+    <p className="text-xs text-slate-500">{periodLabel} · {statusNames[status]} · {rows.length} lançamentos. Período pela data de vencimento. Conta: {accountId === "all" ? "Todas" : name(accounts, accountId)}. Tesouraria: {treasuryId === "all" ? "Todas" : name(treasuries, treasuryId)}. Centro: {costCenterId === "all" ? "Todos" : name(costCenters, costCenterId)}. {costCenterId !== 'all' && 'Valores integrais dos lançamentos; os rateios aparecem na coluna de centro de custo.'}</p>
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[["Recebido", received, 'text-emerald-700'], ["Pago", paid, 'text-rose-700'], ["A receber", receivable, 'text-amber-700'], ["A pagar", payable, 'text-amber-700']].map(([label, value, color]) => <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-xs font-semibold text-slate-500">{label}</p><p className={`mt-2 text-xl font-bold ${color}`}>{formatCurrency(Number(value))}</p></div>)}</div>
+    <div className="flex flex-wrap gap-5 rounded-xl bg-indigo-50 p-4 text-sm text-indigo-900"><span>Resultado realizado: <b>{formatCurrency(received - paid)}</b></span><span>Resultado previsto: <b>{formatCurrency(received + receivable - paid - payable)}</b></span></div>
+    {chartData.length > 0 && <div className="rounded-2xl border bg-white p-5 print:hidden"><h3 className="mb-4 text-sm font-bold">Evolução no período</h3><div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip formatter={(v: number) => formatCurrency(v)} /><Legend /><Bar dataKey="Recebido" fill="#059669" /><Bar dataKey="Pago" fill="#e11d48" /><Bar dataKey="A receber" fill="#84cc16" /><Bar dataKey="A pagar" fill="#f59e0b" /></BarChart></ResponsiveContainer></div></div>}
+    <div className="overflow-x-auto rounded-2xl border bg-white"><table className="w-full text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr>{['Vencimento', 'Tipo / Descrição', 'Cliente / Fornecedor', 'Centro de custo', 'Conta / Caixa', 'Valor', 'Situação'].map(h => <th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{rows.map(({item, kind: type}) => <tr key={`${type}-${item.id}`} className="border-t border-slate-100"><td className="whitespace-nowrap p-3">{formatDateBR(item.date)}</td><td className="p-3"><span className="block text-slate-500">{type === 'income' ? 'Receita' : 'Despesa'}</span><b>{item.description}</b></td><td className="p-3">{name(contacts, item.contactId) || '—'}</td><td className="p-3">{centerNames(item) || '—'}</td><td className="p-3">{name(accounts, item.accountId) || 'Não definida'}</td><td className={`whitespace-nowrap p-3 font-bold ${type === 'income' ? 'text-emerald-700' : 'text-rose-700'}`}>{formatCurrency(item.amount)}</td><td className="whitespace-nowrap p-3"><span className={`rounded-full px-2 py-1 ${isOpen(item.status) ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-700'}`}>{statusLabel(item.status, type)}</span></td></tr>)}</tbody></table>{!rows.length && <p className="p-8 text-center text-sm text-slate-500">Nenhum lançamento encontrado para estes filtros.</p>}</div>
+  </section>;
 };
-
-const Sparkles = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
-);

@@ -1,0 +1,50 @@
+import React from 'react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, expect, test, vi } from 'vitest';
+import { ReportsView } from './ReportsView';
+import { AccountFormModal } from './AccountFormModal';
+import { TreasuryRegistry } from './TreasuryRegistry';
+import type { Income } from '../types';
+afterEach(() => {cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals();});
+vi.mock('recharts', () => ({ResponsiveContainer: ({children}: any) => <div>{children}</div>, BarChart: () => <div />, Bar: () => null, XAxis: () => null, YAxis: () => null, CartesianGrid: () => null, Tooltip: () => null, Legend: () => null}));
+const invoices: Income[] = [{id:'jan',description:'Receita janeiro',amount:200,date:'2026-01-01',status:'pending',accountId:'cash',categoryId:'sales',createdAt:1},{id:'mar',description:'Receita março',amount:100,date:'2026-03-31',status:'paid',accountId:'cash',categoryId:'sales',createdAt:1}];
+test('report screen selects a larger period and paid or open accounts', () => {
+  render(<ReportsView incomes={invoices} expenses={[]} accounts={[]} categories={[]} selectedMonth="2026-03" onMonthChange={vi.fn()} />);
+  expect(screen.queryByText('Receita janeiro')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Período'),{target:{value:'quarter'}});
+  expect(screen.getByText('Receita janeiro')).toBeTruthy(); expect(screen.getByText('Receita março')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Situação do relatório'),{target:{value:'open'}});
+  expect(screen.queryByText('Receita março')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Situação do relatório'),{target:{value:'settled'}});
+  expect(screen.queryByText('Receita janeiro')).toBeNull(); expect(screen.getByText('Receita março')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Data inicial'),{target:{value:'2026-04-01'}});
+  expect(screen.getByRole('alert').textContent).toContain('data final');
+  expect((screen.getByRole('button',{name:'Exportar relatório'}) as HTMLButtonElement).disabled).toBe(true);
+});
+test('CSV export contains precisely the period and open records displayed', () => {
+  let content = ''; vi.stubGlobal('Blob', class {constructor(parts: string[]) {content = parts.join('');}});
+  URL.createObjectURL = vi.fn(() => 'blob:report'); URL.revokeObjectURL = vi.fn();
+  vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(() => {});
+  render(<ReportsView incomes={invoices} expenses={[]} accounts={[]} categories={[]} selectedMonth="2026-03" onMonthChange={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText('Período'),{target:{value:'quarter'}});
+  fireEvent.change(screen.getByLabelText('Situação do relatório'),{target:{value:'open'}});
+  fireEvent.click(screen.getByRole('button',{name:'Exportar relatório'}));
+  expect(content).toContain('01/01/2026 a 31/03/2026'); expect(content).toContain('Receita janeiro'); expect(content).not.toContain('Receita março'); expect(content).toContain('Em aberto');
+});
+test('a new cash account saves its treasury relationship and waits for confirmation', async () => {
+  let confirm!: () => void; const onSave = vi.fn(() => new Promise<void>(resolve => {confirm = resolve;})), onClose = vi.fn();
+  render(<AccountFormModal isOpen onClose={onClose} onSave={onSave} defaultType="cash" treasuries={[{id:'main',name:'Principal'}]} />);
+  fireEvent.change(document.getElementById('input-account-name')!,{target:{value:'Caixa loja'}});
+  fireEvent.change(screen.getByLabelText('Tesouraria vinculada'),{target:{value:'main'}});
+  fireEvent.click(screen.getByRole('button',{name:'Criar Conta'}));
+  expect(onSave).toHaveBeenCalledWith(expect.objectContaining({name:'Caixa loja',type:'cash',treasuryId:'main',initialBalance:0}),undefined);
+  expect(onClose).not.toHaveBeenCalled(); confirm(); await waitFor(() => expect(onClose).toHaveBeenCalled());
+});
+test('treasury registration keeps the form open when the server refuses the write', async () => {
+  const onSave = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+  render(<TreasuryRegistry treasuries={[]} accounts={[]} incomes={[]} expenses={[]} onSave={onSave} />);
+  fireEvent.click(screen.getByRole('button',{name:'Nova Tesouraria'}));
+  fireEvent.change(screen.getByLabelText('Nome da tesouraria'),{target:{value:'Principal'}});
+  fireEvent.click(screen.getByRole('button',{name:'Salvar Tesouraria'}));
+  expect(await screen.findByRole('alert')).toBeTruthy(); expect(screen.getByLabelText('Nome da tesouraria')).toBeTruthy();
+});
