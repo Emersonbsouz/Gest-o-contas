@@ -45,3 +45,12 @@ test('month ranges include leap years and exports quote separators, line breaks 
   expect(csvCell('Fornecedor; "A"\nB')).toBe('"Fornecedor; ""A""\nB"');
   expect(csvCell('=1+1')).toBe('"\'=1+1"');
 });
+
+test('a center report includes only its products and never mutates the original expense', () => {
+ const e={...expense('purchase','pending',120),costCenterId:'stale',splits:[{id:'one',description:'Cimento',amount:80,costCenterId:'a',categoryId:'cost'},{id:'two',description:'Areia',amount:40,costCenterId:'b',categoryId:'cost'}]};
+ expect(reportRows([],[e],{...filters,costCenterId:'a'})[0].amount).toBe(80);
+ expect(reportRows([],[e],{...filters,costCenterId:'b'})[0].amount).toBe(40);
+ expect(reportRows([],[e],{...filters,costCenterId:'stale'})).toEqual([]);
+ expect(reportRows([],[e],filters)[0].amount).toBe(120);
+ expect(reportRows([],[e],{...filters,search:'Cimento'})).toHaveLength(1);expect(e.amount).toBe(120);
+});
