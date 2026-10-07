@@ -48,3 +48,13 @@ test('treasury registration keeps the form open when the server refuses the writ
   fireEvent.click(screen.getByRole('button',{name:'Salvar Tesouraria'}));
   expect(await screen.findByRole('alert')).toBeTruthy(); expect(screen.getByLabelText('Nome da tesouraria')).toBeTruthy();
 });
+
+test('CSV center report exports allocated product amounts rather than the complete invoice', () => {
+ let content='';vi.stubGlobal('Blob',class {constructor(parts:string[]){content=parts.join('');}});
+ URL.createObjectURL=vi.fn(()=>'blob:report');URL.revokeObjectURL=vi.fn();vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});
+ const expense={id:'e',date:'2026-03-01',description:'Compra',amount:120,status:'pending' as const,paymentMethod:'cash' as const,categoryId:'cost',createdAt:1,splits:[{id:'a',description:'Cimento',costCenterId:'a',amount:80,categoryId:'cost'},{id:'b',description:'Areia',costCenterId:'b',amount:40,categoryId:'cost'}]};
+ render(<ReportsView incomes={[]} expenses={[expense]} accounts={[]} categories={[]} costCenters={[{id:'a',name:'Obra A',status:'active',clientId:'',color:'#123456',createdAt:1},{id:'b',name:'Obra B',status:'active',clientId:'',color:'#123456',createdAt:1}]} selectedMonth="2026-03" onMonthChange={vi.fn()} />);
+ fireEvent.change(screen.getByLabelText('Centro de custo do relatório'),{target:{value:'a'}});
+ fireEvent.click(screen.getByRole('button',{name:'Exportar relatório'}));
+ expect(content).toContain('Cimento');expect(content).toContain('80,00');expect(content).not.toContain('120,00');expect(content).not.toContain('Areia');
+});

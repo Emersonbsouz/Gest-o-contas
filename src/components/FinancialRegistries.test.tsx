@@ -48,6 +48,37 @@ test('expense offers suppliers and preserves the form when saving fails', async 
   expect(p.onClose).not.toHaveBeenCalled();
 });
 
+test('one expense saves two named products with different cost centers', async () => {
+  const p=props('expense');
+  render(<FinancialFormModal {...p} costCenters={[...centers,{...centers[0],id:'center-b',name:'Obra B'}]} />); fill('expense');
+  fireEvent.change(screen.getByLabelText('Fornecedor / Favorecido'),{target:{value:'supplier-a'}});
+  fireEvent.click(screen.getByRole('button',{name:'Adicionar produtos'}));
+  fireEvent.change(screen.getByLabelText('Produto 1'),{target:{value:'Cimento'}});
+  fireEvent.change(screen.getByLabelText('Centro de custo do produto 1'),{target:{value:'center-a'}});
+  fireEvent.change(screen.getByLabelText('Valor do produto 1'),{target:{value:'80'}});
+  fireEvent.click(screen.getByRole('button',{name:'Adicionar outro produto'}));
+  fireEvent.change(screen.getByLabelText('Produto 2'),{target:{value:'Areia'}});
+  fireEvent.change(screen.getByLabelText('Centro de custo do produto 2'),{target:{value:'center-b'}});
+  fireEvent.change(screen.getByLabelText('Valor do produto 2'),{target:{value:'39.99'}});
+  fireEvent.click(screen.getByRole('button',{name:'Cadastrar Despesa'}));
+  expect(p.onSave).not.toHaveBeenCalled();expect(await screen.findByText(/deve ser igual ao valor total/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Valor do produto 2'),{target:{value:'40'}});
+  fireEvent.click(screen.getByRole('button',{name:'Cadastrar Despesa'}));
+  await waitFor(()=>expect(p.onSave).toHaveBeenCalledTimes(1));
+  expect(p.onSave.mock.calls[0][0]).toMatchObject({amount:120,costCenterId:undefined,splits:[{id:expect.any(String),description:'Cimento',amount:80,costCenterId:'center-a'},{id:expect.any(String),description:'Areia',amount:40,costCenterId:'center-b'}]});
+});
+
+test('products require names and remain editable when a row is removed', () => {
+  const p=props('expense');render(<FinancialFormModal {...p} />);fill('expense');
+  fireEvent.change(screen.getByLabelText('Fornecedor / Favorecido'),{target:{value:'supplier-a'}});
+  fireEvent.click(screen.getByRole('button',{name:'Adicionar produtos'}));
+  fireEvent.click(screen.getByRole('button',{name:'Cadastrar Despesa'}));
+  expect(screen.getByText('Informe o produto ou serviço em cada item da despesa.')).toBeTruthy();expect(p.onSave).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'Adicionar outro produto'}));
+  fireEvent.click(screen.getByRole('button',{name:'Remover produto 1'}));
+  expect(screen.getAllByLabelText(/Produto \d/)).toHaveLength(1);
+});
+
 test('a category refresh does not erase an unfinished financial form', () => {
   const p = props(); const view = render(<FinancialFormModal {...p} />);
   const description = screen.getByPlaceholderText('Ex: Salário, Venda, Reembolso');

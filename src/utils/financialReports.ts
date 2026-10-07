@@ -8,6 +8,12 @@ export interface ReportFilters {
   accountId: string; costCenterId: string; search: string;
 }
 
+export function allocatedExpenseAmount(expense: Expense, centerId: string) {
+  if (centerId === 'all') return expense.amount;
+  if (expense.splits?.length) return Math.round(expense.splits.filter(s => s.costCenterId === centerId).reduce((sum,s) => sum+s.amount,0)*100)/100;
+  return expense.costCenterId === centerId ? expense.amount : 0;
+}
+
 export function reportRows(incomes: Income[], expenses: Expense[], filters: ReportFilters,
   names: (item: Income | Expense) => string = () => '') {
   return [...incomes.map(item => ({ item, kind: 'income' as const })),
@@ -20,11 +26,10 @@ export function reportRows(incomes: Income[], expenses: Expense[], filters: Repo
       if (filters.status === 'settled' && !isSettled(item.status)) return false;
       if (filters.status === 'cancelled' && !isCancelled(item.status)) return false;
       if (filters.accountId !== 'all' && item.accountId !== filters.accountId) return false;
-      if (filters.costCenterId !== 'all' && item.costCenterId !== filters.costCenterId &&
-        !(kind === 'expense' && (item as Expense).splits?.some(s => s.costCenterId === filters.costCenterId))) return false;
-      return `${item.description} ${item.notes || ''} ${names(item)}`.toLocaleLowerCase('pt-BR')
+      if (filters.costCenterId !== 'all' && (kind === 'expense' ? allocatedExpenseAmount(item as Expense,filters.costCenterId) === 0 : item.costCenterId !== filters.costCenterId)) return false;
+      return `${item.description} ${item.notes || ''} ${(item as Expense).splits?.map(s => s.description || s.notes || '').join(' ') || ''} ${names(item)}`.toLocaleLowerCase('pt-BR')
         .includes(filters.search.trim().toLocaleLowerCase('pt-BR'));
-    }).sort((a, b) => a.item.date.localeCompare(b.item.date) || a.item.id.localeCompare(b.item.id));
+    }).map(row => ({...row,amount:row.kind === 'expense' ? allocatedExpenseAmount(row.item as Expense,filters.costCenterId) : row.item.amount})).sort((a, b) => a.item.date.localeCompare(b.item.date) || a.item.id.localeCompare(b.item.id));
 }
 
 export function csvCell(value: unknown): string {

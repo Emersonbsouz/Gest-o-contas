@@ -66,6 +66,7 @@ export interface Rental {
 }
 
 export interface TransactionSplit {
+  description?: string; // Product or service; optional for legacy allocations
   id: string;
   costCenterId: string;
   amount: number;

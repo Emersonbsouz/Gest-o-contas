@@ -1,3 +1,4 @@
+import { allocatedExpenseAmount } from '../utils/financialReports';
 import { isOpen, isSettled, isCancelled } from '../utils/financialStatus';
 import React, { useState, useMemo } from 'react';
 import {
@@ -96,6 +97,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
         const matchesSearch =
           e.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (e.notes && e.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          e.splits?.some(s => `${s.description || s.notes || ''} ${costCenterMap.get(s.costCenterId) || ''}`.toLowerCase().includes(searchTerm.toLowerCase())) ||
           (contactMap.get(e.contactId || '') || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
           (costCenterMap.get(e.costCenterId || '') || '').toLowerCase().includes(searchTerm.toLowerCase());
 
@@ -106,7 +108,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
           selectedPayment === 'all' || e.paymentMethod === selectedPayment;
 
         return matchesSearch && matchesCategory && matchesPayment &&
-          (selectedCostCenter === 'all' || e.costCenterId === selectedCostCenter || e.splits?.some(s => s.costCenterId === selectedCostCenter));
+          (selectedCostCenter === 'all' || allocatedExpenseAmount(e,selectedCostCenter) > 0);
       })
       .sort((a, b) => {
         if (sortBy === 'date_desc') return b.date.localeCompare(a.date);
@@ -117,7 +119,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
       });
   }, [monthExpenses, searchTerm, selectedCategory, selectedPayment, selectedCostCenter, statusScope, sortBy, contactMap, costCenterMap]);
 
-  const filteredTotal = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const filteredTotal = filteredExpenses.reduce((sum, e) => sum + allocatedExpenseAmount(e,selectedCostCenter), 0);
 
   const getCategory = (catId: string) => {
     return (
@@ -233,6 +235,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
       </div>
 
       {/* Table / List */}
+      {selectedCostCenter !== 'all' && <p className="mb-3 text-xs text-indigo-700">Os valores abaixo correspondem somente aos produtos destinados ao centro de custo selecionado.</p>}
       {filteredExpenses.length === 0 ? (
         <div className="py-12 px-4 text-center">
           <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center mb-3">
@@ -324,7 +327,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                           )}
                           {expense.splits && expense.splits.length > 0 ? (
                             <span className="text-indigo-600 font-bold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
-                              Múltiplas Obras ({expense.splits.length})
+                              Produtos ({expense.splits.length})
                             </span>
                           ) : (
                             expense.costCenterId && (
@@ -334,6 +337,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                             )
                           )}
                         </div>
+                        {expense.splits?.map((s,i) => <div key={s.id || i} className="text-xs text-slate-600">{s.description || s.notes || `Item ${i+1}`} · {costCenterMap.get(s.costCenterId) || 'Centro indisponível'} · {formatCurrency(s.amount)}</div>)}
                         <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-400">
                           {expense.contactId && contactMap.get(expense.contactId) && (
                             <span className="text-violet-600 font-medium">
@@ -390,7 +394,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                     {/* Amount */}
                     <td className="py-3 px-4 text-right whitespace-nowrap">
                       <span className="font-bold text-slate-900 text-sm">
-                        {formatCurrency(expense.amount)}
+                        {formatCurrency(allocatedExpenseAmount(expense,selectedCostCenter))}
                       </span>
                     </td>
 

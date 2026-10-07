@@ -112,7 +112,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       
       if (type === 'expense') {
         setDocumentNumber(editingItem.documentNumber || '');
-        setSplits(editingItem.splits || []);
+        setSplits((editingItem.splits || []).map((s: TransactionSplit, i: number) => ({...s, description:s.description || s.notes || `Item ${i+1}`}))); 
         setShowSplits(editingItem.splits && editingItem.splits.length > 0);
       }
 
@@ -178,7 +178,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   };
 
   const addSplit = () => {
-    setSplits([...splits, { costCenterId: '', amount: 0, categoryId: categoryId }]);
+    setSplits([...splits, { description:'', costCenterId: costCenterId, amount: 0, categoryId: categoryId }]);
   };
 
   const removeSplit = (index: number) => {
@@ -226,8 +226,9 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       return;
     }
     if (showSplits && type === 'expense') {
-      if (!splits.length || splits.some(s => !costCenters.some(cc => cc.id === s.costCenterId) || s.amount <= 0)) {
-        setError('Informe um centro de custo válido e um valor positivo em cada parte do rateio.'); return;
+      if (splits.some(s => !s.description?.trim())) {setError('Informe o produto ou serviço em cada item da despesa.'); return;}
+      if (!splits.length || splits.some(s => !costCenters.some(cc => cc.id === s.costCenterId) || !Number.isFinite(s.amount) || s.amount <= 0)) {
+        setError('Informe um centro de custo válido e um valor positivo em cada produto.'); return;
       }
     } else if (!costCenters.some(cc => cc.id === costCenterId)) {
       setError('Selecione um centro de custo para identificar este lançamento.'); return;
@@ -243,8 +244,8 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
     const numAmount = parseFloat(amount.replace(',', '.'));
     const totalSplitAmount = splits.reduce((acc, s) => acc + s.amount, 0);
 
-    if (type === 'expense' && showSplits && Math.abs(totalSplitAmount - numAmount) > 0.01) {
-      setError(`O valor total do rateio (R$ ${totalSplitAmount.toFixed(2)}) deve ser igual ao valor total da nota (R$ ${numAmount.toFixed(2)}). Falta ratear R$ ${(numAmount - totalSplitAmount).toFixed(2)}.`);
+    if (type === 'expense' && showSplits && Math.round(totalSplitAmount * 100) !== Math.round(numAmount * 100)) {
+      setError(`O total dos produtos (R$ ${totalSplitAmount.toFixed(2)}) deve ser igual ao valor total da nota (R$ ${numAmount.toFixed(2)}). Diferença de R$ ${(numAmount - totalSplitAmount).toFixed(2)}.`);
       return;
     }
 
@@ -305,7 +306,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
           accountId: paymentMethod !== 'credit_card' ? accountId : undefined,
           cardId: paymentMethod === 'credit_card' ? cardId : undefined,
           contactId: contactId || undefined,
-          costCenterId: costCenterId || undefined,
+          costCenterId: type === 'expense' && showSplits ? undefined : costCenterId || undefined,
           status,
           settlementDate: isSettled(status) ? settlementDate : undefined,
           notes: notes.trim() || undefined,
@@ -315,7 +316,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
           transacao_id_banco: transacao_id_banco.trim() || undefined,
           linha_digitavel: linha_digitavel.trim() || undefined,
           isRecurring,
-          splits: (type === 'expense' && showSplits) ? splits : undefined,
+          splits: (type === 'expense' && showSplits) ? splits.map((s,i) => ({...s,id:(s as TransactionSplit).id || `item-${Date.now()}-${i}`,description:s.description?.trim(),amount:Math.round(s.amount*100)/100})) : undefined,
           ...(type === 'income' && isInstallment ? {
             installmentNumber: parseInt(currentInstallment, 10),
             totalInstallments: parseInt(totalInstallments, 10),
@@ -332,9 +333,9 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-white rounded-2xl max-w-md w-full max-h-[90dvh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className={`px-6 py-4 border-b border-slate-100 flex items-center justify-between ${type === 'expense' ? 'bg-rose-50/50' : 'bg-emerald-50/50'}`}>
+        <div className={`shrink-0 px-6 py-4 border-b border-slate-100 flex items-center justify-between ${type === 'expense' ? 'bg-rose-50/50' : 'bg-emerald-50/50'}`}>
           <div className="flex items-center gap-3">
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${type === 'expense' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
               {type === 'expense' ? <ArrowUpRight className="w-5 h-5" /> : <ArrowDownLeft className="w-5 h-5" />}
@@ -352,7 +353,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto min-h-0">
           {error && <div className="p-2.5 bg-rose-50 border border-rose-100 text-rose-700 text-xs rounded-lg font-medium">{error}</div>}
 
           {activeStep === 1 ? (
@@ -460,7 +461,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <LayoutGrid className="w-4 h-4 text-indigo-600" />
-                    <span className="text-xs font-bold text-slate-800 uppercase tracking-tight">Centro de custo / Destinação</span>
+                    <span className="text-xs font-bold text-slate-800 uppercase tracking-tight">{type === 'expense' ? 'Produtos / Centro de custo' : 'Centro de custo / Destinação'}</span>
                   </div>
                   {type === 'expense' && (
                     <button
@@ -471,7 +472,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                       }}
                       className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors ${showSplits ? 'bg-indigo-100 text-indigo-700' : 'bg-white border border-slate-200 text-slate-500 hover:bg-white'}`}
                     >
-                      {showSplits ? 'Remover Rateio' : '+ Ativar Rateio'}
+                      {showSplits ? 'Usar centro único' : 'Adicionar produtos'}
                     </button>
                   )}
                 </div>
@@ -497,9 +498,11 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                   <div className="space-y-3">
                     {splits.map((split, index) => (
                       <div key={index} className="grid grid-cols-12 gap-2 p-2 bg-white rounded-xl border border-slate-200 shadow-sm relative group">
+                        <div className="col-span-12 space-y-1"><label className="text-xs font-bold text-slate-600">Produto ou serviço {index+1}</label><input aria-label={`Produto ${index+1}`} value={split.description || ''} onChange={e => updateSplit(index,'description',e.target.value)} placeholder="Ex: Cimento, areia, transporte" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></div>
                         <div className="col-span-6 space-y-1">
-                          <label className="text-[9px] font-bold text-slate-400 uppercase">Obra</label>
+                          <label className="text-[9px] font-bold text-slate-400 uppercase">Centro de custo</label>
                           <select
+                            aria-label={`Centro de custo do produto ${index+1}`}
                             value={split.costCenterId}
                             onChange={(e) => updateSplit(index, 'costCenterId', e.target.value)}
                             className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-[11px] bg-slate-50"
@@ -515,8 +518,10 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                           <input
                             type="number"
                             step="0.01"
+                            aria-label={`Valor do produto ${index+1}`}
+                            min="0.01"
                             value={split.amount || ''}
-                            onChange={(e) => updateSplit(index, 'amount', parseFloat(e.target.value) || 0)}
+                            onChange={(e) => updateSplit(index, 'amount', Math.round((parseFloat(e.target.value) || 0)*100)/100)}
                             placeholder="0,00"
                             className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-[11px] font-bold bg-slate-50"
                           />
@@ -524,6 +529,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                         <div className="col-span-1 flex items-end pb-1.5">
                           <button
                             type="button"
+                            aria-label={`Remover produto ${index+1}`}
                             onClick={() => removeSplit(index)}
                             className="p-1 text-rose-500 hover:bg-rose-50 rounded-md transition-colors"
                           >
@@ -538,13 +544,13 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                       className="w-full py-2 border-2 border-dashed border-slate-200 rounded-xl text-[10px] font-bold text-slate-500 hover:border-indigo-300 hover:text-indigo-600 transition-all flex items-center justify-center gap-2"
                     >
                       <Plus className="w-3 h-3" />
-                      Adicionar Centro de Custo ao Rateio
+                      Adicionar outro produto
                     </button>
                     
                     <div className="flex items-center justify-between px-2 py-1.5 bg-indigo-50/50 rounded-lg border border-indigo-100">
-                      <span className="text-[10px] font-bold text-indigo-700 uppercase">Total Rateado:</span>
-                      <span className={`text-xs font-bold ${Math.abs(totalSplitAmount - parseFloat(amount)) < 0.01 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        R$ {totalSplitAmount.toFixed(2)} / R$ {parseFloat(amount || '0').toFixed(2)}
+                      <span className="text-[10px] font-bold text-indigo-700 uppercase">Total dos produtos:</span>
+                      <span className={`text-xs font-bold ${Math.round(totalSplitAmount*100) === Math.round(parseFloat(amount.replace(',','.'))*100) ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        R$ {totalSplitAmount.toFixed(2)} / R$ {parseFloat((amount || '0').replace(',','.')).toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -722,7 +728,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                 )}
                 {isInstallment && type === 'income' && (
                   <p className="text-[9px] text-slate-400 italic">
-                    O sistema criará {totalInstallments} lançamentos mensais automáticos no valor de R$ {parseFloat(amount || '0').toFixed(2)} cada.
+                    O sistema criará {totalInstallments} lançamentos mensais automáticos no valor de R$ {parseFloat((amount || '0').replace(',','.')).toFixed(2)} cada.
                   </p>
                 )}
               </div>
