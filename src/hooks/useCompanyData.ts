@@ -32,6 +32,7 @@ import {
   subscribeToCompanySubcollection,
   saveCompanyDoc,
   createCompanyDoc,
+  updateCompanyDoc,
   loadCompanySubcollection,
   deleteCompanyDoc,
   clearCompanyData,
@@ -457,12 +458,20 @@ export function useCompanyData(companyId: string | null) {
 
   }, [companyId]);
 
-  const saveProposal = useCallback(async (data: Omit<Proposal, 'id' | 'createdAt'>, itemId?: string) => {
+  const saveProposal = useCallback(async (data: Omit<Proposal, 'id' | 'createdAt'>, itemId?: string, original?: Proposal) => {
     if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');
     const id = itemId || makeId('prop');
-    const item: Proposal = { ...data, id, createdAt: itemId ? proposals.find((v) => v.id === id)?.createdAt || Date.now() : Date.now() };
+    const existing = original || proposals.find((v) => v.id === id);
+    if (itemId && (!existing || existing.id !== itemId)) throw new Error('Proposta não encontrada. Abra novamente a lista.');
+    if (!data.title.trim() || !data.clientId || !data.date || !Number.isFinite(data.amount) || data.amount < 0) throw new Error('Dados da proposta inválidos.');
+    const item: Proposal = { ...existing, ...data, id, createdAt: existing?.createdAt ?? Date.now() };
+    if (existing?.costCenterId || existing?.status === 'converted') {
+      item.costCenterId = existing.costCenterId;
+      item.status = existing.status;
+    }
 
-    await saveCompanyDoc(companyId, 'proposals', id, item);
+    if (itemId) await updateCompanyDoc(companyId, 'proposals', id, item, existing);
+    else await createCompanyDoc(companyId, 'proposals', id, item);
     setProposals((prev) => {
       const next = itemId ? prev.map((v) => (v.id === id ? item : v)) : [...prev, item];
       persistLocal('proposals', next);

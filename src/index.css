@@ -1,6 +1,18 @@
 @import "tailwindcss";
 
 @media print {
+  body:has(#proposal-report) > :not(#proposal-report-container) { display: none !important; }
+  body:has(#proposal-report) #proposal-report { width: 100%; padding: 0; margin: 0; box-shadow: none; border-radius: 0; }
+  body:has(#proposal-report) { background: white; }
+  body:has(#proposal-report) div:has(#proposal-report) { position: static; overflow: visible; max-height: none; height: auto; background: transparent; padding: 0; max-width: none; }
+  body:has(#proposal-report) .proposal-report-toolbar { display: none; }
+  #proposal-report table { font-size: 10pt; }
+  #proposal-report thead { display: table-header-group; }
+  #proposal-report tr, #proposal-report section:last-of-type { break-inside: avoid; }
+  #proposal-report { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+}
+
+@media print {
   body:has(#financial-report) aside,
   body:has(#financial-report) header,
   body:has(#financial-report) main > :not(#financial-report) { display: none !important; }

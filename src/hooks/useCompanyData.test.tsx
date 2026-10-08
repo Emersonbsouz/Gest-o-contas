@@ -2,11 +2,50 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { useCompanyData } from './useCompanyData';
 
-const service = vi.hoisted(() => ({ createCompanyDoc: vi.fn(), loadCompanySubcollection: vi.fn(), saveCompanyDoc: vi.fn(), deleteCompanyDoc: vi.fn(),
+const service = vi.hoisted(() => ({ updateCompanyDoc: vi.fn(), createCompanyDoc: vi.fn(), loadCompanySubcollection: vi.fn(), saveCompanyDoc: vi.fn(), deleteCompanyDoc: vi.fn(),
   subscribeToCompanySubcollection: vi.fn((_company:any,_name:any,_ok:any,_error?:any) => () => {}), clearCompanyData: vi.fn() }));
 vi.mock('../services/companyService', () => service);
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
 afterEach(cleanup);
+
+test('proposal editing keeps hidden data, identity and creation timestamp after reload', async () => {
+  const original = {id:'p1',title:'Original',clientId:'c1',amount:100,date:'2026-10-08',status:'approved' as const,
+    createdAt:123,description:'Escopo preservado',validUntil:'2026-11-08',items:[{description:'Item',quantity:1,unitPrice:100,total:100}]};
+  localStorage.setItem('cg_company-a_proposals',JSON.stringify([original]));
+  service.updateCompanyDoc.mockResolvedValue(undefined);
+  const { result, unmount } = renderHook(() => useCompanyData('company-a'));
+  await act(async () => {
+    await result.current.saveProposal({title:'Revisada',clientId:'c2',amount:200,date:original.date,status:'approved'},'p1',original);
+  });
+  expect(service.updateCompanyDoc).toHaveBeenCalledWith('company-a','proposals','p1',expect.objectContaining({
+    ...original,title:'Revisada',clientId:'c2',amount:200}),original);
+  expect(result.current.proposals).toHaveLength(1);
+  unmount();
+  const reloaded = renderHook(() => useCompanyData('company-a'));
+  expect(reloaded.result.current.proposals[0]).toEqual({...original,title:'Revisada',clientId:'c2',amount:200});
+});
+
+test('conflicting proposal write leaves state and local cache unchanged', async () => {
+  const original = {id:'p1',title:'Original',clientId:'c1',amount:100,date:'2026-10-08',status:'sent' as const,createdAt:123};
+  localStorage.setItem('cg_company-a_proposals',JSON.stringify([original]));
+  service.updateCompanyDoc.mockRejectedValueOnce(new Error('Conflito'));
+  const {result} = renderHook(() => useCompanyData('company-a'));
+  await act(async () => {
+    await expect(result.current.saveProposal({...original,title:'Revisada'},'p1',original)).rejects.toThrow('Conflito');
+  });
+  expect(result.current.proposals).toEqual([original]);
+  expect(JSON.parse(localStorage.getItem('cg_company-a_proposals')!)).toEqual([original]);
+});
+
+test('converted proposal retains status and cost center when edited', async () => {
+  const original = {id:'p1',title:'Original',clientId:'c1',amount:100,date:'2026-10-08',status:'converted' as const,createdAt:123,costCenterId:'cc1'};
+  service.updateCompanyDoc.mockResolvedValue(undefined);
+  const {result} = renderHook(() => useCompanyData('company-a'));
+  await act(async () => {
+    await result.current.saveProposal({...original,status:'approved',costCenterId:'cc2'},'p1',original);
+  });
+  expect(service.updateCompanyDoc).toHaveBeenCalledWith('company-a','proposals','p1',original,original);
+});
 
 test.each(['saveContact','saveCostCenter','saveIncome','saveExpense','saveAccount','saveCard','saveGoal','saveEquipment','addCategory'] as const)(
   '%s rejects instead of pretending to save without an active company', async operation => {

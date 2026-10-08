@@ -243,6 +243,11 @@ export default function App() {
   const [isProposalModalOpen, setIsProposalModalOpen] = useState(false);
   const [editingProposal, setEditingProposal] = useState<Proposal | null>(null);
 
+  useEffect(() => {
+    setIsProposalModalOpen(false);
+    setEditingProposal(null);
+  }, [activeCompany?.id]);
+
   const [isRentalModalOpen, setIsRentalModalOpen] = useState(false);
   const [editingRental, setEditingRental] = useState<Rental | null>(null);
 
@@ -950,6 +955,8 @@ export default function App() {
 
           {activeView === 'comercial' && (
             <CommercialView 
+              key={activeCompany.id}
+              companyName={activeCompany.name}
               proposals={proposals}
               rentals={rentals}
               contacts={contacts}
@@ -1188,6 +1195,7 @@ export default function App() {
         isOpen={isProposalModalOpen}
         onClose={() => setIsProposalModalOpen(false)}
         onSave={saveProposal}
+        onSaveClient={saveContact}
         editingProposal={editingProposal}
         contacts={contacts}
       />

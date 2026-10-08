@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { ProposalReport } from './ProposalReport';
 import { Briefcase, Plus, FileText, Settings2 } from 'lucide-react';
 import { Proposal, Rental, ContactPerson, Equipment } from '../types';
 import { formatCurrency, formatDateBR } from '../utils/formatters';
 
 interface CommercialViewProps {
+  companyName?: string;
   proposals: Proposal[];
   rentals: Rental[];
   contacts: ContactPerson[];
@@ -16,6 +18,7 @@ interface CommercialViewProps {
 }
 
 export const CommercialView: React.FC<CommercialViewProps> = ({
+  companyName = '',
   proposals,
   rentals,
   contacts,
@@ -26,6 +29,8 @@ export const CommercialView: React.FC<CommercialViewProps> = ({
   onDeleteRental,
   onConvertProposal
 }) => {
+  const [reportId, setReportId] = useState<string | null>(null);
+  const report = proposals.find(p => p.id === reportId);
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
@@ -52,6 +57,7 @@ export const CommercialView: React.FC<CommercialViewProps> = ({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {report && <ProposalReport proposal={report} client={contacts.find(c => c.id === report.clientId)} companyName={companyName} onClose={() => setReportId(null)} />}
         {/* Propostas */}
         <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
@@ -77,6 +83,11 @@ export const CommercialView: React.FC<CommercialViewProps> = ({
                   <div className="text-right flex flex-col items-end gap-2">
                     <p className="text-sm font-black text-slate-900">{formatCurrency(prop.amount)}</p>
                     <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setReportId(prop.id)} aria-label={`Relatório da proposta ${prop.title}`}
+                        className="text-xs font-bold text-slate-600 hover:underline">Relatório</button>
+                      <button type="button" onClick={() => onOpenProposalModal(prop)}
+                        aria-label={`Editar proposta ${prop.title}`}
+                        className="text-xs font-bold text-indigo-600 hover:underline">Editar</button>
                       {prop.status === 'approved' && (
                         <button 
                           onClick={() => onConvertProposal(prop)}

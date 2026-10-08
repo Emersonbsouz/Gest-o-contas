@@ -304,6 +304,20 @@ export async function createCompanyDoc(companyId: string, collectionName: string
   if (error) throw error;
 }
 
+// Compare the original payload atomically so editing cannot overwrite another session
+// or recreate a document that was deleted while the form was open.
+export async function updateCompanyDoc(companyId: string, collectionName: string, docId: string, payload: unknown, original: unknown) {
+  const { data, error } = await supabase.from('company_documents')
+    .update({ payload, updated_at: new Date().toISOString() })
+    .eq('company_id', companyId)
+    .eq('collection_name', collectionName)
+    .eq('doc_id', docId)
+    .eq('payload', JSON.stringify(original))
+    .select('doc_id');
+  if (error) throw error;
+  if (!data?.length) throw new Error('Esta proposta foi alterada ou excluída em outra sessão, ou você não tem permissão para editá-la. Feche e abra novamente para conferir os dados.');
+}
+
 export async function deleteCompanyDoc(companyId: string, collectionName: string, docId: string) {
   const { error } = await supabase
     .from('company_documents')

@@ -37,6 +37,8 @@ export interface Proposal {
     total: number;
   }>;
   validUntil?: string;
+  commercialTerms?: string;
+  deliveryTime?: string;
   costCenterId?: string; // Set when converted
   notes?: string;
   createdAt: number;

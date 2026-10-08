@@ -9,6 +9,7 @@ interface ContactFormModalProps {
   onSave: (contactData: Omit<ContactPerson, 'id' | 'createdAt'>, contactId?: string) => void;
   editingContact?: ContactPerson | null;
   defaultType?: ContactType;
+  fixedType?: boolean;
 }
 
 const CONTACT_TYPE_OPTIONS: { value: ContactType; label: string; desc: string }[] = [
@@ -24,6 +25,7 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
   onSave,
   editingContact,
   defaultType = 'supplier',
+  fixedType = false,
 }) => {
   const [name, setName] = useState('');
   const [type, setType] = useState<ContactType>(defaultType);
@@ -102,7 +104,7 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900">
-                {editingContact ? 'Editar Contato / Favorecido' : 'Novo Contato / Fornecedor'}
+                {editingContact ? 'Editar Contato / Favorecido' : defaultType === 'client' ? 'Cadastrar cliente' : 'Novo Contato / Fornecedor'}
               </h2>
               <p className="text-xs text-slate-500">
                 Cadastre favorecidos para vincular em despesas e receitas
@@ -111,6 +113,7 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
           </div>
           <button
             onClick={onClose}
+            disabled={isLoading}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
           >
             <X className="w-4 h-4" />
@@ -147,7 +150,7 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
               Tipo de Contato / Favorecido
             </label>
             <div className="grid grid-cols-2 gap-2">
-              {CONTACT_TYPE_OPTIONS.map((opt) => (
+              {CONTACT_TYPE_OPTIONS.filter(opt => !fixedType || opt.value === defaultType).map((opt) => (
                 <button
                   type="button"
                   key={opt.value}
@@ -259,6 +262,7 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
             <button
               type="button"
               onClick={onClose}
+              disabled={isLoading}
               className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
             >
               Cancelar
