@@ -15,7 +15,7 @@ export function ProposalReport({ proposal, client, companyName, onClose }: {
       </div>
       <article id="proposal-report" className="rounded-xl bg-white p-6 sm:p-12 text-slate-800 shadow-xl">
         <header className="flex flex-wrap justify-between gap-4 border-b-4 border-indigo-600 pb-6">
-          <div><p className="text-3xl font-black text-indigo-600">GEST</p><p className="mt-2 font-bold">{companyName}</p></div>
+          <div><p className="text-2xl font-bold text-slate-900">{companyName}</p></div>
           <div className="text-right"><p className="text-xs font-bold uppercase tracking-widest text-indigo-600">Proposta comercial</p><p className="text-sm mt-2">Referência: {proposal.id}</p></div>
         </header>
         <h1 className="mt-7 text-2xl font-bold">{proposal.title}</h1>
@@ -44,7 +44,7 @@ export function ProposalReport({ proposal, client, companyName, onClose }: {
         <section className="mt-7"><h2 className="font-bold">Aceite</h2><p className="mt-2 text-sm text-slate-500">A aprovação confirma a concordância com o escopo, o investimento e as condições apresentados nesta proposta.</p>
           <div className="mt-12 grid grid-cols-2 gap-8 text-center text-xs"><div className="border-t border-slate-400 pt-3"><strong>{companyName}</strong><p>Responsável pela proposta</p></div><div className="border-t border-slate-400 pt-3"><strong>{client?.name || 'Cliente'}</strong><p>Aceite do cliente · Data: ____ / ____ / ______</p></div></div>
         </section>
-        <footer className="mt-8 border-t border-slate-200 pt-3 text-xs text-slate-400">GEST · Proposta comercial · {proposal.id}</footer>
+        <footer className="mt-8 border-t border-slate-200 pt-3 text-xs text-slate-400">Proposta comercial · {proposal.id}</footer>
       </article>
     </div>
   </div>, document.body);
