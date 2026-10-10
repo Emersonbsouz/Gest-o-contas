@@ -419,6 +419,8 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                             onEditExpense(expense);
                           }}
                           title="Editar Despesa"
+                          type="button"
+                          aria-label={`Editar despesa ${expense.description}`}
                           className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
                         >
                           <Edit2 className="w-3.5 h-3.5" />

@@ -315,7 +315,10 @@ export async function updateCompanyDoc(companyId: string, collectionName: string
     .eq('payload', JSON.stringify(original))
     .select('doc_id');
   if (error) throw error;
-  if (!data?.length) throw new Error('Esta proposta foi alterada ou excluída em outra sessão, ou você não tem permissão para editá-la. Feche e abra novamente para conferir os dados.');
+  if (!data?.length) {
+    const record = collectionName === 'expenses' ? 'despesa' : 'proposta';
+    throw new Error(`Esta ${record} foi alterada ou excluída em outra sessão, ou você não tem permissão para editá-la. Feche e abra novamente para conferir os dados.`);
+  }
 }
 
 export async function deleteCompanyDoc(companyId: string, collectionName: string, docId: string) {

@@ -8,6 +8,17 @@ vi.mock('../services/companyService', () => service);
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
 afterEach(cleanup);
 
+test('editing a missing expense cannot create a replacement document', async () => {
+  const {result} = renderHook(() => useCompanyData('company-a'));
+  await act(async () => {
+    await expect(result.current.saveExpense({description:'Compra',amount:50,date:'2026-10-04',
+      categoryId:'materials',paymentMethod:'pix'},'deleted-expense')).rejects.toThrow('não foi encontrada');
+  });
+  expect(service.saveCompanyDoc).not.toHaveBeenCalled();
+  expect(service.updateCompanyDoc).not.toHaveBeenCalled();
+  expect(result.current.expenses).toEqual([]);
+});
+
 test('proposal editing keeps hidden data, identity and creation timestamp after reload', async () => {
   const original = {id:'p1',title:'Original',clientId:'c1',amount:100,date:'2026-10-08',status:'approved' as const,
     createdAt:123,description:'Escopo preservado',validUntil:'2026-11-08',items:[{description:'Item',quantity:1,unitPrice:100,total:100}]};

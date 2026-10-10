@@ -27,3 +27,12 @@ test('server errors propagate to the form', async () => {
   db.select.mockResolvedValue({data:null,error:{code:'42501',message:'permission denied'}});
   await expect(updateCompanyDoc('company-a','proposals','p1',{},{})).rejects.toMatchObject({code:'42501'});
 });
+
+test('expense updates target the same document and company and reject zero affected rows', async () => {
+  const original = {id:'e1',description:'Conta antiga',createdAt:123};
+  db.select.mockResolvedValueOnce({data:[{doc_id:'e1'}],error:null});
+  await updateCompanyDoc('company-a','expenses','e1',{...original,description:'Revisada'},original);
+  expect(db.eq.mock.calls).toEqual([['company_id','company-a'],['collection_name','expenses'],['doc_id','e1'],['payload',JSON.stringify(original)]]);
+  db.select.mockResolvedValueOnce({data:[],error:null});
+  await expect(updateCompanyDoc('company-a','expenses','e1',{},original)).rejects.toThrow('Esta despesa');
+});

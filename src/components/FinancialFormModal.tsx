@@ -26,7 +26,7 @@ interface FinancialFormModalProps {
   type: 'expense' | 'income';
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: any, id?: string) => void;
+  onSave: (data: any, id?: string) => void | Promise<unknown>;
   editingItem?: any | null;
   categories: Category[];
   accounts?: TreasuryAccount[];
@@ -99,8 +99,8 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       setDate(editingItem.date);
       setCategoryId(editingItem.categoryId);
       setPaymentMethod(editingItem.paymentMethod || ('transfer'));
-      setAccountId(editingItem.accountId || accounts?.[0]?.id || '');
-      setCardId(editingItem.cardId || cards?.[0]?.id || '');
+      setAccountId(editingItem.accountId || (type === 'expense' ? '' : accounts?.[0]?.id) || '');
+      setCardId(editingItem.cardId || (type === 'expense' ? '' : cards?.[0]?.id) || '');
       setContactId(editingItem.contactId || '');
       setStatus(isSettled(editingItem.status) ? 'paid' : editingItem.status || 'pending');
       setSettlementDate(editingItem.settlementDate || editingItem.date);
@@ -221,7 +221,12 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
     if (isSettled(status) && !validCalendarDate(settlementDate)) {setError('Informe a data do pagamento ou recebimento.'); return;}
     const err = validateStep(1);
     if (err) { setError(err); setActiveStep(1); return; }
-    if (!contactId || !contacts.some(c => c.id === contactId)) {
+    // Older expenses predate these required registries. Keep an absent link when
+    // editing, but require valid links for new expenses or changed selections.
+    const editingExpense = type === 'expense' && !!editingItem?.id;
+    const unchangedMissingContact = editingExpense && !editingItem.contactId && !contactId;
+    const unchangedMissingCenter = editingExpense && !editingItem.costCenterId && !costCenterId && !(editingItem.splits?.length);
+    if ((!contactId || !contacts.some(c => c.id === contactId)) && !unchangedMissingContact) {
       setError(type === 'income' ? 'Selecione o cliente ou a origem desta receita.' : 'Selecione o fornecedor ou favorecido desta despesa.');
       return;
     }
@@ -230,10 +235,13 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       if (!splits.length || splits.some(s => !costCenters.some(cc => cc.id === s.costCenterId) || !Number.isFinite(s.amount) || s.amount <= 0)) {
         setError('Informe um centro de custo válido e um valor positivo em cada produto.'); return;
       }
-    } else if (!costCenters.some(cc => cc.id === costCenterId)) {
+    } else if (!costCenters.some(cc => cc.id === costCenterId) && !unchangedMissingCenter) {
       setError('Selecione um centro de custo para identificar este lançamento.'); return;
     }
-    if (['paid', 'liquidated', 'PAGO'].includes(status) &&
+    const unchangedMissingPayment = editingExpense && isSettled(editingItem.status) &&
+      paymentMethod === editingItem.paymentMethod &&
+      (paymentMethod === 'credit_card' ? !editingItem.cardId && !cardId : !editingItem.accountId && !accountId);
+    if (['paid', 'liquidated', 'PAGO'].includes(status) && !unchangedMissingPayment &&
       !(paymentMethod === 'credit_card' ? cards.some(c => c.id === cardId) : accounts.some(a => a.id === accountId))) {
       setError('Selecione a conta ou o cartão utilizado no pagamento ou recebimento.'); return;
     }
@@ -298,13 +306,14 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
         }
 
         await onSave({
+          ...(editingExpense ? editingItem : {}),
           description: description.trim(),
           amount: Math.round(numAmount * 100) / 100,
           date,
           categoryId,
           paymentMethod,
-          accountId: paymentMethod !== 'credit_card' ? accountId : undefined,
-          cardId: paymentMethod === 'credit_card' ? cardId : undefined,
+          accountId: paymentMethod !== 'credit_card' ? accountId || undefined : undefined,
+          cardId: paymentMethod === 'credit_card' ? cardId || undefined : undefined,
           contactId: contactId || undefined,
           costCenterId: type === 'expense' && showSplits ? undefined : costCenterId || undefined,
           status,
@@ -355,6 +364,9 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto min-h-0">
           {error && <div className="p-2.5 bg-rose-50 border border-rose-100 text-rose-700 text-xs rounded-lg font-medium">{error}</div>}
+          {type === 'expense' && editingItem?.id && (!editingItem.contactId || (!editingItem.costCenterId && !editingItem.splits?.length)) && (
+            <p className="text-xs text-slate-500">Este registro antigo pode ser editado sem preencher os vínculos ausentes. Você pode cadastrar o fornecedor e o centro de custo quando desejar.</p>
+          )}
 
           {activeStep === 1 ? (
             <div className="space-y-4 animate-in slide-in-from-right-2 duration-200">

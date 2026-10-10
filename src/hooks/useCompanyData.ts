@@ -193,9 +193,12 @@ export function useCompanyData(companyId: string | null) {
     setCloudSyncStatus('syncing');
     try {
       const id = expenseId || makeId('exp');
-      const item: Expense = { ...data, id, createdAt: expenseId ? expenses.find((v) => v.id === id)?.createdAt || Date.now() : Date.now() };
+      const original = expenseId ? expenses.find(v => v.id === id) : undefined;
+      if (expenseId && !original) throw new Error('Esta despesa não foi encontrada. Atualize a lista antes de editar.');
+      const item: Expense = { ...original, ...data, id, createdAt: original?.createdAt ?? Date.now() };
 
-      await saveCompanyDoc(companyId, 'expenses', id, item);
+      if (original) await updateCompanyDoc(companyId, 'expenses', id, item, original);
+      else await saveCompanyDoc(companyId, 'expenses', id, item);
       setExpenses((prev) => {
         const next = expenseId ? prev.map((v) => (v.id === id ? item : v)) : [item, ...prev];
         persistLocal('expenses', next);
