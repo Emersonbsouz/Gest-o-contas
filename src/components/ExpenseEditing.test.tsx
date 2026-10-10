@@ -72,6 +72,30 @@ test('cancel closes editing without saving', () => {
   expect(JSON.parse(localStorage.getItem('cg_company-test_expenses')!)).toEqual([original]);
 });
 
+test('Continuar opens step two without saving and uses a separate submit button', () => {
+  seed(); render(<Harness />); fireEvent.click(screen.getByTitle('Editar Despesa'));
+  const next = screen.getByRole('button', {name:'Continuar'});
+  fireEvent.click(next);
+  expect(screen.getByText('Etapa 2 de 2: Detalhes e Pagamento')).toBeTruthy();
+  expect(screen.getByRole('button', {name:'Salvar Alterações'})).not.toBe(next);
+  expect(next.isConnected).toBe(false);
+  expect(service.updateCompanyDoc).not.toHaveBeenCalled();
+  expect(service.saveCompanyDoc).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', {name:'Voltar'}));
+  fireEvent.click(screen.getByRole('button', {name:'Continuar'}));
+  expect(screen.getByText('Etapa 2 de 2: Detalhes e Pagamento')).toBeTruthy();
+  expect(service.updateCompanyDoc).not.toHaveBeenCalled();
+});
+
+test('submitting step one with Enter only advances the form', () => {
+  seed(); render(<Harness />); fireEvent.click(screen.getByTitle('Editar Despesa'));
+  const input = screen.getByPlaceholderText('Ex: Mercado, Aluguel, Internet');
+  fireEvent.submit(input.closest('form')!);
+  expect(screen.getByText('Etapa 2 de 2: Detalhes e Pagamento')).toBeTruthy();
+  expect(service.updateCompanyDoc).not.toHaveBeenCalled();
+  expect(service.saveCompanyDoc).not.toHaveBeenCalled();
+});
+
 test('editing a paid legacy expense does not assign the first available bank account', async () => {
   seed({...original, status:'paid', settlementDate:'2026-10-02'});
   localStorage.setItem('cg_company-test_accounts', JSON.stringify([{id:'bank',name:'Banco',type:'checking',initialBalance:0,color:'#123456'}]));

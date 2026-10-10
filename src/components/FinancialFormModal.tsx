@@ -206,7 +206,10 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
     return null;
   };
 
-  const handleNext = () => {
+  const handleNext = (event?: React.SyntheticEvent) => {
+    // React can replace this button with the submit button during this click.
+    // Cancel the native default action before changing the step.
+    event?.preventDefault();
     const err = validateStep(activeStep);
     if (err) {
       setError(err);
@@ -218,6 +221,8 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeStep === 1) { handleNext(); return; }
+    if (isLoading) return;
     if (isSettled(status) && !validCalendarDate(settlementDate)) {setError('Informe a data do pagamento ou recebimento.'); return;}
     const err = validateStep(1);
     if (err) { setError(err); setActiveStep(1); return; }
@@ -807,6 +812,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
               
               {activeStep === 1 ? (
                 <button
+                  key="continue-step"
                   type="button"
                   onClick={handleNext}
                   className={`px-5 py-2.5 text-xs font-bold text-white rounded-xl shadow-xs transition-all flex items-center gap-2 ${type === 'expense' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
@@ -816,6 +822,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                 </button>
               ) : (
                 <button
+                  key="save-transaction"
                   type="submit"
                   disabled={isLoading}
                   className={`px-6 py-2.5 text-xs font-bold text-white rounded-xl shadow-xs transition-all flex items-center gap-2 disabled:opacity-50 ${type === 'expense' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'}`}
