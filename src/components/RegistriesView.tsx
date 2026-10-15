@@ -1,5 +1,5 @@
 import { CardInvoicePanel } from './CardInvoicePanel';
-import type { CardInvoicePayment } from '../types';
+import type { CardInvoicePayment, CardPaymentSelection } from '../types';
 import { getCardSummary } from '../utils/cardSummary';
 import React, { useState, useMemo } from 'react';
 import {
@@ -70,7 +70,7 @@ import { EditMemberPermissionsModal } from './EditMemberPermissionsModal';
 interface RegistriesViewProps {
   cards: CreditCard[];
   cardPayments?: CardInvoicePayment[];
-  onPayCardInvoice?: (cardId:string,dueDate:string,accountId:string,paymentDate:string)=>Promise<void>;
+  onPayCardInvoice?: (cardId:string,dueDate:string,accountId:string,paymentDate:string,selection?:CardPaymentSelection)=>Promise<void>;
   contacts: ContactPerson[];
   recurringBills: RecurringBill[];
   goals: FinancialGoal[];
@@ -364,7 +364,6 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
       <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Organização financeira</p><h2 className="mt-1 text-2xl font-bold text-slate-900">Central de Cadastros Financeiros</h2><p className="mt-2 text-sm text-slate-500">Pessoas, centros de custo e locais onde você movimenta seu dinheiro.</p></div>
-          <div className="flex gap-2">{onOpenIncomeModal && <button onClick={onOpenIncomeModal} className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">Nova Receita</button>}{onOpenExpenseModal && <button onClick={onOpenExpenseModal} className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">Nova Despesa</button>}</div>
         </div>
       </div>
       <nav aria-label="Áreas de cadastro" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -386,8 +385,8 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
         </button>)}
       </nav>
       {!['costCenters', 'members'].includes(activeTab) && <input aria-label="Pesquisar cadastros" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Pesquisar nesta área..." className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" />}
-      {activeTab === 'costCenters' && <CostCenterRegistry centers={costCenters} contacts={contacts} incomes={incomes} expenses={expenses} onEdit={center => onOpenCostCenterModal?.(center)} onCreate={() => onOpenCostCenterModal?.()} />}
-      {activeTab === 'treasuries' && onSaveTreasury && <TreasuryRegistry treasuries={treasuries} accounts={accounts} incomes={incomes} expenses={expenses} transfers={transfers} search={searchQuery} onSave={onSaveTreasury} />}
+      {activeTab === 'costCenters' && <section className="space-y-3"><button aria-label="Cadastrar centro de custo" onClick={()=>onOpenCostCenterModal?.()} className="p-2 bg-indigo-50 rounded">Novo Centro de Custo</button>{costCenters.map(c=><article key={c.id} className="p-4 bg-white border rounded-xl"><h3 className="font-bold">{c.name}</h3><p>{c.status} · {contacts.find(p=>p.id===c.clientId)?.name || 'Sem cliente'}</p><button onClick={()=>onOpenCostCenterModal?.(c)} className="p-2">Editar cadastro</button></article>)}</section>}
+      {activeTab === 'treasuries' && onSaveTreasury && <section className="space-y-3"><button className="p-2 bg-indigo-50 rounded" onClick={()=>{const name=prompt('Nome da tesouraria:');if(name?.trim())void onSaveTreasury({name:name.trim()});}}>Nova Tesouraria</button>{treasuries.filter(t=>t.name.toLowerCase().includes(searchQuery.toLowerCase())).map(t=><article key={t.id} className="p-4 bg-white border rounded-xl"><h3 className="font-bold">{t.name}</h3><p>{t.notes}</p><p>Contas vinculadas: {accounts.filter(a=>a.treasuryId===t.id).map(a=>a.name).join(', ') || 'Nenhuma'}</p><button className="p-2" onClick={()=>{const name=prompt('Nome da tesouraria:',t.name);if(name?.trim())void onSaveTreasury({name:name.trim(),notes:t.notes},t.id);}}>Editar cadastro</button></article>)}</section>}
       {/* TAB 1: CARTÕES DE CRÉDITO */}
       {activeTab === 'cards' && (
         <div className="space-y-4">
@@ -395,7 +394,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
             <div>
               <h3 className="text-sm font-bold text-slate-900">Cartões de Crédito Cadastrados</h3>
               <p className="text-xs text-slate-500">
-                Defina limites, dia de fechamento da fatura e dia de vencimento para controle de gastos
+                Cadastre limites e datas. Consulte faturas e pagamentos no menu Acompanhamento.
               </p>
             </div>
             <button
@@ -447,17 +446,6 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                   </div>
                 </div>
 
-                <div className="p-4 space-y-2 bg-slate-50 text-xs">
-                  <div className="flex justify-between"><span>Total em aberto no cartão</span><strong className="text-rose-700">{formatCurrency(getCardSummary(card.id, expenses, recurringBills).outstanding)}</strong></div>
-                  <div className="flex justify-between"><span>Limite disponível estimado</span><strong>{formatCurrency(Math.max(0, card.limit - getCardSummary(card.id, expenses, recurringBills).outstanding))}</strong></div>
-                  <div className="flex justify-between"><span>Assinaturas ativas / mês</span><strong>{formatCurrency(getCardSummary(card.id, expenses, recurringBills).monthlySubscriptions)}</strong></div>
-                  <p className="text-slate-500">O limite é consumido pelas compras em aberto, incluindo parcelas futuras, e liberado pelo pagamento das faturas. Assinaturas consomem limite após lançar a cobrança.</p>
-                  <details onClick={e => e.stopPropagation()}><summary className="cursor-pointer font-bold text-indigo-700">Ver despesas em aberto</summary>
-                    {getCardSummary(card.id, expenses, recurringBills).openExpenses.map(e => <div key={e.id} className="flex justify-between gap-2 py-2 border-b"><span>{e.description} · {formatDateBR(e.date)}{e.installments ? ' · parcela ' + e.installments.current + '/' + e.installments.total : ''}</span><strong>{formatCurrency(e.amount)}</strong></div>)}
-                    {getCardSummary(card.id, expenses, recurringBills).openExpenses.length === 0 && <p className="py-2">Nenhuma despesa em aberto.</p>}
-                  </details>
-                </div>
-                <CardInvoicePanel card={card} expenses={expenses} accounts={accounts} payments={cardPayments} onPay={currentUserPermissions?.canEditTransactions === false ? undefined : onPayCardInvoice} />
                 {/* Card Details & Actions */}
                 <div className="p-4 bg-white flex-1 flex flex-col justify-between text-xs space-y-3">
                   <div className="space-y-1.5 text-slate-600">
@@ -698,7 +686,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
             <div>
               <h3 className="text-sm font-bold text-slate-900">{activeTab === 'subscriptions' ? 'Assinaturas mensais' : 'Contas Fixas & Recorrentes'}</h3>
               <p className="text-xs text-slate-500">
-                Cadastre o serviço, escolha o cartão e clique em Lançar no Mês para registrar a cobrança.
+                Cadastre o serviço e o cartão. Gere e acompanhe as cobranças no menu Acompanhamento.
               </p>
             </div>
 
@@ -791,21 +779,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Actions: Quick Trigger in current month & Edit */}
-                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onTriggerRecurringBill(bill);
-                        }}
-                        disabled={!bill.active || (bill.type === 'expense' && expenses.some(e => e.recurringBillId === bill.id && e.recurringMonth === currentYearMonth && !['cancelled','CANCELADO','rejected'].includes(e.status || '')))}
-                        title={`Lançar instantaneamente em ${currentYearMonth}`}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-                      >
-                        <Sparkles className="w-3 h-3" />
-{expenses.some(e => e.recurringBillId === bill.id && e.recurringMonth === currentYearMonth && !['cancelled','CANCELADO','rejected'].includes(e.status || '')) ? 'Já lançado no mês' : 'Lançar no Mês'}
-                      </button>
-
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end">
                       <div className="flex items-center gap-1">
                         <button
                           onClick={(e) => {
@@ -854,189 +828,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
         </div>
       )}
 
-      {/* TAB 4: METAS & OBJETIVOS FINANCEIROS */}
-      {activeTab === 'goals' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Metas Financeiras & Sonhos</h3>
-              <p className="text-xs text-slate-500">
-                Acompanhe o acúmulo de reservas de emergência, viagens, aquisições e planos futuros
-              </p>
-            </div>
-            <button
-              onClick={() => onOpenGoalModal()}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Nova Meta
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredGoals.map((goal) => {
-              const percentage = Math.min(
-                100,
-                Math.round((goal.currentAmount / (goal.targetAmount || 1)) * 100)
-              );
-              const isCompleted = goal.currentAmount >= goal.targetAmount;
-
-              return (
-                <div
-                  key={goal.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs flex flex-col justify-between hover:shadow-xs transition-shadow cursor-pointer"
-                  onClick={() => onOpenGoalModal(goal)}
-                >
-                  <div>
-                    <div className="flex items-start justify-between gap-3 mb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className="w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-2xs shrink-0"
-                          style={{ backgroundColor: goal.color }}
-                        >
-                          <Target className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-slate-900">{goal.title}</h4>
-                          {goal.category && (
-                            <span className="text-[10px] text-slate-500 font-medium">{goal.category}</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {isCompleted ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Concluído!
-                        </span>
-                      ) : (
-                        <span className="text-xs font-black text-slate-800">{percentage}%</span>
-                      )}
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden my-3">
-                      <div
-                        className="h-full transition-all duration-500 rounded-full"
-                        style={{
-                          width: `${percentage}%`,
-                          backgroundColor: goal.color,
-                        }}
-                      />
-                    </div>
-
-                    {/* Amounts */}
-                    <div className="flex items-center justify-between text-xs mt-2">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Acumulado</span>
-                        <span className="font-bold text-slate-900">
-                          {formatCurrency(goal.currentAmount)}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-400 block">Meta Alvo</span>
-                        <span className="font-bold text-slate-600">
-                          {formatCurrency(goal.targetAmount)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {goal.deadline && (
-                      <div className="mt-3 text-[11px] text-slate-500 flex items-center gap-1">
-                        <Calendar className="w-3 h-3 text-slate-400" />
-                        Prazo: {formatDateBR(goal.deadline)}
-                      </div>
-                    )}
-
-                    {goal.notes && (
-                      <p className="text-[11px] text-slate-500 italic mt-2 line-clamp-2">
-                        "{goal.notes}"
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Quick Deposit/Withdraw Actions & Edit */}
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const val = prompt('Informe o valor a depositar/aportar nesta meta (R$):');
-                          if (val) {
-                            const parsed = parseFloat(val.replace(',', '.'));
-                            if (!isNaN(parsed) && parsed > 0) {
-                              onUpdateGoalAmount(goal.id, goal.currentAmount + parsed);
-                            }
-                          }
-                        }}
-                        className="px-2.5 py-1 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
-                      >
-                        + Aportar
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const val = prompt('Informe o valor a resgatar desta meta (R$):');
-                          if (val) {
-                            const parsed = parseFloat(val.replace(',', '.'));
-                            if (!isNaN(parsed) && parsed > 0) {
-                              onUpdateGoalAmount(goal.id, Math.max(0, goal.currentAmount - parsed));
-                            }
-                          }
-                        }}
-                        className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                      >
-                        Resgatar
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onOpenGoalModal(goal);
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg transition-colors"
-                        title="Editar"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (window.confirm(`Excluir a meta "${goal.title}"?`)) {
-                            onDeleteGoal(goal.id);
-                          }
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
-                        title="Excluir"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {filteredGoals.length === 0 && (
-              <div className="col-span-full text-center py-12 bg-white rounded-2xl border border-slate-200 p-8">
-                <Target className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                <h4 className="text-sm font-bold text-slate-800">Nenhuma meta financeira cadastrada</h4>
-                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                  Defina metas e objetivos financeiros com prazos para acompanhar seu crescimento patrimonial.
-                </p>
-                <button
-                  onClick={() => onOpenGoalModal()}
-                  className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-colors"
-                >
-                  Cadastrar Primeira Meta
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {activeTab === 'goals' && <section className="space-y-3"><div className="flex justify-between"><h3 className="font-bold">Metas cadastradas</h3><button onClick={()=>onOpenGoalModal()} className="p-2 bg-indigo-50 rounded">Nova Meta</button></div>{filteredGoals.map(goal=><article key={goal.id} className="p-4 bg-white border rounded-xl"><h4 className="font-bold">{goal.title}</h4><p>Valor alvo: {formatCurrency(goal.targetAmount)}</p>{goal.deadline && <p>Prazo: {formatDateBR(goal.deadline)}</p>}<button className="p-2" onClick={()=>onOpenGoalModal(goal)}>Editar</button><button className="p-2" onClick={()=>{if(confirm('Excluir esta meta?'))onDeleteGoal(goal.id);}}>Excluir</button></article>)}{filteredGoals.length===0 && <p>Nenhuma meta cadastrada.</p>}</section>}
 
       {/* TAB 5: CONTAS BANCÁRIAS & CAIXAS */}
       {activeTab === 'accounts' && (
@@ -1098,9 +890,9 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                     )}
 
                     <div className="mt-3 pt-3 border-t border-slate-100">
-                      <span className="text-[10px] text-slate-400 block">Saldo Atual</span>
+                      <span className="text-[10px] text-slate-400 block">Saldo Inicial</span>
                       <span className="text-base font-bold text-slate-800">
-                        {formatCurrency(accountBalances[acc.id] || 0)}
+                        {formatCurrency(acc.initialBalance || 0)}
                       </span>
                     </div>
                   </div>

@@ -206,7 +206,14 @@ export interface Category {
   parentId?: string; // For hierarchical Chart of Accounts (Ex: 2. Custos > 2.1 Materiais)
 }
 
+export interface CardPaymentSelection {
+  expenseIds: string[];
+  amount: number;
+  expectedBalance?: number;
+}
+
 export interface CardInvoicePayment {
+  allocations?: Array<{expenseId: string; amount: number}>;
   id: string;
   cardId: string;
   dueDate: string;
@@ -218,6 +225,9 @@ export interface CardInvoicePayment {
 }
 
 export interface Expense {
+  purchaseStatus?: PaymentStatus;
+  sourceExpenseId?: string;
+  cardPurchaseAmount?: number;
   purchaseDate?: string;
   invoiceDueDate?: string;
   cardInvoicePaymentId?: string;

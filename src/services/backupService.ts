@@ -104,7 +104,7 @@ export async function generateFullSystemBackup(
   }
 
   return {
-    version: 5,
+    version: 6,
     exportedAt: new Date().toISOString(),
     exportedBy: userEmail,
     companies: companiesBackup,

@@ -107,7 +107,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       setAccountId(editingItem.accountId || (type === 'expense' ? '' : accounts?.[0]?.id) || '');
       setCardId(editingItem.cardId || (type === 'expense' ? '' : cards?.[0]?.id) || '');
       setContactId(editingItem.contactId || '');
-      setStatus(isSettled(editingItem.status) ? 'paid' : editingItem.status || 'pending');
+      setStatus(editingItem.purchaseStatus || (isSettled(editingItem.status) ? 'paid' : editingItem.status || 'pending'));
       setSettlementDate(editingItem.settlementDate || editingItem.date);
       setNotes(editingItem.notes || '');
       setIsRecurring(editingItem.isRecurring || false);
@@ -228,7 +228,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
     e.preventDefault();
     if (activeStep === 1) { handleNext(); return; }
     if (isLoading) return;
-    if (isSettled(status) && !validCalendarDate(settlementDate)) {setError('Informe a data do pagamento ou recebimento.'); return;}
+    if (isSettled(status) && paymentMethod !== 'credit_card' && !validCalendarDate(settlementDate)) {setError('Informe a data do pagamento ou recebimento.'); return;}
     const err = validateStep(1);
     if (err) { setError(err); setActiveStep(1); return; }
     // Older expenses predate these required registries. Keep an absent link when
@@ -613,7 +613,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                           <option key={c.id} value={c.id}>{c.name} ({c.brand.toUpperCase()}) — Disponível: {formatCurrency(Math.max(0,c.limit - getCardSummary(c.id, expenses, []).outstanding))}</option>
                         ))}
                       </select>
-                      {cardId && cards.some(c=>c.id===cardId) && date && <p className="text-xs text-indigo-700">Vencimento da fatura: {invoiceDueDate(cards.find(c=>c.id===cardId)!, date).split('-').reverse().join('/')}. A data informada é a data da compra. O limite é liberado ao pagar a fatura.</p>}
+                      {cardId && cards.some(c=>c.id===cardId) && date && <p className="text-xs text-indigo-700">Vencimento da fatura: {invoiceDueDate(cards.find(c=>c.id===cardId)!, date).split('-').reverse().join('/')}. A data informada é a data da compra. Pago no cartão significa compra concluída; o valor continua na fatura até o pagamento dela.</p>}
                     </div>
                   ) : (
                     <div className="space-y-1">
@@ -632,7 +632,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                 </div>
               </div>
 
-              {isSettled(status) && <label className="block text-sm font-bold">{type === 'expense' ? 'Data do pagamento' : 'Data do recebimento'}<input aria-label={type === 'expense' ? 'Data do pagamento' : 'Data do recebimento'} type="date" value={settlementDate} onChange={e => setSettlementDate(e.target.value)} className="mt-1 w-full rounded-xl border p-3" required /></label>}
+              {isSettled(status) && paymentMethod !== 'credit_card' && <label className="block text-sm font-bold">{type === 'expense' ? 'Data do pagamento' : 'Data do recebimento'}<input aria-label={type === 'expense' ? 'Data do pagamento' : 'Data do recebimento'} type="date" value={settlementDate} onChange={e => setSettlementDate(e.target.value)} className="mt-1 w-full rounded-xl border p-3" required /></label>}
               {/* Status & Contact Group */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
