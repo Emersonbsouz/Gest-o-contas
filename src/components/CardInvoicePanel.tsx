@@ -1,16 +1,27 @@
 
 import React, { useState } from 'react';
-import type { CreditCard, Expense, TreasuryAccount, CardInvoicePayment, CardPaymentSelection } from '../types';
+import type { CreditCard, Expense, TreasuryAccount, CardInvoicePayment, CardPaymentSelection, ContactPerson } from '../types';
 import { getCardInvoices, getInvoiceHistory } from '../utils/cardInvoices';
 import { localToday } from '../utils/dailyCash';
 import { formatCurrency, formatDateBR } from '../utils/formatters';
 interface Props {
+ contacts?: ContactPerson[];
  card: CreditCard; expenses: Expense[]; accounts: TreasuryAccount[]; payments: CardInvoicePayment[];
  onCancelPayment?:(id:string)=>Promise<void>;
  onUpdatePayment?:(id:string,patch:{amount:number;accountId:string;paymentDate:string})=>Promise<void>;
  onPay?: (cardId:string,dueDate:string,accountId:string,paymentDate:string,selection?:CardPaymentSelection)=>Promise<void>;
 }
-export function CardInvoicePanel({card,expenses,accounts,payments,onPay,onCancelPayment,onUpdatePayment}:Props) {
+export function CardInvoicePanel({contacts=[],card,expenses,accounts,payments,onPay,onCancelPayment,onUpdatePayment}:Props) {
+ const contactMap=new Map(contacts.map(c=>[c.id,c.name]));
+ const purchaseInfo=(e:Expense)=><span className="block text-[11px] text-slate-500">Compra: {e.purchaseDate?formatDateBR(e.purchaseDate):'Data não informada'} · Fornecedor: {e.contactId?contactMap.get(e.contactId)||'Cadastro indisponível':'Não informado'}</span>;
+ const purchasesFor=(due:string)=>{
+   const grouped=new Map<string,Expense>();
+   expenses.filter(e=>e.cardId===card.id && e.paymentMethod==='credit_card' && (e.invoiceDueDate||e.date)===due && !['cancelled','CANCELADO','rejected','draft'].includes(e.status||'')).forEach(e=>{
+     const id=e.sourceExpenseId||e.id;const prior=grouped.get(id);
+     grouped.set(id,prior?{...prior,amount:Math.round((prior.amount+e.amount)*100)/100}:{...e,description:e.description.replace(/ \(pagamento parcial\)$/,'')});
+   });
+   return [...grouped.values()];
+ };
  const invoices=getCardInvoices(card.id,expenses);
  const [selected,setSelected]=useState<string|null>(null);
  const [ids,setIds]=useState<string[]>([]);
@@ -43,7 +54,7 @@ export function CardInvoicePanel({card,expenses,accounts,payments,onPay,onCancel
    {invoices.map(i=><div key={i.dueDate} className="rounded-xl border p-4 space-y-2 bg-white">
      <div className="flex justify-between"><strong>Vence {formatDateBR(i.dueDate)}</strong><strong className="text-rose-700">{formatCurrency(i.amount)}</strong></div>
      <p className="text-xs">{i.dueDate<localToday()?'Vencida':'Em aberto'} · {i.items.length} compra(s)</p>
-     <details><summary className="cursor-pointer text-xs">Ver compras da fatura</summary>{i.items.map(e=><p key={e.id} className="flex justify-between py-1"><span>{e.description}</span><span>{formatCurrency(e.amount)}</span></p>)}</details>
+     <details><summary className="cursor-pointer text-xs">Ver compras da fatura</summary>{i.items.map(e=><p key={e.id} className="flex justify-between py-1"><span>{e.description}{purchaseInfo(e)}</span><span>{formatCurrency(e.amount)}</span></p>)}</details>
      {onPay && <button type="button" disabled={busy} onClick={()=>{setSelected(i.dueDate);setIds(i.items.map(e=>e.id));setAmount(i.amount.toFixed(2));setError('');setAccountId(card.linkedAccountId || accounts[0]?.id || '');setDate(localToday());}} className="rounded-lg bg-emerald-600 px-3 py-2 font-bold text-white">Pagar fatura de {formatDateBR(i.dueDate)}</button>}
    </div>)}
    {invoices.length===0 && <p className="text-emerald-700">Nenhuma fatura em aberto.</p>}
@@ -58,7 +69,7 @@ export function CardInvoicePanel({card,expenses,accounts,payments,onPay,onCancel
      <fieldset disabled={busy} className="space-y-2">
        <legend className="font-semibold text-sm">Despesas para pagamento</legend>
        <label className="flex items-center gap-2"><input type="checkbox" checked={ids.length===invoice.items.length} onChange={e=>updateSelection(e.target.checked?invoice.items.map(v=>v.id):[])}/>Selecionar todas as despesas</label>
-       {invoice.items.map(e=><label key={e.id} className="flex items-center gap-2 bg-white p-2 rounded"><input aria-label={'Selecionar '+e.description} type="checkbox" checked={ids.includes(e.id)} onChange={event=>updateSelection(event.target.checked?[...ids,e.id]:ids.filter(id=>id!==e.id))}/><span className="flex-1">{e.description}</span><strong>{formatCurrency(e.amount)}</strong></label>)}
+       {invoice.items.map(e=><label key={e.id} className="flex items-center gap-2 bg-white p-2 rounded"><input aria-label={'Selecionar '+e.description} type="checkbox" checked={ids.includes(e.id)} onChange={event=>updateSelection(event.target.checked?[...ids,e.id]:ids.filter(id=>id!==e.id))}/><span className="flex-1">{e.description}{purchaseInfo(e)}</span><strong>{formatCurrency(e.amount)}</strong></label>)}
        <p>Total selecionado: <strong>{formatCurrency(selectedTotal/100)}</strong></p>
        <label className="block">Valor do pagamento<input aria-label="Valor do pagamento" inputMode="decimal" required value={amount} onChange={e=>setAmount(e.target.value)} className="block w-full rounded border p-2"/></label>
        <p className="text-xs">{partial?'Pagamento parcial':'Pagamento do total selecionado'} · Saldo restante da fatura: {formatCurrency(Math.max(0,invoice.amount-(Number.isFinite(value)?valueCents/100:0)))}</p>
@@ -72,7 +83,7 @@ export function CardInvoicePanel({card,expenses,accounts,payments,onPay,onCancel
    <section aria-label="Histórico de faturas" className="border-t pt-4 space-y-3">
      <h4 className="font-bold">Histórico de faturas</h4>
      <label className="block text-xs">Visualizar faturas<select aria-label="Filtrar histórico de faturas" value={historyFilter} onChange={e=>setHistoryFilter(e.target.value)} className="ml-2 rounded border p-2"><option value="all">Todas</option><option value="overdue">Vencidas em aberto</option><option value="paid">Pagas</option><option value="open">A vencer</option></select></label>
-     {shownCycles.map(c=><div key={c.dueDate} className="p-3 rounded-lg border bg-slate-50 text-xs"><strong>Fatura de {formatDateBR(c.dueDate)}</strong><p>{c.status==='paid'?'Paga':c.status==='overdue'?'Vencida':'A vencer'}{c.paid>0 && c.remaining>0?' · Parcialmente paga':''}</p><p>Total {formatCurrency(c.total)} · Pago {formatCurrency(c.paid)} · Em aberto {formatCurrency(c.remaining)}</p></div>)}
+     {shownCycles.map(c=><div key={c.dueDate} className="p-3 rounded-lg border bg-slate-50 text-xs"><strong>Fatura de {formatDateBR(c.dueDate)}</strong><p>{c.status==='paid'?'Paga':c.status==='overdue'?'Vencida':'A vencer'}{c.paid>0 && c.remaining>0?' · Parcialmente paga':''}</p><p>Total {formatCurrency(c.total)} · Pago {formatCurrency(c.paid)} · Em aberto {formatCurrency(c.remaining)}</p><details className="mt-2"><summary className="cursor-pointer">Compras desta fatura</summary>{purchasesFor(c.dueDate).map(e=><div key={e.id} className="flex justify-between gap-2 py-2"><span>{e.description}{purchaseInfo(e)}</span><strong>{formatCurrency(e.amount)}</strong></div>)}</details></div>)}
      {shownCycles.length===0 && <p className="text-xs text-slate-500">Nenhuma fatura neste filtro.</p>}
    </section>
    {history.length>0 && <section aria-label="Pagamentos registrados" className="space-y-3 border-t pt-4">
