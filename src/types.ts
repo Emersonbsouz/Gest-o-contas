@@ -121,6 +121,7 @@ export interface ContactPerson {
 }
 
 export interface RecurringBill {
+  kind?: 'subscription' | 'recurring';
   id: string;
   description: string;
   type: 'expense' | 'income';
@@ -205,7 +206,23 @@ export interface Category {
   parentId?: string; // For hierarchical Chart of Accounts (Ex: 2. Custos > 2.1 Materiais)
 }
 
+export interface CardInvoicePayment {
+  id: string;
+  cardId: string;
+  dueDate: string;
+  paymentDate: string;
+  accountId: string;
+  amount: number;
+  expenseIds: string[];
+  createdAt: number;
+}
+
 export interface Expense {
+  purchaseDate?: string;
+  invoiceDueDate?: string;
+  cardInvoicePaymentId?: string;
+  recurringBillId?: string;
+  recurringMonth?: string;
   settlementDate?: string;
   id: string;
   description: string;

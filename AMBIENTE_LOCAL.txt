@@ -1,0 +1,8 @@
+ACESSO LOCAL
+
+Abra http://localhost:5173/ com o servidor em execução.
+O modo de desenvolvimento entra automaticamente com um usuário de teste.
+Caso clique em Sair, recarregue a página e use o formulário Entrar com qualquer e-mail e senha de teste. Não use credenciais reais.
+Os dados ficam somente no armazenamento deste navegador, neste endereço. Limpar os dados do navegador apaga esses registros; use a exportação de backup para preservá-los.
+Não é um banco Supabase real: e-mails, recuperação de senha, autenticação real e colaboração entre usuários não são simulados.
+Nenhuma conexão com o banco online é feita pelo cliente local.

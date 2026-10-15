@@ -1,3 +1,6 @@
+import { CardInvoicePanel } from './CardInvoicePanel';
+import type { CardInvoicePayment } from '../types';
+import { getCardSummary } from '../utils/cardSummary';
 import React, { useState, useMemo } from 'react';
 import {
   CreditCard as CreditCardIcon,
@@ -66,6 +69,8 @@ import { EditMemberPermissionsModal } from './EditMemberPermissionsModal';
 
 interface RegistriesViewProps {
   cards: CreditCard[];
+  cardPayments?: CardInvoicePayment[];
+  onPayCardInvoice?: (cardId:string,dueDate:string,accountId:string,paymentDate:string)=>Promise<void>;
   contacts: ContactPerson[];
   recurringBills: RecurringBill[];
   goals: FinancialGoal[];
@@ -111,7 +116,7 @@ interface RegistriesViewProps {
   onOpenContactModal: (contact?: ContactPerson) => void;
   onDeleteContact: (contactId: string) => void;
 
-  onOpenRecurringModal: (bill?: RecurringBill) => void;
+  onOpenRecurringModal: (bill?: RecurringBill, subscription?: boolean) => void;
   onDeleteRecurring: (billId: string) => void;
   onTriggerRecurringBill: (bill: RecurringBill) => void;
 
@@ -129,10 +134,12 @@ interface RegistriesViewProps {
   onDeleteEquipment: (id: string) => void;
 }
 
-type ActiveRegistryTab = 'cards' | 'contacts' | 'recurring' | 'goals' | 'accounts' | 'categories' | 'members' | 'equipment' | 'costCenters' | 'treasuries';
+type ActiveRegistryTab = 'subscriptions' | 'cards' | 'contacts' | 'recurring' | 'goals' | 'accounts' | 'categories' | 'members' | 'equipment' | 'costCenters' | 'treasuries';
 
 export const RegistriesView: React.FC<RegistriesViewProps> = ({
   cards = [],
+  cardPayments = [],
+  onPayCardInvoice,
   contacts = [],
   recurringBills = [],
   goals = [],
@@ -321,9 +328,10 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
         b.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (b.notes && b.notes.toLowerCase().includes(searchQuery.toLowerCase()));
       const matchType = typeFilter === 'all' || b.type === typeFilter;
-      return matchSearch && matchType;
+      const matchKind = activeTab === 'subscriptions' ? b.kind === 'subscription' : b.kind !== 'subscription';
+      return matchSearch && matchType && matchKind;
     });
-  }, [safeRecurring, searchQuery, typeFilter]);
+  }, [safeRecurring, searchQuery, typeFilter, activeTab]);
 
   // Filtered Goals
   const filteredGoals = useMemo(() => {
@@ -367,7 +375,8 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
           ['treasuries', 'Tesourarias', 'Agrupe contas e caixas', treasuries.length, DollarSign],
           ['categories', 'Categorias', 'Classifique seus lançamentos', categories.length, Tag],
           ['cards', 'Cartões', 'Limites e vencimentos', cards.length, CreditCardIcon],
-          ['recurring', 'Contas Recorrentes', 'Compromissos mensais', recurringBills.length, RefreshCw],
+          ['recurring', 'Contas Recorrentes', 'Compromissos mensais', recurringBills.filter(b => b.kind !== 'subscription').length, RefreshCw],
+          ['subscriptions', 'Assinaturas', 'Serviços mensais e cartões', recurringBills.filter(b => b.kind === 'subscription').length, RefreshCw],
           ['goals', 'Metas', 'Objetivos financeiros', goals.length, Target],
           ['equipment', 'Patrimônio', 'Equipamentos e ferramentas', equipment.length, Package],
           ['members', 'Acessos', 'Equipe e permissões', activeCompany?.memberEmails?.length || 1, Users],
@@ -438,6 +447,17 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                   </div>
                 </div>
 
+                <div className="p-4 space-y-2 bg-slate-50 text-xs">
+                  <div className="flex justify-between"><span>Total em aberto no cartão</span><strong className="text-rose-700">{formatCurrency(getCardSummary(card.id, expenses, recurringBills).outstanding)}</strong></div>
+                  <div className="flex justify-between"><span>Limite disponível estimado</span><strong>{formatCurrency(Math.max(0, card.limit - getCardSummary(card.id, expenses, recurringBills).outstanding))}</strong></div>
+                  <div className="flex justify-between"><span>Assinaturas ativas / mês</span><strong>{formatCurrency(getCardSummary(card.id, expenses, recurringBills).monthlySubscriptions)}</strong></div>
+                  <p className="text-slate-500">O limite é consumido pelas compras em aberto, incluindo parcelas futuras, e liberado pelo pagamento das faturas. Assinaturas consomem limite após lançar a cobrança.</p>
+                  <details onClick={e => e.stopPropagation()}><summary className="cursor-pointer font-bold text-indigo-700">Ver despesas em aberto</summary>
+                    {getCardSummary(card.id, expenses, recurringBills).openExpenses.map(e => <div key={e.id} className="flex justify-between gap-2 py-2 border-b"><span>{e.description} · {formatDateBR(e.date)}{e.installments ? ' · parcela ' + e.installments.current + '/' + e.installments.total : ''}</span><strong>{formatCurrency(e.amount)}</strong></div>)}
+                    {getCardSummary(card.id, expenses, recurringBills).openExpenses.length === 0 && <p className="py-2">Nenhuma despesa em aberto.</p>}
+                  </details>
+                </div>
+                <CardInvoicePanel card={card} expenses={expenses} accounts={accounts} payments={cardPayments} onPay={currentUserPermissions?.canEditTransactions === false ? undefined : onPayCardInvoice} />
                 {/* Card Details & Actions */}
                 <div className="p-4 bg-white flex-1 flex flex-col justify-between text-xs space-y-3">
                   <div className="space-y-1.5 text-slate-600">
@@ -672,13 +692,13 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
       )}
 
       {/* TAB 3: CONTAS RECORRENTES / FIXAS */}
-      {activeTab === 'recurring' && (
+      {(activeTab === 'recurring' || activeTab === 'subscriptions') && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Contas Fixas & Recorrentes</h3>
+              <h3 className="text-sm font-bold text-slate-900">{activeTab === 'subscriptions' ? 'Assinaturas mensais' : 'Contas Fixas & Recorrentes'}</h3>
               <p className="text-xs text-slate-500">
-                Despesas e receitas que acontecem todos os meses (aluguel, condomínio, internet, salários).
+                Cadastre o serviço, escolha o cartão e clique em Lançar no Mês para registrar a cobrança.
               </p>
             </div>
 
@@ -694,11 +714,11 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
               </select>
 
               <button
-                onClick={() => onOpenRecurringModal()}
+                onClick={() => onOpenRecurringModal(undefined, activeTab === 'subscriptions')}
                 className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
-                Nova Conta Recorrente
+                {activeTab === 'subscriptions' ? 'Nova Assinatura' : 'Nova Conta Recorrente'}
               </button>
             </div>
           </div>
@@ -756,7 +776,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                           {bill.accountId
                             ? accountMap.get(bill.accountId) || 'Conta'
                             : bill.cardId
-                            ? 'Cartão de Crédito'
+                            ? safeCards.find(c => c.id === bill.cardId)?.name || 'Cartão removido'
                             : 'Padrão'}
                         </span>
                       </div>
@@ -778,11 +798,12 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                           e.stopPropagation();
                           onTriggerRecurringBill(bill);
                         }}
+                        disabled={!bill.active || (bill.type === 'expense' && expenses.some(e => e.recurringBillId === bill.id && e.recurringMonth === currentYearMonth && !['cancelled','CANCELADO','rejected'].includes(e.status || '')))}
                         title={`Lançar instantaneamente em ${currentYearMonth}`}
                         className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
                       >
                         <Sparkles className="w-3 h-3" />
-                        Lançar no Mês
+{expenses.some(e => e.recurringBillId === bill.id && e.recurringMonth === currentYearMonth && !['cancelled','CANCELADO','rejected'].includes(e.status || '')) ? 'Já lançado no mês' : 'Lançar no Mês'}
                       </button>
 
                       <div className="flex items-center gap-1">
@@ -817,15 +838,15 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
             {filteredRecurring.length === 0 && (
               <div className="col-span-full text-center py-12 bg-white rounded-2xl border border-slate-200 p-8">
                 <RefreshCw className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                <h4 className="text-sm font-bold text-slate-800">Nenhuma conta recorrente cadastrada</h4>
+                <h4 className="text-sm font-bold text-slate-800">{activeTab === 'subscriptions' ? 'Nenhuma assinatura cadastrada' : 'Nenhuma conta recorrente cadastrada'}</h4>
                 <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
                   Cadastre suas despesas e receitas fixas mensais para poder lançá-las rapidamente a cada virada de mês.
                 </p>
                 <button
-                  onClick={() => onOpenRecurringModal()}
+                  onClick={() => onOpenRecurringModal(undefined, activeTab === 'subscriptions')}
                   className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-colors"
                 >
-                  Cadastrar Primeira Conta Recorrente
+                  {activeTab === 'subscriptions' ? 'Cadastrar Primeira Assinatura' : 'Cadastrar Primeira Conta Recorrente'}
                 </button>
               </div>
             )}

@@ -1,5 +1,6 @@
+import { recurringDate } from './utils/cardSummary';
 import { localToday } from './utils/dailyCash';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Header } from './components/Header';
 import { ExpenseSummaryCards } from './components/ExpenseSummaryCards';
 import { MonthlyCharts } from './components/MonthlyCharts';
@@ -161,6 +162,8 @@ export default function App() {
     cards,
     contacts,
     recurringBills,
+    cardPayments,
+    payCardInvoice,
     goals,
     costCenters,
     proposals,
@@ -229,6 +232,8 @@ export default function App() {
   const [contactDefaultType, setContactDefaultType] = useState<ContactType | undefined>();
 
   const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false);
+  const [initialSubscription, setInitialSubscription] = useState(false);
+  const recurringInFlight = useRef(new Set<string>());
   const [editingRecurring, setEditingRecurring] = useState<RecurringBill | null>(null);
 
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
@@ -468,6 +473,10 @@ export default function App() {
   };
 
   const handleLiquidateExpense = async (expense: Expense) => {
+    if (expense.paymentMethod === 'credit_card') {
+      alert('Pague a fatura em Cadastros → Cartões. O pagamento libera o limite e baixa as compras da fatura.');
+      return;
+    }
     if (!currentUserPermissions.canEditTransactions) {
       alert('Você não tem permissão para liquidar lançamentos nesta empresa.');
       return;
@@ -650,7 +659,8 @@ export default function App() {
   };
 
   // --- Handlers for Recurring Bills ---
-  const handleOpenAddRecurringModal = (bill?: RecurringBill) => {
+  const handleOpenAddRecurringModal = (bill?: RecurringBill, subscription = false) => {
+    setInitialSubscription(subscription);
     setEditingRecurring(bill || null);
     setIsRecurringModalOpen(true);
   };
@@ -662,35 +672,38 @@ export default function App() {
   };
 
   const handleTriggerRecurringBill = async (bill: RecurringBill) => {
-    const targetDay = String(Math.min(Math.max(bill.dueDay, 1), 28)).padStart(2, '0');
-    const billDate = `${currentYearMonth}-${targetDay}`;
-
-    if (bill.type === 'expense') {
-      await saveExpense({
-        description: bill.description,
-        amount: bill.amount,
-        date: billDate,
-        categoryId: bill.categoryId || categories[0]?.id || 'cat-moradia',
-        accountId: bill.accountId || accounts[0]?.id,
-        paymentMethod: 'boleto',
-        contactId: bill.contactId,
-        status: 'pending',
-        notes: 'Lançado a partir de Conta Fixa Recorrente',
-      });
-      alert(`Despesa "${bill.description}" de ${formatDateBR(billDate)} lançada com sucesso no mês ${currentYearMonth}!`);
-    } else {
-      await saveIncome({
-        description: bill.description,
-        amount: bill.amount,
-        date: billDate,
-        accountId: bill.accountId || accounts[0]?.id || '',
-        categoryId: 'cat-salario',
-        contactId: bill.contactId,
-        status: 'pending',
-        notes: 'Lançado a partir de Receita Fixa Recorrente',
-      });
-      alert(`Receita "${bill.description}" de ${formatDateBR(billDate)} lançada com sucesso no mês ${currentYearMonth}!`);
+    const token = bill.id + ':' + currentYearMonth;
+    if (recurringInFlight.current.has(token)) return;
+    if (!bill.active) { alert('Ative a assinatura ou recorrência antes de lançar.'); return; }
+    if (bill.type === 'expense' && expenses.some(e => e.recurringBillId === bill.id && e.recurringMonth === currentYearMonth && !['cancelled','CANCELADO','rejected'].includes(e.status || ''))) {
+      alert('Esta cobrança já foi lançada no mês selecionado.'); return;
     }
+    if (bill.cardId && !cards.some(c => c.id === bill.cardId)) { alert('Selecione um cartão válido no cadastro.'); return; }
+    const billDate = recurringDate(currentYearMonth, bill.dueDay);
+    recurringInFlight.current.add(token);
+    try {
+      if (bill.type === 'expense') {
+        await saveExpense({
+          description: bill.description, amount: bill.amount, date: billDate,
+          categoryId: bill.categoryId || categories[0]?.id || 'cat-moradia',
+          accountId: bill.cardId ? undefined : bill.accountId || accounts[0]?.id,
+          cardId: bill.cardId,
+          paymentMethod: bill.cardId ? 'credit_card' : 'boleto',
+          contactId: bill.contactId, costCenterId: bill.costCenterId,
+          status: 'pending', recurringBillId: bill.id, recurringMonth: currentYearMonth,
+          notes: bill.kind === 'subscription' ? 'Cobrança de assinatura mensal' : 'Conta fixa recorrente',
+        });
+      } else {
+        await saveIncome({
+          description: bill.description, amount: bill.amount, date: billDate,
+          accountId: bill.accountId || accounts[0]?.id || '',
+          categoryId: bill.categoryId || 'cat-salario', contactId: bill.contactId,
+          status: 'pending', notes: 'Receita fixa recorrente',
+        });
+      }
+      alert('Cobrança lançada em ' + formatDateBR(billDate) + '.');
+    } catch (error) { alert(error instanceof Error ? error.message : 'Não foi possível lançar a cobrança.'); }
+    finally { recurringInFlight.current.delete(token); }
   };
 
   const handleConvertProposal = async (proposal: Proposal) => {
@@ -1026,6 +1039,12 @@ export default function App() {
 
           {activeView === 'cadastros' && (
             <RegistriesView
+              onPayCardInvoice={async (cardId, dueDate, accountId, paymentDate) => {
+                if (!currentUserPermissions.canEditTransactions) throw new Error('Você não tem permissão para pagar faturas.');
+                await payCardInvoice(cardId,dueDate,accountId,paymentDate);
+              }}
+              cardPayments={cardPayments}
+
               treasuries={treasuries}
               transfers={transfers}
               onSaveTreasury={saveTreasury}
@@ -1091,6 +1110,7 @@ export default function App() {
 
       {/* Modals */}
       <FinancialFormModal
+        expenses={expenses}
         type={financialModalType}
         isOpen={isFinancialModalOpen}
         onClose={() => setIsFinancialModalOpen(false)}
@@ -1164,6 +1184,7 @@ export default function App() {
         onClose={() => setIsRecurringModalOpen(false)}
         onSave={saveRecurring}
         editingBill={editingRecurring}
+        initialSubscription={initialSubscription}
         categories={categories}
         accounts={accounts}
         cards={cards}

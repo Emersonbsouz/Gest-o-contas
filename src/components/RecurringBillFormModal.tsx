@@ -14,6 +14,7 @@ interface RecurringBillFormModalProps {
   onClose: () => void;
   onSave: (billData: Omit<RecurringBill, 'id'>, billId?: string) => void;
   editingBill?: RecurringBill | null;
+  initialSubscription?: boolean;
   categories?: Category[];
   accounts?: TreasuryAccount[];
   cards?: CreditCard[];
@@ -25,12 +26,14 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
   onClose,
   onSave,
   editingBill,
+  initialSubscription = false,
   categories = [],
   accounts = [],
   cards = [],
   contacts = [],
 }) => {
   const [description, setDescription] = useState('');
+  const [subscription, setSubscription] = useState(false);
   const [type, setType] = useState<'expense' | 'income'>('expense');
   const [amount, setAmount] = useState('');
   const [dueDay, setDueDay] = useState('10');
@@ -45,6 +48,9 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    setSubscription(editingBill?.kind === 'subscription' || (!editingBill && initialSubscription));
+    setCardId(editingBill?.cardId || cards[0]?.id || '');
+    setAccountId(editingBill?.accountId || accounts[0]?.id || '');
     if (editingBill) {
       setDescription(editingBill.description);
       setType(editingBill.type);
@@ -75,7 +81,7 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
       setNotes('');
     }
     setError('');
-  }, [editingBill, isOpen]);
+  }, [editingBill, isOpen, initialSubscription]);
 
   if (!isOpen) return null;
 
@@ -98,18 +104,23 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
       return;
     }
 
+    if (type === 'expense' && paymentSource === 'card' && !cards.some(c => c.id === cardId)) {
+      setError('Cadastre e selecione um cartão válido para vincular esta assinatura ou recorrência.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
     await onSave(
       {
+        kind: subscription && type === 'expense' ? 'subscription' : 'recurring',
         description: description.trim(),
         type,
         amount: parsedAmount,
         dueDay: parsedDueDay,
         categoryId: categoryId || categories[0]?.id || 'cat-outros',
-        accountId: paymentSource === 'account' ? accountId || undefined : undefined,
-        cardId: paymentSource === 'card' ? cardId || undefined : undefined,
+        accountId: type === 'income' || paymentSource === 'account' ? accountId || undefined : undefined,
+        cardId: type === 'expense' && paymentSource === 'card' ? cardId || undefined : undefined,
         contactId: contactId || undefined,
         active,
         notes: notes.trim() || undefined,
@@ -136,10 +147,10 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900">
-                {editingBill ? 'Editar Conta Recorrente' : 'Cadastrar Conta Recorrente'}
+                {subscription ? (editingBill ? 'Editar Assinatura' : 'Cadastrar Assinatura') : (editingBill ? 'Editar Conta Recorrente' : 'Cadastrar Conta Recorrente')}
               </h2>
               <p className="text-xs text-slate-500">
-                Despesas e receitas mensais automáticas ou agendadas
+                Cadastre o compromisso e use Lançar no Mês para gerar a cobrança.
               </p>
             </div>
           </div>
@@ -185,6 +196,7 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
             </button>
           </div>
 
+          {type === 'expense' && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={subscription} onChange={e => setSubscription(e.target.checked)} />Esta despesa é uma assinatura mensal</label>}
           {/* Description */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -304,6 +316,7 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
                   onChange={(e) => setCardId(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 bg-white"
                 >
+                  <option value="">Selecione um cartão</option>
                   {cards.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name} (Fecha dia {c.closingDay})
@@ -397,7 +410,7 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
               disabled={saving}
               className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-xs transition-colors"
             >
-              {editingBill ? 'Salvar Alterações' : 'Cadastrar Conta Recorrente'}
+              {editingBill ? 'Salvar Alterações' : subscription ? 'Cadastrar Assinatura' : 'Cadastrar Conta Recorrente'}
             </button>
           </div>
         </form>

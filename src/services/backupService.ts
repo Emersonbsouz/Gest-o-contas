@@ -1,3 +1,4 @@
+import type { CardInvoicePayment } from '../types';
 import {
   Company,
   Expense,
@@ -27,6 +28,7 @@ import {
 export interface CompanyFullBackup {
   company: Company;
   expenses: Expense[];
+  cardPayments?: CardInvoicePayment[];
   incomes: Income[];
   transfers: AccountTransfer[];
   accounts: TreasuryAccount[];
@@ -58,7 +60,7 @@ export async function generateFullSystemBackup(
   const companiesBackup: CompanyFullBackup[] = [];
 
   for (const company of userCompanies) {
-    const [expenses, incomes, transfers, accounts, cards, categories, contacts, recurring, goals, budgetRows, treasuries, costCenters, proposals, equipment, rentals, cashClosings] =
+    const [expenses, incomes, transfers, accounts, cards, categories, contacts, recurring, goals, budgetRows, treasuries, costCenters, proposals, equipment, rentals, cashClosings, cardPayments] =
       await Promise.all([
         loadCompanySubcollection<Expense>(company.id, 'expenses'),
         loadCompanySubcollection<Income>(company.id, 'incomes'),
@@ -76,6 +78,7 @@ export async function generateFullSystemBackup(
         loadCompanySubcollection<Equipment>(company.id, 'equipment'),
         loadCompanySubcollection<Rental>(company.id, 'rentals'),
         loadCompanySubcollection<DailyCashClosing>(company.id, 'cashClosings'),
+        loadCompanySubcollection<CardInvoicePayment>(company.id, 'cardPayments'),
       ]);
 
     const budgets: MonthlyBudget = {};
@@ -86,6 +89,7 @@ export async function generateFullSystemBackup(
     companiesBackup.push({
       company,
       expenses,
+      cardPayments,
       incomes,
       transfers,
       accounts,
@@ -100,7 +104,7 @@ export async function generateFullSystemBackup(
   }
 
   return {
-    version: 4,
+    version: 5,
     exportedAt: new Date().toISOString(),
     exportedBy: userEmail,
     companies: companiesBackup,
@@ -170,6 +174,7 @@ export async function restoreSystemBackup(
     };
 
     await saveList('expenses', companyBackup.expenses);
+    await saveList('cardPayments', companyBackup.cardPayments || []);
     await saveList('incomes', companyBackup.incomes);
     await saveList('transfers', companyBackup.transfers);
     await saveList('accounts', companyBackup.accounts);
