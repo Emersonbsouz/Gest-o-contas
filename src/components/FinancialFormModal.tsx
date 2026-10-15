@@ -1,3 +1,6 @@
+import { invoiceDueDate } from '../utils/cardInvoices';
+import { getCardSummary } from '../utils/cardSummary';
+import { formatCurrency } from '../utils/formatters';
 import { isSettled } from '../utils/financialStatus';
 import { localToday, validCalendarDate } from '../utils/dailyCash';
 import { getSaveErrorMessage } from '../utils/saveErrors';
@@ -31,6 +34,7 @@ interface FinancialFormModalProps {
   categories: Category[];
   accounts?: TreasuryAccount[];
   cards?: CreditCardType[];
+  expenses?: Expense[];
   contacts?: ContactPerson[];
   costCenters?: CostCenter[];
   defaultDate?: string;
@@ -47,6 +51,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   categories = [],
   accounts = [],
   cards = [],
+  expenses = [],
   contacts = [],
   costCenters = [],
   defaultDate,
@@ -96,7 +101,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
     if (editingItem) {
       setDescription(editingItem.description);
       setAmount(editingItem.amount.toString());
-      setDate(editingItem.date);
+      setDate(editingItem.purchaseDate || editingItem.date);
       setCategoryId(editingItem.categoryId);
       setPaymentMethod(editingItem.paymentMethod || ('transfer'));
       setAccountId(editingItem.accountId || (type === 'expense' ? '' : accounts?.[0]?.id) || '');
@@ -603,10 +608,12 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                         onChange={(e) => setCardId(e.target.value)}
                         className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white"
                       >
+                        <option value="">Selecione um cartão</option>
                         {cards.map(c => (
-                          <option key={c.id} value={c.id}>{c.name} ({c.brand.toUpperCase()})</option>
+                          <option key={c.id} value={c.id}>{c.name} ({c.brand.toUpperCase()}) — Disponível: {formatCurrency(Math.max(0,c.limit - getCardSummary(c.id, expenses, []).outstanding))}</option>
                         ))}
                       </select>
+                      {cardId && cards.some(c=>c.id===cardId) && date && <p className="text-xs text-indigo-700">Vencimento da fatura: {invoiceDueDate(cards.find(c=>c.id===cardId)!, date).split('-').reverse().join('/')}. A data informada é a data da compra. O limite é liberado ao pagar a fatura.</p>}
                     </div>
                   ) : (
                     <div className="space-y-1">

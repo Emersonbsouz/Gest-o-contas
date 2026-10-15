@@ -1,5 +1,8 @@
+import { invoiceDueDate, invoiceExpenses, getCardInvoices } from '../utils/cardInvoices';
+import type { CardInvoicePayment } from '../types';
+import { isSettled } from '../utils/financialStatus';
 import { dailyCashSummary, localToday, validCalendarDate } from '../utils/dailyCash';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import {
   Expense,
   Category,
@@ -52,6 +55,8 @@ export function useCompanyData(companyId: string | null) {
   const [accounts, setAccounts] = useState<TreasuryAccount[]>([]);
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [transfers, setTransfers] = useState<AccountTransfer[]>([]);
+  const [cardPayments, setCardPayments] = useState<CardInvoicePayment[]>([]);
+  const paymentLocks = useRef(new Set<string>());
   const [cards, setCards] = useState<CreditCard[]>([]);
   const [contacts, setContacts] = useState<ContactPerson[]>([]);
   const [recurringBills, setRecurringBills] = useState<RecurringBill[]>([]);
@@ -94,6 +99,7 @@ export function useCompanyData(companyId: string | null) {
     setIncomes(readArray<Income>(getStorageKey('incomes')));
     setTransfers(readArray<AccountTransfer>(getStorageKey('transfers')));
     setCards(readArray<CreditCard>(getStorageKey('cards')));
+    setCardPayments(readArray<CardInvoicePayment>(getStorageKey('cardPayments')));
     setContacts(readArray<ContactPerson>(getStorageKey('contacts')));
     setRecurringBills(readArray<RecurringBill>(getStorageKey('recurring')));
     setGoals(readArray<FinancialGoal>(getStorageKey('goals')));
@@ -131,7 +137,7 @@ export function useCompanyData(companyId: string | null) {
           collectionName,
           (remote) => {
             const cached = readArray<T>(getStorageKey(cacheName), fallback);
-            if (collectionName !== 'cashClosings' && remote.length === 0 && cached.length > 0) {
+            if (collectionName !== 'cashClosings' && collectionName !== 'cardPayments' && remote.length === 0 && cached.length > 0) {
               setter(cached);
               void Promise.all(cached.map((item) => saveCompanyDoc(companyId, collectionName, item.id, item)));
             } else if (remote.length === 0 && fallback.length > 0) {
@@ -158,6 +164,7 @@ export function useCompanyData(companyId: string | null) {
     wire<Income>('incomes', 'incomes', setIncomes);
     wire<AccountTransfer>('transfers', 'transfers', setTransfers);
     wire<CreditCard>('cards', 'cards', setCards);
+    wire<CardInvoicePayment>('cardPayments', 'cardPayments', setCardPayments);
     wire<ContactPerson>('contacts', 'contacts', setContacts);
     wire<RecurringBill>('recurring', 'recurring', setRecurringBills);
     wire<FinancialGoal>('goals', 'goals', setGoals);
@@ -186,6 +193,38 @@ export function useCompanyData(companyId: string | null) {
     return () => unsubs.forEach((unsubscribe) => unsubscribe());
   }, [companyId]);
 
+  const effectiveExpenses = useMemo(() => invoiceExpenses(expenses, cards, cardPayments), [expenses, cards, cardPayments]);
+
+  const payCardInvoice = useCallback(async (cardId: string, dueDate: string, accountId: string, paymentDate: string) => {
+    if (!companyId) throw new Error('Selecione uma empresa.');
+    if (!accounts.some(a=>a.id===accountId)) throw new Error('Selecione a conta de pagamento.');
+    if (!validCalendarDate(paymentDate) || paymentDate > localToday()) throw new Error('Informe a data real do pagamento, até hoje.');
+    const id = 'invoice-' + cardId + '-' + dueDate;
+    if (paymentLocks.current.has(id)) throw new Error('Pagamento em andamento.');
+    paymentLocks.current.add(id);
+    try {
+      // Read the current ledger before committing one immutable payment record.
+      const [storedExpenses, storedPayments] = await Promise.all([
+        loadCompanySubcollection<Expense>(companyId,'expenses'),
+        loadCompanySubcollection<CardInvoicePayment>(companyId,'cardPayments'),
+      ]);
+
+      const current = invoiceExpenses(storedExpenses,cards,storedPayments);
+      const invoice = getCardInvoices(cardId,current).find(i=>i.dueDate===dueDate);
+      if (!invoice || invoice.amount<=0) throw new Error('Não há saldo em aberto nesta fatura.');
+      const expenseIds=invoice.items.map(e=>e.id).sort();
+      const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(expenseIds)));
+      const paymentId=id+'-'+Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+      const payment: CardInvoicePayment = {id:paymentId,cardId,dueDate,accountId,paymentDate,amount:invoice.amount,expenseIds,createdAt:Date.now()};
+      // Single insert: failure leaves both debt and cash balance unchanged.
+      await createCompanyDoc(companyId,'cardPayments',payment.id,payment);
+      const next=[...storedPayments,payment];
+      setCardPayments(next);
+      persistLocal('cardPayments',next);
+      return payment;
+    } finally { paymentLocks.current.delete(id); }
+  },[companyId,accounts,cards]);
+
   const makeId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
   const saveExpense = useCallback(async (data: Omit<Expense, 'id' | 'createdAt'>, expenseId?: string) => {
@@ -195,7 +234,20 @@ export function useCompanyData(companyId: string | null) {
       const id = expenseId || makeId('exp');
       const original = expenseId ? expenses.find(v => v.id === id) : undefined;
       if (expenseId && !original) throw new Error('Esta despesa não foi encontrada. Atualize a lista antes de editar.');
-      const item: Expense = { ...original, ...data, id, createdAt: original?.createdAt ?? Date.now() };
+      if (cardPayments.some(p=>p.expenseIds.includes(id))) throw new Error('Esta compra pertence a uma fatura paga e não pode ser alterada.');
+      let normalized = {...data};
+      if (data.paymentMethod === 'credit_card') {
+        const card=cards.find(c=>c.id===data.cardId);
+        if(!card) throw new Error('Selecione um cartão válido.');
+        if(isSettled(data.status)) throw new Error('Registre o pagamento em Cadastros → Cartões → Pagar fatura.');
+        const purchaseDate=data.date;
+        const due=invoiceDueDate(card,purchaseDate);
+
+        normalized={...data,purchaseDate,invoiceDueDate:due,date:due,accountId:undefined,settlementDate:undefined,cardInvoicePaymentId:undefined};
+      } else {
+        normalized={...data,purchaseDate:undefined,invoiceDueDate:undefined,cardInvoicePaymentId:undefined};
+      }
+      const item: Expense = { ...original, ...normalized, id, createdAt: original?.createdAt ?? Date.now() };
 
       if (original) await updateCompanyDoc(companyId, 'expenses', id, item, original);
       else await saveCompanyDoc(companyId, 'expenses', id, item);
@@ -214,9 +266,10 @@ export function useCompanyData(companyId: string | null) {
       setLastError(message);
       throw error;
     }
-  }, [companyId, expenses]);
+  }, [companyId, expenses, cards, cardPayments]);
 
   const deleteExpense = useCallback(async (id: string) => {
+    if(cardPayments.some(p=>p.expenseIds.includes(id))) throw new Error('Não é possível excluir uma compra de fatura paga.');
     if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');
 
     await deleteCompanyDoc(companyId, 'expenses', id);
@@ -226,7 +279,7 @@ export function useCompanyData(companyId: string | null) {
       return next;
     });
 
-  }, [companyId]);
+  }, [companyId, cardPayments]);
 
   const saveIncome = useCallback(async (data: Omit<Income, 'id' | 'createdAt'>, incomeId?: string) => {
     if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');
@@ -315,6 +368,7 @@ export function useCompanyData(companyId: string | null) {
   }, [companyId, treasuries]);
 
   const deleteAccount = useCallback(async (id: string) => {
+    if(cardPayments.some(p=>p.accountId===id)) throw new Error('Esta conta possui pagamentos de faturas. Preserve-a para manter o histórico.');
     if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');
 
     await deleteCompanyDoc(companyId, 'accounts', id);
@@ -324,7 +378,7 @@ export function useCompanyData(companyId: string | null) {
       return next;
     });
 
-  }, [companyId]);
+  }, [companyId, cardPayments]);
 
   const saveCard = useCallback(async (data: Omit<CreditCard, 'id'>, cardId?: string) => {
     if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');
@@ -342,6 +396,7 @@ export function useCompanyData(companyId: string | null) {
   }, [companyId]);
 
   const deleteCard = useCallback(async (id: string) => {
+    if(cardPayments.some(p=>p.cardId===id) || expenses.some(e=>e.cardId===id) || recurringBills.some(b=>b.cardId===id)) throw new Error('Este cartão possui compras, assinaturas ou faturas. Preserve o cadastro.');
     if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');
 
     await deleteCompanyDoc(companyId, 'cards', id);
@@ -351,7 +406,7 @@ export function useCompanyData(companyId: string | null) {
       return next;
     });
 
-  }, [companyId]);
+  }, [companyId, cardPayments, expenses, recurringBills]);
 
   const saveContact = useCallback(async (data: Omit<ContactPerson, 'id' | 'createdAt'>, contactId?: string) => {
     if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');
@@ -658,6 +713,8 @@ export function useCompanyData(companyId: string | null) {
     setAccounts(cleanAccounts);
     setTreasuries([]);
     setCards([]);
+    setCardPayments([]);
+    persistLocal('cardPayments', []);
     setContacts([]);
     setRecurringBills([]);
     setGoals([]);
@@ -677,7 +734,9 @@ export function useCompanyData(companyId: string | null) {
   }, [companyId]);
 
   return {
-    expenses,
+    expenses: effectiveExpenses,
+    cardPayments,
+    payCardInvoice,
     categories,
     budgets,
     accounts,
