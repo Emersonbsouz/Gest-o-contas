@@ -228,7 +228,7 @@ export function useCompanyData(companyId: string | null) {
       });
       const expenseIds=allocations.map(a=>a.expenseId);
       // Unique ledger-version key prevents concurrent payments from the same snapshot.
-      const ledgerVersion=storedPayments.filter(p=>p.cardId===cardId && p.dueDate===dueDate).map(p=>p.id).sort();
+      const ledgerVersion=storedPayments.filter(p=>p.cardId===cardId && p.dueDate===dueDate).map(p=>p.id+':'+(p.updatedAt||p.createdAt)+':'+(p.status||'active')).sort();
       const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(ledgerVersion)));
       const paymentId=id+'-'+Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
       const payment: CardInvoicePayment = {id:paymentId,cardId,dueDate,accountId,paymentDate,amount:amountCents/100,expenseIds,allocations,createdAt:Date.now()};
@@ -240,6 +240,46 @@ export function useCompanyData(companyId: string | null) {
       return payment;
     } finally { paymentLocks.current.delete(id); }
   },[companyId,accounts,cards]);
+
+  const changeCardPayment = useCallback(async (paymentId:string, patch?:{amount:number;accountId:string;paymentDate:string}) => {
+    if(!companyId)throw new Error('Selecione uma empresa.');
+    const local=cardPayments.find(p=>p.id===paymentId);
+    if(!local)throw new Error('Pagamento não encontrado.');
+    const lock='invoice-'+local.cardId+'-'+local.dueDate;
+    if(paymentLocks.current.has(lock))throw new Error('Operação de fatura em andamento.');
+    paymentLocks.current.add(lock);
+    try {
+      const [storedExpenses,storedPayments]=await Promise.all([
+        loadCompanySubcollection<Expense>(companyId,'expenses'),
+        loadCompanySubcollection<CardInvoicePayment>(companyId,'cardPayments'),
+      ]);
+      const original=storedPayments.find(p=>p.id===paymentId);
+      if(!original || original.status==='cancelled')throw new Error('O pagamento já foi cancelado ou não existe. Atualize o histórico.');
+      const now=Date.now();
+      const revision={at:now,action:patch?'edit' as const:'cancel' as const,amount:original.amount,accountId:original.accountId,paymentDate:original.paymentDate,allocations:original.allocations};
+      let updated:CardInvoicePayment={...original,updatedAt:now,revisions:[...(original.revisions||[]),revision]};
+      if(!patch) updated={...updated,status:'cancelled',cancelledAt:now};
+      else {
+        if(!accounts.some(a=>a.id===patch.accountId))throw new Error('Selecione uma conta válida.');
+        if(!validCalendarDate(patch.paymentDate)||patch.paymentDate>localToday())throw new Error('Informe uma data de pagamento válida, até hoje.');
+        const amount=Math.round(patch.amount*100);
+        if(!Number.isFinite(patch.amount)||amount<=0)throw new Error('Informe um valor de pagamento maior que zero.');
+        const restored=storedExpenses.map(e=>original.expenseIds.includes(e.id)?{...e,status:'pending' as const,invoiceDueDate:original.dueDate}:e);
+        const effective=invoiceExpenses(restored,cards,storedPayments.filter(p=>p.id!==original.id));
+        const selected=getCardInvoices(original.cardId,effective).find(i=>i.dueDate===original.dueDate)?.items.filter(e=>original.expenseIds.includes(e.id)).sort((a,b)=>(a.purchaseDate||a.date).localeCompare(b.purchaseDate||b.date)||a.id.localeCompare(b.id))||[];
+        const available=selected.reduce((n,e)=>n+Math.round(e.amount*100),0);
+        if(amount>available)throw new Error('O pagamento ultrapassa o saldo disponível das despesas vinculadas.');
+        let rest=amount;
+        const allocations=selected.flatMap(e=>{const value=Math.min(rest,Math.round(e.amount*100));rest-=value;return value>0?[{expenseId:e.id,amount:value/100}]:[];});
+        updated={...updated,...patch,amount:amount/100,allocations,status:'active'};
+        // Keep the original selection so later corrections can allocate its remaining balance.
+      }
+      await updateCompanyDoc(companyId,'cardPayments',original.id,updated,original);
+      const next=storedPayments.map(p=>p.id===updated.id?updated:p);
+      setCardPayments(next);persistLocal('cardPayments',next);
+      return updated;
+    } finally {paymentLocks.current.delete(lock);}
+  },[companyId,accounts,cards,cardPayments]);
 
   const makeId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -257,7 +297,7 @@ export function useCompanyData(companyId: string | null) {
         if(!card) throw new Error('Selecione um cartão válido.');
 
         const purchaseDate=data.date;
-        const relatedPayment=original && cardPayments.find(p=>p.expenseIds.includes(original.id));
+        const relatedPayment=original && cardPayments.find(p=>p.status!=='cancelled' && p.expenseIds.includes(original.id));
         const due=relatedPayment ? original!.invoiceDueDate || relatedPayment.dueDate : original?.purchaseDate===purchaseDate && original.invoiceDueDate ? original.invoiceDueDate : invoiceDueDate(card,purchaseDate);
 
         normalized={...data,purchaseStatus:data.status,status:isSettled(data.status)?'pending':data.status,purchaseDate,invoiceDueDate:due,date:due,accountId:undefined,settlementDate:undefined,cardInvoicePaymentId:undefined};
@@ -286,7 +326,7 @@ export function useCompanyData(companyId: string | null) {
   }, [companyId, expenses, cards, cardPayments]);
 
   const deleteExpense = useCallback(async (id: string) => {
-    if(cardPayments.some(p=>p.expenseIds.includes(id))) throw new Error('Não é possível excluir uma compra de fatura paga.');
+    if(cardPayments.some(p=>p.status!=='cancelled' && p.expenseIds.includes(id))) throw new Error('Não é possível excluir uma compra de fatura paga.');
     if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');
 
     await deleteCompanyDoc(companyId, 'expenses', id);
@@ -755,6 +795,8 @@ export function useCompanyData(companyId: string | null) {
     getExpenseForEditing: (id:string) => expenses.find(e=>e.id===id),
     cardPayments,
     payCardInvoice,
+    cancelCardPayment: (id:string) => changeCardPayment(id),
+    updateCardPayment: (id:string,patch:{amount:number;accountId:string;paymentDate:string}) => changeCardPayment(id,patch),
     categories,
     budgets,
     accounts,

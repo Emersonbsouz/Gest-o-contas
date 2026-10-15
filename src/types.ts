@@ -213,6 +213,10 @@ export interface CardPaymentSelection {
 }
 
 export interface CardInvoicePayment {
+  status?: 'active' | 'cancelled';
+  updatedAt?: number;
+  cancelledAt?: number;
+  revisions?: Array<{at:number;action:'edit'|'cancel';amount:number;accountId:string;paymentDate:string;allocations?:Array<{expenseId:string;amount:number}>}>;
   allocations?: Array<{expenseId: string; amount: number}>;
   id: string;
   cardId: string;

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { useCompanyData } from './useCompanyData';
 import { calculateAccountBalances } from '../utils/treasuryHelpers';
 import { getCardSummary } from '../utils/cardSummary';
-const db=vi.hoisted(()=>({rows:new Map<string,any[]>(),insert:vi.fn()}));
+const db=vi.hoisted(()=>({rows:new Map<string,any[]>(),insert:vi.fn(),update:vi.fn()}));
 vi.mock('../services/companyService',()=>({
  subscribeToCompanySubcollection:vi.fn((company:string,collection:string,onRead:(v:any[])=>void)=>{onRead(db.rows.get(collection)||[]);return ()=>{};}),
  loadCompanySubcollection:vi.fn(async (_company:string,collection:string)=>db.rows.get(collection)||[]),
@@ -15,10 +15,16 @@ vi.mock('../services/companyService',()=>({
   if(rows.some(r=>r.id===id))throw Error('Duplicado');
   db.rows.set(collection,[...rows,payload]);
  }),
- saveCompanyDoc:vi.fn(),updateCompanyDoc:vi.fn(),deleteCompanyDoc:vi.fn(),clearCompanyData:vi.fn(),
+ saveCompanyDoc:vi.fn(),updateCompanyDoc:vi.fn(async (_company:string,collection:string,id:string,payload:any,original:any)=>{
+ await db.update();
+ const rows=db.rows.get(collection)||[];
+ const index=rows.findIndex(r=>r.id===id);
+ if(index<0 || JSON.stringify(rows[index])!==JSON.stringify(original))throw new Error('Conflito');
+ db.rows.set(collection,rows.map(r=>r.id===id?payload:r));
+ }),deleteCompanyDoc:vi.fn(),clearCompanyData:vi.fn(),
 }));
 beforeEach(()=>{
- vi.clearAllMocks();localStorage.clear();db.rows.clear();db.insert.mockResolvedValue(undefined);vi.stubGlobal('crypto',webcrypto);
+ vi.clearAllMocks();localStorage.clear();db.rows.clear();db.insert.mockResolvedValue(undefined);db.update.mockResolvedValue(undefined);vi.stubGlobal('crypto',webcrypto);
  db.rows.set('accounts',[{id:'bank',name:'Banco',type:'checking',initialBalance:1000,color:'#000'}]);
  db.rows.set('cards',[{id:'card',name:'Cartão',brand:'visa',limit:1000,closingDay:25,dueDay:5,color:'#000'}]);
  db.rows.set('expenses',[{id:'e',description:'Compra',amount:100,date:'2026-10-10',categoryId:'food',paymentMethod:'credit_card',cardId:'card',status:'pending',createdAt:1}]);
@@ -116,4 +122,58 @@ test('editing paid purchase value retains settled amount and adds only the diffe
  expect(getCardSummary('card',result.current.expenses,[]).outstanding).toBe(20);
  expect(calculateAccountBalances(result.current.accounts,[],result.current.expenses,[]).bank).toBe(900);
  await expect(result.current.saveExpense({...original,date:original.purchaseDate||original.date,amount:80},'e')).rejects.toThrow('abaixo');
+});
+
+test('cancel a paid invoice reopens original expenses, restores cash, preserves audit and permits paying again',async()=>{
+ const {result}=renderHook(()=>useCompanyData('company'));
+ await waitFor(()=>expect(result.current.cards).toHaveLength(1));
+ await act(async()=>{await result.current.payCardInvoice('card','2026-11-05','bank','2026-10-10');});
+ const id=result.current.cardPayments[0].id;
+ await act(async()=>{await result.current.cancelCardPayment(id);});
+ expect(result.current.cardPayments).toHaveLength(1);
+ expect(result.current.cardPayments[0].status).toBe('cancelled');
+ expect(result.current.cardPayments[0].revisions?.[0].action).toBe('cancel');
+ expect(result.current.expenses).toHaveLength(1);
+ expect(result.current.expenses[0].id).toBe('e');
+ expect(result.current.expenses[0].status).toBe('pending');
+ expect(getCardSummary('card',result.current.expenses,[]).outstanding).toBe(100);
+ expect(calculateAccountBalances(result.current.accounts,[],result.current.expenses,[]).bank).toBe(1000);
+ await expect(result.current.cancelCardPayment(id)).rejects.toThrow('já foi cancelado');
+ await act(async()=>{await result.current.payCardInvoice('card','2026-11-05','bank','2026-10-10');});
+ expect(result.current.cardPayments).toHaveLength(2);
+ expect(getCardSummary('card',result.current.expenses,[]).outstanding).toBe(0);
+ expect(calculateAccountBalances(result.current.accounts,[],result.current.expenses,[]).bank).toBe(900);
+});
+test('cancelling one partial payment leaves the other valid payment applied',async()=>{
+ const {result}=renderHook(()=>useCompanyData('company'));
+ await waitFor(()=>expect(result.current.cards).toHaveLength(1));
+ await act(async()=>{await result.current.payCardInvoice('card','2026-11-05','bank','2026-10-10',{expenseIds:['e'],amount:40});});
+ const first=result.current.cardPayments[0].id;
+ await act(async()=>{await result.current.payCardInvoice('card','2026-11-05','bank','2026-10-10',{expenseIds:['e'],amount:60});});
+ await act(async()=>{await result.current.cancelCardPayment(first);});
+ expect(getCardSummary('card',result.current.expenses,[]).outstanding).toBe(40);
+ expect(calculateAccountBalances(result.current.accounts,[],result.current.expenses,[]).bank).toBe(940);
+});
+test('payment correction recalculates amount and account without duplicating expenses',async()=>{
+ db.rows.get('accounts')!.push({...db.rows.get('accounts')![0],id:'other'});
+ const {result}=renderHook(()=>useCompanyData('company'));
+ await waitFor(()=>expect(result.current.cards).toHaveLength(1));
+ await act(async()=>{await result.current.payCardInvoice('card','2026-11-05','bank','2026-10-10');});
+ const id=result.current.cardPayments[0].id;
+ await act(async()=>{await result.current.updateCardPayment(id,{amount:30,accountId:'other',paymentDate:'2026-10-11'});});
+ expect(getCardSummary('card',result.current.expenses,[]).outstanding).toBe(70);
+ expect(result.current.expenses.reduce((n,e)=>n+e.amount,0)).toBe(100);
+ expect(calculateAccountBalances(result.current.accounts,[],result.current.expenses,[])).toEqual({bank:1000,other:970});
+ expect(result.current.cardPayments[0].revisions?.[0].amount).toBe(100);
+ await expect(result.current.updateCardPayment(id,{amount:101,accountId:'other',paymentDate:'2026-10-11'})).rejects.toThrow('ultrapassa');
+});
+test('failed cancellation does not change any ledger balance',async()=>{
+ const {result}=renderHook(()=>useCompanyData('company'));
+ await waitFor(()=>expect(result.current.cards).toHaveLength(1));
+ await act(async()=>{await result.current.payCardInvoice('card','2026-11-05','bank','2026-10-10');});
+ db.update.mockRejectedValueOnce(new Error('Falha de gravação'));
+ await act(async()=>{await expect(result.current.cancelCardPayment(result.current.cardPayments[0].id)).rejects.toThrow('Falha de gravação');});
+ expect(getCardSummary('card',result.current.expenses,[]).outstanding).toBe(0);
+ expect(calculateAccountBalances(result.current.accounts,[],result.current.expenses,[]).bank).toBe(900);
+ expect(result.current.cardPayments[0].status).not.toBe('cancelled');
 });

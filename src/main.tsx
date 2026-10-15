@@ -12,6 +12,7 @@ if (import.meta.env.DEV) {
   document.body.prepend(notice);
 }
 
+function renderApp(){
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
@@ -21,3 +22,8 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </StrictMode>,
 );
+
+}
+if(import.meta.env.DEV && new URLSearchParams(window.location.search).has('demo')){
+ import('./data/loadLocalDemo').then(m=>{m.loadLocalDemo();renderApp();});
+}else{renderApp();}

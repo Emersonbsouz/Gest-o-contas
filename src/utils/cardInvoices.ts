@@ -32,7 +32,7 @@ export function invoiceExpenses(expenses: Expense[], cards: CreditCard[], paymen
     const card=cards.find(c=>c.id===e.cardId);
     const due=e.invoiceDueDate || (card && !isSettled(e.status) ? invoiceDueDate(card,e.purchaseDate || e.date) : e.date);
     const base={...e,purchaseDate:e.purchaseDate || e.date,invoiceDueDate:due,date:due};
-    const allocations=payments.filter(p=>p.cardId===e.cardId).flatMap(p=>{
+    const allocations=payments.filter(p=>p.status!=='cancelled' && p.cardId===e.cardId).flatMap(p=>{
       const value=p.allocations ? p.allocations.filter(a=>a.expenseId===e.id).reduce((n,a)=>n+cents(a.amount),0) : p.expenseIds.includes(e.id) ? cents(e.amount) : 0;
       return value>0 ? [{payment:p,value}] : [];
     });
@@ -60,7 +60,7 @@ export function getCardInvoices(cardId: string, expenses: Expense[]) {
 }
 
 export function validatePaidPurchaseEdit(original:Expense, data:Omit<Expense,'id'|'createdAt'>, payments:CardInvoicePayment[]) {
-  const related=payments.filter(p=>p.expenseIds.includes(original.id));
+  const related=payments.filter(p=>p.status!=='cancelled' && p.expenseIds.includes(original.id));
   if(!related.length)return;
   if(data.cardId!==original.cardId || data.paymentMethod!==original.paymentMethod || data.date!==(original.purchaseDate||original.date)) {
     throw new Error('Esta compra já tem pagamento de fatura. Preserve o cartão, o meio de pagamento e a data da compra.');
@@ -71,4 +71,17 @@ export function validatePaidPurchaseEdit(original:Expense, data:Omit<Expense,'id
   if(hasLegacy && cents(data.amount)!==cents(original.amount))throw new Error('Este pagamento antigo não possui rateio por compra. Você pode editar os dados do cadastro, mantendo o valor.');
   const paid=related.reduce((total,p)=>total+(p.allocations?.filter(a=>a.expenseId===original.id).reduce((n,a)=>n+cents(a.amount),0)||0),0);
   if(cents(data.amount)<paid)throw new Error('O valor da compra não pode ficar abaixo do valor já pago na fatura.');
+}
+
+export function getInvoiceHistory(cardId:string, expenses:Expense[], today:string) {
+  const groups=new Map<string,Expense[]>();
+  expenses.filter(e=>e.cardId===cardId && e.paymentMethod==='credit_card' && !['draft','cancelled','CANCELADO','rejected'].includes(e.status||'')).forEach(e=>{
+    const date=e.invoiceDueDate||e.date;groups.set(date,[...(groups.get(date)||[]),e]);
+  });
+  return [...groups].sort(([a],[b])=>b.localeCompare(a)).map(([dueDate,items])=>{
+    const total=items.reduce((n,e)=>n+Math.round(e.amount*100),0);
+    const paid=items.filter(e=>isSettled(e.status)).reduce((n,e)=>n+Math.round(e.amount*100),0);
+    const remaining=total-paid;
+    return {dueDate,total:total/100,paid:paid/100,remaining:remaining/100,status:remaining<=0?'paid':dueDate<today?'overdue':'open'};
+  });
 }

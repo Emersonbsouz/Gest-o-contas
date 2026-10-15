@@ -1,14 +1,16 @@
 
 import React, { useState } from 'react';
 import type { CreditCard, Expense, TreasuryAccount, CardInvoicePayment, CardPaymentSelection } from '../types';
-import { getCardInvoices } from '../utils/cardInvoices';
+import { getCardInvoices, getInvoiceHistory } from '../utils/cardInvoices';
 import { localToday } from '../utils/dailyCash';
 import { formatCurrency, formatDateBR } from '../utils/formatters';
 interface Props {
  card: CreditCard; expenses: Expense[]; accounts: TreasuryAccount[]; payments: CardInvoicePayment[];
+ onCancelPayment?:(id:string)=>Promise<void>;
+ onUpdatePayment?:(id:string,patch:{amount:number;accountId:string;paymentDate:string})=>Promise<void>;
  onPay?: (cardId:string,dueDate:string,accountId:string,paymentDate:string,selection?:CardPaymentSelection)=>Promise<void>;
 }
-export function CardInvoicePanel({card,expenses,accounts,payments,onPay}:Props) {
+export function CardInvoicePanel({card,expenses,accounts,payments,onPay,onCancelPayment,onUpdatePayment}:Props) {
  const invoices=getCardInvoices(card.id,expenses);
  const [selected,setSelected]=useState<string|null>(null);
  const [ids,setIds]=useState<string[]>([]);
@@ -17,6 +19,14 @@ export function CardInvoicePanel({card,expenses,accounts,payments,onPay}:Props) 
  const [date,setDate]=useState(localToday());
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
+ const [historyError,setHistoryError]=useState('');
+ const [historyFilter,setHistoryFilter]=useState('all');
+ const [editing,setEditing]=useState<string|null>(null);
+ const [editAmount,setEditAmount]=useState('');
+ const [editAccount,setEditAccount]=useState('');
+ const [editDate,setEditDate]=useState('');
+ const cycles=getInvoiceHistory(card.id,expenses,localToday());
+ const shownCycles=cycles.filter(c=>historyFilter==='all'||c.status===historyFilter);
  const invoice=invoices.find(i=>i.dueDate===selected);
  const selectedTotal=invoice?.items.filter(e=>ids.includes(e.id)).reduce((n,e)=>n+Math.round(e.amount*100),0) || 0;
  const value=Number(amount.replace(',','.'));
@@ -59,6 +69,41 @@ export function CardInvoicePanel({card,expenses,accounts,payments,onPay}:Props) 
      {error && <p role="alert" className="text-rose-700">{error}</p>}
      <div className="flex gap-2"><button type="submit" disabled={busy||!accountId||!ids.length} className="rounded bg-emerald-700 p-2 text-white font-bold">{busy?'Registrando...':partial?'Confirmar pagamento parcial':'Confirmar pagamento integral'}</button><button type="button" disabled={busy} onClick={()=>setSelected(null)}>Cancelar</button></div>
    </form>}
-   {history.length>0 && <details><summary className="cursor-pointer font-bold">Histórico de pagamentos da fatura</summary>{history.map(p=><div key={p.id} className="py-2 border-b"><p>Fatura {formatDateBR(p.dueDate)} · Pago {formatCurrency(p.amount)}</p><p>Em {formatDateBR(p.paymentDate)} · {accounts.find(a=>a.id===p.accountId)?.name || 'Conta removida'}</p></div>)}</details>}
+   <section aria-label="Histórico de faturas" className="border-t pt-4 space-y-3">
+     <h4 className="font-bold">Histórico de faturas</h4>
+     <label className="block text-xs">Visualizar faturas<select aria-label="Filtrar histórico de faturas" value={historyFilter} onChange={e=>setHistoryFilter(e.target.value)} className="ml-2 rounded border p-2"><option value="all">Todas</option><option value="overdue">Vencidas em aberto</option><option value="paid">Pagas</option><option value="open">A vencer</option></select></label>
+     {shownCycles.map(c=><div key={c.dueDate} className="p-3 rounded-lg border bg-slate-50 text-xs"><strong>Fatura de {formatDateBR(c.dueDate)}</strong><p>{c.status==='paid'?'Paga':c.status==='overdue'?'Vencida':'A vencer'}{c.paid>0 && c.remaining>0?' · Parcialmente paga':''}</p><p>Total {formatCurrency(c.total)} · Pago {formatCurrency(c.paid)} · Em aberto {formatCurrency(c.remaining)}</p></div>)}
+     {shownCycles.length===0 && <p className="text-xs text-slate-500">Nenhuma fatura neste filtro.</p>}
+   </section>
+   {history.length>0 && <section aria-label="Pagamentos registrados" className="space-y-3 border-t pt-4">
+     <h4 className="font-bold">Histórico de pagamentos da fatura</h4>
+     {historyError && <p role="alert" className="text-rose-700">{historyError}</p>}
+     {history.map(p=><article key={p.id} className="p-3 rounded-lg border text-xs space-y-2">
+       <p className="font-bold">Fatura {formatDateBR(p.dueDate)} · {formatCurrency(p.amount)} · {p.status==='cancelled'?'Pagamento cancelado':'Pagamento registrado'}</p>
+       <p>Em {formatDateBR(p.paymentDate)} · {accounts.find(a=>a.id===p.accountId)?.name||'Conta removida'}</p>
+       {p.status==='cancelled' && <p className="text-amber-800">Cancelamento registrado. Este pagamento não baixa mais as despesas nem o saldo da conta.</p>}
+       {p.status!=='cancelled' && <div className="flex gap-2">
+         {onUpdatePayment && <button type="button" disabled={busy} className="p-2 bg-indigo-50 text-indigo-700 rounded font-bold" onClick={()=>{setEditing(p.id);setEditAmount(p.amount.toFixed(2));setEditAccount(p.accountId);setEditDate(p.paymentDate);setHistoryError('');}}>Modificar pagamento</button>}
+         {onCancelPayment && <button type="button" disabled={busy} className="p-2 bg-rose-50 text-rose-700 rounded font-bold" onClick={async()=>{
+           if(!window.confirm('Cancelar este pagamento registrado? As despesas correspondentes voltarão a ficar em aberto, o limite será recomprometido e a saída será desfeita no saldo da conta. Isso não estorna dinheiro no banco.'))return;
+           setBusy(true);setHistoryError('');
+           try{await onCancelPayment(p.id);if(editing===p.id)setEditing(null);}catch(err){setHistoryError(err instanceof Error?err.message:'Falha ao cancelar.');}finally{setBusy(false);}
+         }}>Cancelar pagamento</button>}
+       </div>}
+       {editing===p.id && p.status!=='cancelled' && onUpdatePayment && <form className="p-3 bg-indigo-50 rounded space-y-2" onSubmit={async e=>{
+         e.preventDefault();if(busy)return;setBusy(true);setHistoryError('');
+         try{await onUpdatePayment(p.id,{amount:Number(editAmount.replace(',','.')),accountId:editAccount,paymentDate:editDate});setEditing(null);}catch(err){setHistoryError(err instanceof Error?err.message:'Falha ao corrigir.');}finally{setBusy(false);}
+       }}>
+         <p>Corrigir o registro recalcula o saldo em aberto e o valor descontado da conta. O cartão e o vencimento desta fatura são preservados.</p>
+         <label className="block">Valor corrigido<input aria-label="Valor corrigido do pagamento" inputMode="decimal" required value={editAmount} onChange={e=>setEditAmount(e.target.value)} className="block border rounded p-2"/></label>
+         <label className="block">Conta de saída<select aria-label="Conta corrigida do pagamento" value={editAccount} onChange={e=>setEditAccount(e.target.value)} className="block border rounded p-2">{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
+         <label className="block">Data corrigida<input aria-label="Data corrigida do pagamento" type="date" required max={localToday()} value={editDate} onChange={e=>setEditDate(e.target.value)} className="block border rounded p-2"/></label>
+         <button type="submit" disabled={busy} className="bg-indigo-700 text-white rounded p-2">Salvar correção</button>
+         <button type="button" disabled={busy} onClick={()=>setEditing(null)} className="p-2">Fechar edição</button>
+       </form>}
+       {!!p.revisions?.length && <details><summary className="cursor-pointer">Alterações anteriores ({p.revisions.length})</summary>{p.revisions.map((r,index)=><p key={index}>Antes de {r.action==='cancel'?'cancelar':'modificar'}: {formatCurrency(r.amount)} · {formatDateBR(r.paymentDate)} · {accounts.find(a=>a.id===r.accountId)?.name||r.accountId}</p>)}</details>}
+     </article>)}
+   </section>}
+
  </div>;
 }

@@ -40,3 +40,19 @@ test('select all recalculates totals and partial amount is submitted with select
  fireEvent.click(screen.getByRole('button',{name:'Confirmar pagamento parcial'}));
  await waitFor(()=>expect(pay).toHaveBeenCalledWith('c','2026-11-05','bank',localToday(),{expenseIds:['e'],amount:40,expectedBalance:100}));
 });
+
+test('paid invoice history offers cancellation and correcting the payment amount',async()=>{
+ const cancel=vi.fn().mockResolvedValue(undefined);const update=vi.fn().mockResolvedValue(undefined);
+ const confirm=vi.spyOn(window,'confirm').mockReturnValue(true);
+ const payment={id:'p',cardId:'c',dueDate:'2026-11-05',paymentDate:'2026-10-10',accountId:'bank',amount:100,expenseIds:['e'],createdAt:1};
+ render(<CardInvoicePanel card={card} expenses={[{...expenses[0],status:'paid'}]} accounts={accounts} payments={[payment]} onCancelPayment={cancel} onUpdatePayment={update}/>);
+ fireEvent.change(screen.getByLabelText('Filtrar histórico de faturas'),{target:{value:'paid'}});
+ expect(screen.getByText('Paga')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Modificar pagamento'}));
+ fireEvent.change(screen.getByLabelText('Valor corrigido do pagamento'),{target:{value:'40'}});
+ fireEvent.click(screen.getByRole('button',{name:'Salvar correção'}));
+ await waitFor(()=>expect(update).toHaveBeenCalledWith('p',{amount:40,accountId:'bank',paymentDate:'2026-10-10'}));
+ fireEvent.click(screen.getByRole('button',{name:'Cancelar pagamento'}));
+ await waitFor(()=>expect(cancel).toHaveBeenCalledWith('p'));
+ confirm.mockRestore();
+});
