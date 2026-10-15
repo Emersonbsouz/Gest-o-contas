@@ -1,6 +1,6 @@
 
 import { expect, test } from 'vitest';
-import { invoiceDueDate, invoiceExpenses, getCardInvoices, validatePaidPurchaseEdit } from './cardInvoices';
+import { invoiceDueDate, invoiceExpenses, getCardInvoices, validatePaidPurchaseEdit, getInvoiceHistory } from './cardInvoices';
 import { getCardSummary } from './cardSummary';
 import { calculateAccountBalances } from './treasuryHelpers';
 import type { CreditCard, Expense, CardInvoicePayment } from '../types';
@@ -76,4 +76,14 @@ test('paid purchase metadata may change while settled allocations remain protect
  expect(()=>validatePaidPurchaseEdit(original,{...data,status:'cancelled'},[payment])).toThrow('cancelar');
  expect(()=>validatePaidPurchaseEdit(original,{...data,amount:120},[{...payment,allocations:undefined}])).toThrow('pagamento antigo');
  expect(()=>validatePaidPurchaseEdit(original,data,[{...payment,allocations:undefined}])).not.toThrow();
+});
+
+test('cancelled payment restores the invoice and overdue history, keeping category totals unchanged',()=>{
+ const purchase=buy('a','2026-10-10',100);
+ const payment:CardInvoicePayment={id:'p',cardId:'card',dueDate:'2026-11-05',paymentDate:'2026-11-05',accountId:'bank',amount:100,expenseIds:['a'],allocations:[{expenseId:'a',amount:100}],createdAt:1};
+ expect(getInvoiceHistory('card',invoiceExpenses([purchase],[card],[payment]),'2026-12-01')[0]).toMatchObject({status:'paid',paid:100,remaining:0});
+ const restored=invoiceExpenses([purchase],[card],[{...payment,status:'cancelled'}]);
+ expect(getInvoiceHistory('card',restored,'2026-12-01')[0]).toMatchObject({status:'overdue',paid:0,remaining:100});
+ expect(restored).toHaveLength(1);
+ expect(()=>validatePaidPurchaseEdit(purchase,{...purchase,date:'2026-10-11',amount:50},[{...payment,status:'cancelled'}])).not.toThrow();
 });

@@ -165,6 +165,8 @@ export default function App() {
     recurringBills,
     cardPayments,
     payCardInvoice,
+    cancelCardPayment,
+    updateCardPayment,
     getExpenseForEditing,
     goals,
     costCenters,
@@ -449,7 +451,7 @@ export default function App() {
   };
 
   const handleDeleteExpense = async (expenseId: string) => {
-    if(expenses.find(e=>e.id===expenseId)?.cardInvoicePaymentId || cardPayments.some(p=>p.expenseIds.includes(expenseId))){alert('Não é possível excluir uma compra com pagamento de fatura registrado.');return;}
+    if(expenses.find(e=>e.id===expenseId)?.cardInvoicePaymentId || cardPayments.some(p=>p.status!=='cancelled' && p.expenseIds.includes(expenseId))){alert('Não é possível excluir uma compra com pagamento de fatura registrado.');return;}
     if (!currentUserPermissions.canDeleteTransactions) {
       alert('Você não tem permissão para excluir lançamentos nesta empresa.');
       return;
@@ -1045,6 +1047,8 @@ export default function App() {
           )}
 
           {activeView === 'acompanhamento' && <MonitoringView treasuries={treasuries} equipment={equipment} categories={categories} cards={cards} expenses={expenses} incomes={incomes} recurring={recurringBills} accounts={accounts} transfers={transfers} payments={cardPayments} contacts={contacts} goals={goals} costCenters={costCenters} month={currentYearMonth} canEdit={currentUserPermissions.canEditTransactions}
+            onCancelPayment={async id=>{if(!currentUserPermissions.canEditTransactions)throw new Error('Sem permissão.');await cancelCardPayment(id);}}
+            onUpdatePayment={async (id,patch)=>{if(!currentUserPermissions.canEditTransactions)throw new Error('Sem permissão.');await updateCardPayment(id,patch);}}
             onPay={async (card,due,account,date,selection)=>{if(!currentUserPermissions.canEditTransactions)throw new Error('Sem permissão para pagar faturas.');await payCardInvoice(card,due,account,date,selection);}}
             onTrigger={handleTriggerRecurringBill} onUpdateGoal={handleUpdateGoalAmount} />}
           {activeView === 'cadastros' && (
