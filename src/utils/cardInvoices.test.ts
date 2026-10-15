@@ -1,6 +1,6 @@
 
 import { expect, test } from 'vitest';
-import { invoiceDueDate, invoiceExpenses, getCardInvoices } from './cardInvoices';
+import { invoiceDueDate, invoiceExpenses, getCardInvoices, validatePaidPurchaseEdit } from './cardInvoices';
 import { getCardSummary } from './cardSummary';
 import { calculateAccountBalances } from './treasuryHelpers';
 import type { CreditCard, Expense, CardInvoicePayment } from '../types';
@@ -62,4 +62,18 @@ test('partial payments preserve category totals, unpaid remainder and separate a
  expect(getCardSummary('card',settled,[]).outstanding).toBe(0);
  expect(settled.reduce((n,e)=>n+e.amount,0)).toBe(100);
  expect(calculateAccountBalances([account,{...account,id:'other'}],[],settled,[])).toEqual({bank:970,other:930});
+});
+
+test('paid purchase metadata may change while settled allocations remain protected',()=>{
+ const original={...buy('a','2026-10-10',100),purchaseDate:'2026-10-10',date:'2026-11-05',invoiceDueDate:'2026-11-05'};
+ const payment:CardInvoicePayment={id:'p',cardId:'card',dueDate:'2026-11-05',accountId:'bank',paymentDate:'2026-10-10',amount:40,expenseIds:['a'],allocations:[{expenseId:'a',amount:40}],createdAt:1};
+ const data={...original,date:'2026-10-10',description:'Descrição corrigida'};
+ expect(()=>validatePaidPurchaseEdit(original,data,[payment])).not.toThrow();
+ expect(()=>validatePaidPurchaseEdit(original,{...data,amount:60},[payment])).not.toThrow();
+ expect(()=>validatePaidPurchaseEdit(original,{...data,amount:39.99},[payment])).toThrow('abaixo');
+ expect(()=>validatePaidPurchaseEdit(original,{...data,cardId:'outro'},[payment])).toThrow('Preserve');
+ expect(()=>validatePaidPurchaseEdit(original,{...data,date:'2026-10-11'},[payment])).toThrow('Preserve');
+ expect(()=>validatePaidPurchaseEdit(original,{...data,status:'cancelled'},[payment])).toThrow('cancelar');
+ expect(()=>validatePaidPurchaseEdit(original,{...data,amount:120},[{...payment,allocations:undefined}])).toThrow('pagamento antigo');
+ expect(()=>validatePaidPurchaseEdit(original,data,[{...payment,allocations:undefined}])).not.toThrow();
 });
