@@ -38,6 +38,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'comercial', label: 'Comercial', icon: Briefcase },
     { id: 'projetos', label: 'Projetos', icon: Hammer },
     { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
+    { id: 'acompanhamento', label: 'Acompanhamento', icon: BarChart3 },
     { id: 'cadastros', label: 'Cadastros', icon: Settings },
     { id: 'relatorios', label: 'Relatórios', icon: BarChart3 },
   ];

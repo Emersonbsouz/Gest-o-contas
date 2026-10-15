@@ -46,3 +46,20 @@ test('future installments keep consuming limit after the first invoice is paid',
  expect(getCardSummary('card',effective,[]).outstanding).toBe(200);
  expect(getCardInvoices('card',effective)).toHaveLength(2);
 });
+
+test('partial payments preserve category totals, unpaid remainder and separate account debits',()=>{
+ const purchase={...buy('a','2026-10-10',100),splits:[{id:'s1',costCenterId:'p1',amount:60,categoryId:'food'},{id:'s2',costCenterId:'p2',amount:40,categoryId:'food'}]};
+ const first:CardInvoicePayment={id:'p1',cardId:'card',dueDate:'2026-11-05',accountId:'bank',paymentDate:'2026-10-12',amount:30,expenseIds:['a'],allocations:[{expenseId:'a',amount:30}],createdAt:2};
+ const effective=invoiceExpenses([purchase],[card],[first]);
+ expect(effective.reduce((n,e)=>n+e.amount,0)).toBe(100);
+ expect(getCardSummary('card',effective,[]).outstanding).toBe(70);
+ expect(getCardInvoices('card',effective)[0].amount).toBe(70);
+ expect(effective.reduce((n,e)=>n+(e.splits?.reduce((s,v)=>s+v.amount,0)||0),0)).toBe(100);
+ const account={id:'bank',name:'Bank',type:'checking' as const,initialBalance:1000,color:'#000'};
+ expect(calculateAccountBalances([account],[],effective,[]).bank).toBe(970);
+ const second:CardInvoicePayment={...first,id:'p2',accountId:'other',amount:70,allocations:[{expenseId:'a',amount:70}],createdAt:3};
+ const settled=invoiceExpenses([purchase],[card],[first,second]);
+ expect(getCardSummary('card',settled,[]).outstanding).toBe(0);
+ expect(settled.reduce((n,e)=>n+e.amount,0)).toBe(100);
+ expect(calculateAccountBalances([account,{...account,id:'other'}],[],settled,[])).toEqual({bank:970,other:930});
+});

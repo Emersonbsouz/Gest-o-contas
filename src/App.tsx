@@ -1,3 +1,4 @@
+import { MonitoringView } from './components/MonitoringView';
 import { recurringDate } from './utils/cardSummary';
 import { localToday } from './utils/dailyCash';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -86,7 +87,7 @@ export default function App() {
   const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
 
   // Active View & Month
-  const [activeView, setActiveView] = useState<'dashboard' | 'comercial' | 'projetos' | 'financeiro' | 'cadastros' | 'relatorios'>('dashboard');
+  const [activeView, setActiveView] = useState<'dashboard' | 'comercial' | 'projetos' | 'financeiro' | 'cadastros' | 'acompanhamento' | 'relatorios'>('dashboard');
   const [currentYearMonth, setCurrentYearMonth] = useState<string>(() => getCurrentYearMonth());
 
   // Subscribe to user companies when logged in
@@ -434,6 +435,7 @@ export default function App() {
   };
 
   const handleEditExpense = (expense: Expense) => {
+    if(expense.cardInvoicePaymentId || cardPayments.some(p=>p.expenseIds.includes(expense.id))) {alert('Compra com pagamento de fatura registrado. Consulte o histórico em Acompanhamento.');return;}
     if (!currentUserPermissions.canEditTransactions) {
       alert('Você não tem permissão para editar lançamentos nesta empresa.');
       return;
@@ -444,6 +446,7 @@ export default function App() {
   };
 
   const handleDeleteExpense = async (expenseId: string) => {
+    if(expenses.find(e=>e.id===expenseId)?.cardInvoicePaymentId || cardPayments.some(p=>p.expenseIds.includes(expenseId))){alert('Não é possível excluir uma compra com pagamento de fatura registrado.');return;}
     if (!currentUserPermissions.canDeleteTransactions) {
       alert('Você não tem permissão para excluir lançamentos nesta empresa.');
       return;
@@ -474,7 +477,7 @@ export default function App() {
 
   const handleLiquidateExpense = async (expense: Expense) => {
     if (expense.paymentMethod === 'credit_card') {
-      alert('Pague a fatura em Cadastros → Cartões. O pagamento libera o limite e baixa as compras da fatura.');
+      alert('Pague a fatura em Acompanhamento → Cartões e faturas. O pagamento libera o limite e baixa as compras da fatura.');
       return;
     }
     if (!currentUserPermissions.canEditTransactions) {
@@ -1002,6 +1005,7 @@ export default function App() {
 
           {activeView === 'financeiro' && (
             <FinancialView
+              onOpenCardInvoices={()=>setActiveView('acompanhamento')}
               key={activeCompany?.id}
               treasuries={treasuries}
               companyName={activeCompany?.name}
@@ -1037,6 +1041,9 @@ export default function App() {
             />
           )}
 
+          {activeView === 'acompanhamento' && <MonitoringView treasuries={treasuries} equipment={equipment} categories={categories} cards={cards} expenses={expenses} incomes={incomes} recurring={recurringBills} accounts={accounts} transfers={transfers} payments={cardPayments} contacts={contacts} goals={goals} costCenters={costCenters} month={currentYearMonth} canEdit={currentUserPermissions.canEditTransactions}
+            onPay={async (card,due,account,date,selection)=>{if(!currentUserPermissions.canEditTransactions)throw new Error('Sem permissão para pagar faturas.');await payCardInvoice(card,due,account,date,selection);}}
+            onTrigger={handleTriggerRecurringBill} onUpdateGoal={handleUpdateGoalAmount} />}
           {activeView === 'cadastros' && (
             <RegistriesView
               onPayCardInvoice={async (cardId, dueDate, accountId, paymentDate) => {

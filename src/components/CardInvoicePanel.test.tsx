@@ -14,7 +14,7 @@ test('invoice payment asks for account and real payment date before submitting',
  fireEvent.click(screen.getByRole('button',{name:'Pagar fatura de 05/11/2026'}));
  expect(screen.getByLabelText('Conta de saída da fatura')).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'Confirmar pagamento integral'}));
- await waitFor(()=>expect(pay).toHaveBeenCalledWith('c','2026-11-05','bank',localToday()));
+ await waitFor(()=>expect(pay).toHaveBeenCalledWith('c','2026-11-05','bank',localToday(),{expenseIds:['e'],amount:100,expectedBalance:100}));
 });
 test('persistence failure is visible and keeps the invoice available for retry',async()=>{
  const pay=vi.fn().mockRejectedValue(new Error('Falha de gravação'));
@@ -23,4 +23,20 @@ test('persistence failure is visible and keeps the invoice available for retry',
  fireEvent.click(screen.getByRole('button',{name:'Confirmar pagamento integral'}));
  await waitFor(()=>expect(screen.getByRole('alert').textContent).toBe('Falha de gravação'));
  expect(screen.getByRole('button',{name:'Confirmar pagamento integral'})).toBeTruthy();
+});
+
+test('select all recalculates totals and partial amount is submitted with selected purchases',async()=>{
+ const pay=vi.fn().mockResolvedValue(undefined);
+ render(<CardInvoicePanel card={card} expenses={[...expenses,{...expenses[0],id:'second',description:'Segunda compra',amount:200}]} accounts={accounts} payments={[]} onPay={pay}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Pagar fatura de 05/11/2026'}));
+ const all=screen.getByLabelText('Selecionar todas as despesas');
+ fireEvent.click(all);
+ expect((screen.getByLabelText('Valor do pagamento') as HTMLInputElement).value).toBe('0.00');
+ fireEvent.click(all);
+ expect((screen.getByLabelText('Valor do pagamento') as HTMLInputElement).value).toBe('300.00');
+ fireEvent.click(screen.getByLabelText('Selecionar Segunda compra'));
+ expect((screen.getByLabelText('Valor do pagamento') as HTMLInputElement).value).toBe('100.00');
+ fireEvent.change(screen.getByLabelText('Valor do pagamento'),{target:{value:'40,00'}});
+ fireEvent.click(screen.getByRole('button',{name:'Confirmar pagamento parcial'}));
+ await waitFor(()=>expect(pay).toHaveBeenCalledWith('c','2026-11-05','bank',localToday(),{expenseIds:['e'],amount:40,expectedBalance:100}));
 });

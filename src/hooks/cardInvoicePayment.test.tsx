@@ -52,3 +52,47 @@ test('invalid payment account is rejected before writing',async()=>{
  await expect(result.current.payCardInvoice('card','2026-11-05','missing','2026-10-10')).rejects.toThrow('conta de pagamento');
  expect(db.insert).not.toHaveBeenCalled();
 });
+
+test('two partial payments release only paid amounts and ultimately close the invoice',async()=>{
+ const {result}=renderHook(()=>useCompanyData('company'));
+ await waitFor(()=>expect(result.current.cards).toHaveLength(1));
+ await act(async()=>{await result.current.payCardInvoice('card','2026-11-05','bank','2026-10-10',{expenseIds:['e'],amount:40,expectedBalance:100});});
+ expect(getCardSummary('card',result.current.expenses,[]).outstanding).toBe(60);
+ expect(calculateAccountBalances(result.current.accounts,[],result.current.expenses,[]).bank).toBe(960);
+ await act(async()=>{await result.current.payCardInvoice('card','2026-11-05','bank','2026-10-10',{expenseIds:['e'],amount:60,expectedBalance:60});});
+ expect(result.current.cardPayments).toHaveLength(2);
+ expect(getCardSummary('card',result.current.expenses,[]).outstanding).toBe(0);
+ expect(result.current.expenses.reduce((n,e)=>n+e.amount,0)).toBe(100);
+ expect(calculateAccountBalances(result.current.accounts,[],result.current.expenses,[]).bank).toBe(900);
+});
+test.each([0,-1,101,NaN])('rejects invalid payment amount %s',async amount=>{
+ const {result}=renderHook(()=>useCompanyData('company'));
+ await waitFor(()=>expect(result.current.cards).toHaveLength(1));
+ await expect(result.current.payCardInvoice('card','2026-11-05','bank','2026-10-10',{expenseIds:['e'],amount,expectedBalance:100})).rejects.toThrow('pagamento deve');
+ expect(db.insert).not.toHaveBeenCalled();
+});
+test('only selected purchases receive allocations',async()=>{
+ db.rows.get('expenses')!.push({...db.rows.get('expenses')![0],id:'other',amount:200});
+ const {result}=renderHook(()=>useCompanyData('company'));
+ await waitFor(()=>expect(result.current.cards).toHaveLength(1));
+ await act(async()=>{await result.current.payCardInvoice('card','2026-11-05','bank','2026-10-10',{expenseIds:['other'],amount:80,expectedBalance:200});});
+ expect(result.current.cardPayments[0].allocations).toEqual([{expenseId:'other',amount:80}]);
+ expect(result.current.expenses.find(e=>e.id==='e')!.amount).toBe(100);
+ expect(getCardSummary('card',result.current.expenses,[]).outstanding).toBe(220);
+});
+test('a paid purchase on credit card becomes invoice debt and does not debit cash',async()=>{
+ const {result}=renderHook(()=>useCompanyData('company'));
+ await waitFor(()=>expect(result.current.cards).toHaveLength(1));
+ await act(async()=>{await result.current.saveExpense({description:'Compra paga ao fornecedor',amount:50,date:'2026-10-10',categoryId:'food',paymentMethod:'credit_card',cardId:'card',status:'paid'});});
+ const purchase=result.current.expenses.find(e=>e.description==='Compra paga ao fornecedor')!;
+ expect(purchase.status).toBe('pending');expect(purchase.purchaseStatus).toBe('paid');
+ expect(purchase.date).toBe('2026-11-05');
+ expect(calculateAccountBalances(result.current.accounts,[],result.current.expenses,[]).bank).toBe(1000);
+ expect(getCardSummary('card',result.current.expenses,[]).outstanding).toBe(150);
+});
+test('stale selected balance cannot be paid silently',async()=>{
+ const {result}=renderHook(()=>useCompanyData('company'));
+ await waitFor(()=>expect(result.current.cards).toHaveLength(1));
+ await expect(result.current.payCardInvoice('card','2026-11-05','bank','2026-10-10',{expenseIds:['e'],amount:40,expectedBalance:90})).rejects.toThrow('saldo mudou');
+ expect(db.insert).not.toHaveBeenCalled();
+});

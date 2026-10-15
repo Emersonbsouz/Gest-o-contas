@@ -40,6 +40,7 @@ interface FinancialViewProps {
   costCenters: CostCenter[];
   currentYearMonth: string;
   onMonthChange: (ym: string) => void;
+  onOpenCardInvoices?: () => void;
   onOpenExpenseModal: () => void;
   onOpenIncomeModal: () => void;
   onOpenTransferModal: () => void;
@@ -69,6 +70,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
   currentYearMonth,
   onMonthChange,
   onOpenExpenseModal,
+  onOpenCardInvoices,
   onOpenIncomeModal,
   onOpenTransferModal,
   onEditExpense,
@@ -165,6 +167,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
             </button>
           </div>
           <ExpenseList
+            onOpenCardInvoices={onOpenCardInvoices}
             expenses={expenses}
             categories={categories}
             accounts={accounts}

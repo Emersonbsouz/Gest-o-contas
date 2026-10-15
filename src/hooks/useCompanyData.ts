@@ -1,5 +1,5 @@
 import { invoiceDueDate, invoiceExpenses, getCardInvoices } from '../utils/cardInvoices';
-import type { CardInvoicePayment } from '../types';
+import type { CardInvoicePayment, CardPaymentSelection } from '../types';
 import { isSettled } from '../utils/financialStatus';
 import { dailyCashSummary, localToday, validCalendarDate } from '../utils/dailyCash';
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
@@ -195,7 +195,7 @@ export function useCompanyData(companyId: string | null) {
 
   const effectiveExpenses = useMemo(() => invoiceExpenses(expenses, cards, cardPayments), [expenses, cards, cardPayments]);
 
-  const payCardInvoice = useCallback(async (cardId: string, dueDate: string, accountId: string, paymentDate: string) => {
+  const payCardInvoice = useCallback(async (cardId: string, dueDate: string, accountId: string, paymentDate: string, selection?: CardPaymentSelection) => {
     if (!companyId) throw new Error('Selecione uma empresa.');
     if (!accounts.some(a=>a.id===accountId)) throw new Error('Selecione a conta de pagamento.');
     if (!validCalendarDate(paymentDate) || paymentDate > localToday()) throw new Error('Informe a data real do pagamento, até hoje.');
@@ -212,10 +212,26 @@ export function useCompanyData(companyId: string | null) {
       const current = invoiceExpenses(storedExpenses,cards,storedPayments);
       const invoice = getCardInvoices(cardId,current).find(i=>i.dueDate===dueDate);
       if (!invoice || invoice.amount<=0) throw new Error('Não há saldo em aberto nesta fatura.');
-      const expenseIds=invoice.items.map(e=>e.id).sort();
-      const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(expenseIds)));
+      const requested=selection?.expenseIds || invoice.items.map(e=>e.id);
+      if(!requested.length || new Set(requested).size!==requested.length) throw new Error('Selecione pelo menos uma despesa válida.');
+      const selected=invoice.items.filter(e=>requested.includes(e.id)).sort((a,b)=>(a.purchaseDate || a.date).localeCompare(b.purchaseDate || b.date) || a.id.localeCompare(b.id));
+      if(selected.length!==requested.length) throw new Error('A fatura foi alterada. Confira as despesas e tente novamente.');
+      const balance=selected.reduce((sum,e)=>sum+Math.round(e.amount*100),0);
+      if(selection?.expectedBalance!==undefined && Math.round(selection.expectedBalance*100)!==balance) throw new Error('O saldo mudou em outra sessão. Confira a fatura antes de pagar.');
+      const amount=selection?.amount ?? balance/100;
+      const amountCents=Math.round(amount*100);
+      if(!Number.isFinite(amount) || amountCents<=0 || amountCents>balance) throw new Error('O pagamento deve ser maior que zero e não pode ultrapassar o total selecionado.');
+      let remaining=amountCents;
+      const allocations=selected.flatMap(e=>{
+        const applied=Math.min(remaining,Math.round(e.amount*100)); remaining-=applied;
+        return applied>0?[{expenseId:e.id,amount:applied/100}]:[];
+      });
+      const expenseIds=allocations.map(a=>a.expenseId);
+      // Unique ledger-version key prevents concurrent payments from the same snapshot.
+      const ledgerVersion=storedPayments.filter(p=>p.cardId===cardId && p.dueDate===dueDate).map(p=>p.id).sort();
+      const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(ledgerVersion)));
       const paymentId=id+'-'+Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
-      const payment: CardInvoicePayment = {id:paymentId,cardId,dueDate,accountId,paymentDate,amount:invoice.amount,expenseIds,createdAt:Date.now()};
+      const payment: CardInvoicePayment = {id:paymentId,cardId,dueDate,accountId,paymentDate,amount:amountCents/100,expenseIds,allocations,createdAt:Date.now()};
       // Single insert: failure leaves both debt and cash balance unchanged.
       await createCompanyDoc(companyId,'cardPayments',payment.id,payment);
       const next=[...storedPayments,payment];
@@ -239,11 +255,11 @@ export function useCompanyData(companyId: string | null) {
       if (data.paymentMethod === 'credit_card') {
         const card=cards.find(c=>c.id===data.cardId);
         if(!card) throw new Error('Selecione um cartão válido.');
-        if(isSettled(data.status)) throw new Error('Registre o pagamento em Cadastros → Cartões → Pagar fatura.');
+
         const purchaseDate=data.date;
         const due=invoiceDueDate(card,purchaseDate);
 
-        normalized={...data,purchaseDate,invoiceDueDate:due,date:due,accountId:undefined,settlementDate:undefined,cardInvoicePaymentId:undefined};
+        normalized={...data,purchaseStatus:data.status,status:isSettled(data.status)?'pending':data.status,purchaseDate,invoiceDueDate:due,date:due,accountId:undefined,settlementDate:undefined,cardInvoicePaymentId:undefined};
       } else {
         normalized={...data,purchaseDate:undefined,invoiceDueDate:undefined,cardInvoicePaymentId:undefined};
       }
