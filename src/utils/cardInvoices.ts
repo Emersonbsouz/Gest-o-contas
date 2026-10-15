@@ -58,3 +58,17 @@ export function getCardInvoices(cardId: string, expenses: Expense[]) {
     dueDate,items,amount:items.reduce((sum,e)=>sum+Math.round(e.amount*100),0)/100,
   }));
 }
+
+export function validatePaidPurchaseEdit(original:Expense, data:Omit<Expense,'id'|'createdAt'>, payments:CardInvoicePayment[]) {
+  const related=payments.filter(p=>p.expenseIds.includes(original.id));
+  if(!related.length)return;
+  if(data.cardId!==original.cardId || data.paymentMethod!==original.paymentMethod || data.date!==(original.purchaseDate||original.date)) {
+    throw new Error('Esta compra já tem pagamento de fatura. Preserve o cartão, o meio de pagamento e a data da compra.');
+  }
+  if(['cancelled','CANCELADO','rejected','draft'].includes(data.status||''))throw new Error('Não é possível cancelar uma compra com pagamento registrado sem antes corrigir o pagamento.');
+  const hasLegacy=related.some(p=>!p.allocations);
+  const cents=(n:number)=>Math.round(n*100);
+  if(hasLegacy && cents(data.amount)!==cents(original.amount))throw new Error('Este pagamento antigo não possui rateio por compra. Você pode editar os dados do cadastro, mantendo o valor.');
+  const paid=related.reduce((total,p)=>total+(p.allocations?.filter(a=>a.expenseId===original.id).reduce((n,a)=>n+cents(a.amount),0)||0),0);
+  if(cents(data.amount)<paid)throw new Error('O valor da compra não pode ficar abaixo do valor já pago na fatura.');
+}

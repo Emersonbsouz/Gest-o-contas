@@ -165,6 +165,7 @@ export default function App() {
     recurringBills,
     cardPayments,
     payCardInvoice,
+    getExpenseForEditing,
     goals,
     costCenters,
     proposals,
@@ -435,13 +436,15 @@ export default function App() {
   };
 
   const handleEditExpense = (expense: Expense) => {
-    if(expense.cardInvoicePaymentId || cardPayments.some(p=>p.expenseIds.includes(expense.id))) {alert('Compra com pagamento de fatura registrado. Consulte o histórico em Acompanhamento.');return;}
+
     if (!currentUserPermissions.canEditTransactions) {
       alert('Você não tem permissão para editar lançamentos nesta empresa.');
       return;
     }
     setFinancialModalType('expense');
-    setEditingFinancialItem(expense);
+    const original = getExpenseForEditing(expense.sourceExpenseId || expense.id);
+    if (!original) {alert('A despesa não foi encontrada. Atualize a página.');return;}
+    setEditingFinancialItem(original);
     setIsFinancialModalOpen(true);
   };
 

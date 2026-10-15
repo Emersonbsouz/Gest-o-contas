@@ -96,3 +96,24 @@ test('stale selected balance cannot be paid silently',async()=>{
  await expect(result.current.payCardInvoice('card','2026-11-05','bank','2026-10-10',{expenseIds:['e'],amount:40,expectedBalance:90})).rejects.toThrow('saldo mudou');
  expect(db.insert).not.toHaveBeenCalled();
 });
+
+test('editing a fully paid purchase changes description without reopening the invoice or moving cash',async()=>{
+ const {result}=renderHook(()=>useCompanyData('company'));
+ await waitFor(()=>expect(result.current.cards).toHaveLength(1));
+ await act(async()=>{await result.current.payCardInvoice('card','2026-11-05','bank','2026-10-10');});
+ const original=result.current.getExpenseForEditing('e')!;
+ await act(async()=>{await result.current.saveExpense({...original,date:original.purchaseDate||original.date,description:'Compra corrigida'},'e');});
+ expect(result.current.expenses[0].description).toBe('Compra corrigida');
+ expect(getCardSummary('card',result.current.expenses,[]).outstanding).toBe(0);
+ expect(calculateAccountBalances(result.current.accounts,[],result.current.expenses,[]).bank).toBe(900);
+});
+test('editing paid purchase value retains settled amount and adds only the difference to invoice',async()=>{
+ const {result}=renderHook(()=>useCompanyData('company'));
+ await waitFor(()=>expect(result.current.cards).toHaveLength(1));
+ await act(async()=>{await result.current.payCardInvoice('card','2026-11-05','bank','2026-10-10');});
+ const original=result.current.getExpenseForEditing('e')!;
+ await act(async()=>{await result.current.saveExpense({...original,date:original.purchaseDate||original.date,amount:120},'e');});
+ expect(getCardSummary('card',result.current.expenses,[]).outstanding).toBe(20);
+ expect(calculateAccountBalances(result.current.accounts,[],result.current.expenses,[]).bank).toBe(900);
+ await expect(result.current.saveExpense({...original,date:original.purchaseDate||original.date,amount:80},'e')).rejects.toThrow('abaixo');
+});

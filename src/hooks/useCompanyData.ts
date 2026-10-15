@@ -1,4 +1,4 @@
-import { invoiceDueDate, invoiceExpenses, getCardInvoices } from '../utils/cardInvoices';
+import { invoiceDueDate, invoiceExpenses, getCardInvoices, validatePaidPurchaseEdit } from '../utils/cardInvoices';
 import type { CardInvoicePayment, CardPaymentSelection } from '../types';
 import { isSettled } from '../utils/financialStatus';
 import { dailyCashSummary, localToday, validCalendarDate } from '../utils/dailyCash';
@@ -250,14 +250,15 @@ export function useCompanyData(companyId: string | null) {
       const id = expenseId || makeId('exp');
       const original = expenseId ? expenses.find(v => v.id === id) : undefined;
       if (expenseId && !original) throw new Error('Esta despesa não foi encontrada. Atualize a lista antes de editar.');
-      if (cardPayments.some(p=>p.expenseIds.includes(id))) throw new Error('Esta compra pertence a uma fatura paga e não pode ser alterada.');
+      if (original) validatePaidPurchaseEdit(original,data,cardPayments);
       let normalized = {...data};
       if (data.paymentMethod === 'credit_card') {
         const card=cards.find(c=>c.id===data.cardId);
         if(!card) throw new Error('Selecione um cartão válido.');
 
         const purchaseDate=data.date;
-        const due=invoiceDueDate(card,purchaseDate);
+        const relatedPayment=original && cardPayments.find(p=>p.expenseIds.includes(original.id));
+        const due=relatedPayment ? original!.invoiceDueDate || relatedPayment.dueDate : original?.purchaseDate===purchaseDate && original.invoiceDueDate ? original.invoiceDueDate : invoiceDueDate(card,purchaseDate);
 
         normalized={...data,purchaseStatus:data.status,status:isSettled(data.status)?'pending':data.status,purchaseDate,invoiceDueDate:due,date:due,accountId:undefined,settlementDate:undefined,cardInvoicePaymentId:undefined};
       } else {
@@ -751,6 +752,7 @@ export function useCompanyData(companyId: string | null) {
 
   return {
     expenses: effectiveExpenses,
+    getExpenseForEditing: (id:string) => expenses.find(e=>e.id===id),
     cardPayments,
     payCardInvoice,
     categories,

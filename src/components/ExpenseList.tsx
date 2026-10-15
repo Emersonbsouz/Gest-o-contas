@@ -95,7 +95,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
     return monthExpenses
       .filter((e) => {
         if (statusScope === 'open' && !isOpen(e.status)) return false;
-        if (statusScope === 'settled' && !isSettled(e.status)) return false;
+        if (statusScope === 'settled' && !isSettled(e.status) && !(e.paymentMethod==='credit_card' && e.cardId && !isCancelled(e.status) && e.status!=='draft')) return false;
         if (statusScope === 'cancelled' && !isCancelled(e.status)) return false;
         const matchesSearch =
           e.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -141,9 +141,9 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
   return (
     <div id="section-expense-list" className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
       {invoiceGroups.length>0 && <section aria-label="Faturas incluídas nas despesas" className="p-4 bg-violet-50 border-b border-violet-200 space-y-2">
-        <div className="flex justify-between gap-3 items-center"><h3 className="font-bold text-sm text-violet-900">Compras incluídas nas faturas</h3>{onOpenCardInvoices && <button onClick={onOpenCardInvoices} className="text-xs font-bold rounded-lg bg-violet-700 text-white px-3 py-2">Ver e pagar faturas</button>}</div>
+        <div className="flex justify-between gap-3 items-center"><h3 className="font-bold text-sm text-violet-900">Faturas dos cartões a pagar</h3>{onOpenCardInvoices && <button onClick={onOpenCardInvoices} className="text-xs font-bold rounded-lg bg-violet-700 text-white px-3 py-2">Ver e pagar faturas</button>}</div>
         <p className="text-xs text-violet-800">As linhas destacadas abaixo compõem a fatura e vencem na data dela. Pague pelo cartão em Acompanhamento. Este resumo não acrescenta outra despesa aos totais.</p>
-        <div className="flex flex-wrap gap-2">{invoiceGroups.map(i=><div key={i.cardId+i.dueDate} className="rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs"><strong>{cardMap.get(i.cardId)||'Cartão'}</strong><p>Fatura vence {formatDateBR(i.dueDate)} · {i.items.length} compra(s) · {formatCurrency(i.amount)}</p></div>)}</div>
+        <div className="flex flex-wrap gap-2">{invoiceGroups.map(i=><div key={i.cardId+i.dueDate} className="rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs"><strong>Fatura · {cardMap.get(i.cardId)||'Cartão'}</strong><span className="ml-2 text-amber-700">Em aberto</span><p>Fatura vence {formatDateBR(i.dueDate)} · {i.items.length} compra(s) · {formatCurrency(i.amount)}</p></div>)}</div>
       </section>}
       {/* Header & Controls */}
       <div className="p-4 sm:p-5 border-b border-slate-100 space-y-3">
@@ -174,7 +174,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
         {/* Filter controls row */}
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <label className="text-xs font-semibold text-slate-600">Período da consulta<select aria-label="Período da consulta" value={periodScope} onChange={e => setPeriodScope(e.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2"><option value="all">Todo o histórico</option><option value="month">Mês selecionado ({currentYearMonth})</option></select></label>
-          <label className="text-xs font-semibold text-slate-600">Situação<select aria-label="Situação da consulta" value={statusScope} onChange={e => setStatusScope(e.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2"><option value="all">Todas as situações</option><option value="open">Em aberto / Vencidas</option><option value="settled">Pagas / Recebidas</option><option value="cancelled">Canceladas / Rejeitadas</option></select></label>
+          <label className="text-xs font-semibold text-slate-600">Situação<select aria-label="Situação da consulta" value={statusScope} onChange={e => setStatusScope(e.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2"><option value="all">Todas as situações</option><option value="open">Em aberto / Vencidas</option><option value="settled">Pagas / Pagas no cartão</option><option value="cancelled">Canceladas / Rejeitadas</option></select></label>
         </div>
         <select aria-label="Filtrar por centro de custo" value={selectedCostCenter} onChange={e => setSelectedCostCenter(e.target.value)} className="w-full rounded-lg border border-slate-200 p-2 text-xs bg-white">
           <option value="all">Todos os centros de custo</option>
@@ -304,9 +304,10 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-semibold text-slate-900">{expense.description}</span>
                         {inInvoice && <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-800 border border-violet-200">{invoiceOpen ? 'Compra da fatura · ' + (cardMap.get(expense.cardId!) || 'Cartão') : expense.cardInvoicePaymentId ? 'Pagamento da fatura' : 'Compra no cartão'}</span>}
+                        {invoiceOpen && <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Pago no cartão</span>}
                         {(expense.status === 'pending' || expense.status === 'PENDENTE') && (
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 uppercase">
-                            {invoiceOpen ? 'A pagar na fatura' : 'A Pagar'}
+                            {invoiceOpen ? 'Fatura em aberto' : 'A Pagar'}
                           </span>
                         )}
                         {(expense.status === 'paid' || expense.status === 'PAGO' || expense.status === 'liquidated') && (
@@ -334,7 +335,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                         )}
                       </div>
                       <div className="flex flex-col gap-0.5 mt-1">
-                        {inInvoice && <p className="text-[11px] text-violet-700">{invoiceOpen ? 'Incluída na fatura; sem pagamento separado ao fornecedor.' : expense.cardInvoicePaymentId ? 'Valor baixado pelo pagamento da fatura.' : 'Compra vinculada ao cartão.'}{expense.purchaseDate ? ' Compra em '+formatDateBR(expense.purchaseDate)+'.' : ''}</p>}
+                        {inInvoice && <p className="text-[11px] text-violet-700">{invoiceOpen ? 'Compra paga ao fornecedor com cartão. O valor a pagar está na fatura do cartão.' : expense.cardInvoicePaymentId ? 'Valor baixado pelo pagamento da fatura.' : 'Compra vinculada ao cartão.'}{expense.purchaseDate ? ' Compra em '+formatDateBR(expense.purchaseDate)+'.' : ''}</p>}
                         <div className="flex items-center gap-2 flex-wrap text-[10px] uppercase tracking-tight">
                           {expense.documentNumber && (
                             <span className="text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded">
@@ -436,10 +437,11 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                           }}
                           title="Editar Despesa"
                           type="button"
-                          aria-label={`Editar despesa ${expense.description}`}
+                          aria-label={`${isSettled(expense.status)||invoiceOpen?'Modificar despesa paga':'Editar despesa'} ${expense.description}`}
                           className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
+                          {(isSettled(expense.status)||invoiceOpen) && <span className="ml-1 text-[10px] font-semibold">Modificar</span>}
                         </button>
                         <button
                           onClick={(e) => {
