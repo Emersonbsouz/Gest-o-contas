@@ -1,3 +1,4 @@
+import {validateTransfer} from '../utils/transfers';
 import { invoiceDueDate, invoiceExpenses, getCardInvoices, validatePaidPurchaseEdit } from '../utils/cardInvoices';
 import type { CardInvoicePayment, CardPaymentSelection } from '../types';
 import { isSettled } from '../utils/financialStatus';
@@ -367,10 +368,14 @@ export function useCompanyData(companyId: string | null) {
 
   const saveTransfer = useCallback(async (data: Omit<AccountTransfer, 'id' | 'createdAt'>, transferId?: string) => {
     if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');
+    validateTransfer(data,accounts,treasuries);
+    if(transferId && !transfers.some(t=>t.id===transferId))throw new Error('A transferência não existe mais. Atualize a lista.');
     const id = transferId || makeId('trf');
     const item: AccountTransfer = { ...data, id, createdAt: transferId ? transfers.find((v) => v.id === id)?.createdAt || Date.now() : Date.now() };
 
-    await saveCompanyDoc(companyId, 'transfers', id, item);
+    const original=transferId?transfers.find(t=>t.id===transferId):undefined;
+    if(original)await updateCompanyDoc(companyId,'transfers',id,item,original);
+    else await createCompanyDoc(companyId,'transfers',id,item);
     setTransfers((prev) => {
       const next = transferId ? prev.map((v) => (v.id === id ? item : v)) : [item, ...prev];
       persistLocal('transfers', next);
@@ -378,7 +383,7 @@ export function useCompanyData(companyId: string | null) {
     });
     return item;
 
-  }, [companyId, transfers]);
+  }, [companyId, transfers, accounts, treasuries]);
 
   const deleteTransfer = useCallback(async (id: string) => {
     if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');

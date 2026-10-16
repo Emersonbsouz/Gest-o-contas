@@ -590,12 +590,10 @@ export default function App() {
     transferId?: string
   ) => {
     if (transferId && !currentUserPermissions.canEditTransactions) {
-      alert('Você não tem permissão para editar lançamentos nesta empresa.');
-      return;
+      throw new Error('Você não tem permissão para editar transferências.');
     }
     if (!transferId && !currentUserPermissions.canCreateTransactions) {
-      alert('Você não tem permissão para lançar transferências nesta empresa.');
-      return;
+      throw new Error('Você não tem permissão para lançar transferências.');
     }
     await saveTransfer(transferData, transferId);
     const transferYM = transferData.date.substring(0, 7);
@@ -1158,6 +1156,7 @@ export default function App() {
       />
 
       <TransferFormModal
+        treasuries={treasuries}
         isOpen={isTransferModalOpen}
         onClose={() => setIsTransferModalOpen(false)}
         onSave={handleSaveTransfer}

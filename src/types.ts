@@ -187,6 +187,8 @@ export interface Income {
 }
 
 export interface AccountTransfer {
+  fromTreasuryId?: string;
+  toTreasuryId?: string;
   id: string;
   fromAccountId: string;
   toAccountId: string;
