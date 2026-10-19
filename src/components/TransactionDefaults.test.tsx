@@ -24,18 +24,23 @@ test.each(['expense', 'income'] as const)('%s starts on the local registration d
 
 test('expenses can be ordered in both directions by date and amount', () => {
   const expenses: Expense[] = [
-    { id: 'a', description: 'Antiga', date: '2026-09-01', amount: 90, categoryId: 'cat', paymentMethod: 'pix', createdAt: 1 },
-    { id: 'b', description: 'Recente', date: '2026-10-19', amount: 10, categoryId: 'cat', paymentMethod: 'pix', createdAt: 2 },
+    { id: 'a', description: 'Antiga', date: '2026-09-01', amount: 90, categoryId: 'cat', paymentMethod: 'pix', createdAt: new Date(2026, 9, 20, 14).getTime() },
+    { id: 'b', description: 'Recente', date: '2026-10-19', amount: 10, categoryId: 'cat', paymentMethod: 'pix', createdAt: new Date(2026, 9, 19, 10).getTime() },
   ];
   const view = render(<ExpenseList expenses={expenses} categories={[]} currentYearMonth="2026-10"
     onEditExpense={vi.fn()} onDeleteExpense={vi.fn()} onOpenAddModal={vi.fn()} />);
   const order = () => [...view.container.querySelectorAll('tbody tr')].map(row => row.id);
   const sort = screen.getByLabelText('Ordenar despesas');
+  expect(screen.getByRole('columnheader', { name: 'Data de lançamento' })).toBeTruthy();
   expect(order()).toEqual(['expense-row-b', 'expense-row-a']);
   fireEvent.change(sort, { target: { value: 'date_asc' } });
   expect(order()).toEqual(['expense-row-a', 'expense-row-b']);
   fireEvent.change(sort, { target: { value: 'amount_asc' } });
   expect(order()).toEqual(['expense-row-b', 'expense-row-a']);
   fireEvent.change(sort, { target: { value: 'amount_desc' } });
+  expect(order()).toEqual(['expense-row-a', 'expense-row-b']);
+  fireEvent.change(sort, { target: { value: 'created_asc' } });
+  expect(order()).toEqual(['expense-row-b', 'expense-row-a']);
+  fireEvent.change(sort, { target: { value: 'created_desc' } });
   expect(order()).toEqual(['expense-row-a', 'expense-row-b']);
 });

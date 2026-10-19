@@ -38,7 +38,7 @@ interface ExpenseListProps {
   onLiquidateExpense?: (expense: Expense) => void;
 }
 
-type SortOption = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
+type SortOption = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc' | 'created_desc' | 'created_asc';
 
 export const ExpenseList: React.FC<ExpenseListProps> = ({
   expenses = [],
@@ -114,6 +114,13 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
           (selectedCostCenter === 'all' || allocatedExpenseAmount(e,selectedCostCenter) > 0);
       })
       .sort((a, b) => {
+        if (sortBy === 'created_asc' || sortBy === 'created_desc') {
+          const aTime = a.createdAt;
+          const bTime = b.createdAt;
+          if (!aTime || !Number.isFinite(aTime)) return !bTime || !Number.isFinite(bTime) ? 0 : 1;
+          if (!bTime || !Number.isFinite(bTime)) return -1;
+          return sortBy === 'created_asc' ? aTime - bTime : bTime - aTime;
+        }
         if (sortBy === 'date_desc') return b.date.localeCompare(a.date);
         if (sortBy === 'date_asc') return a.date.localeCompare(b.date);
         if (sortBy === 'amount_desc') return b.amount - a.amount;
@@ -237,8 +244,10 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
               onChange={(e) => setSortBy(e.target.value as SortOption)}
               className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white"
             >
-              <option value="date_desc">Data decrescente (mais recentes primeiro)</option>
-              <option value="date_asc">Data crescente (mais antigas primeiro)</option>
+              <option value="created_desc">Data de lançamento decrescente (últimos cadastros primeiro)</option>
+              <option value="created_asc">Data de lançamento crescente (primeiros cadastros primeiro)</option>
+              <option value="date_desc">Data da despesa decrescente (mais recentes primeiro)</option>
+              <option value="date_asc">Data da despesa crescente (mais antigas primeiro)</option>
               <option value="amount_desc">Valor decrescente (maior para menor)</option>
               <option value="amount_asc">Valor crescente (menor para maior)</option>
             </select>
@@ -275,6 +284,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
                 <th className="py-3 px-4">Vencimento</th>
+                <th className="py-3 px-4">Data de lançamento</th>
                 <th className="py-3 px-4">Descrição</th>
                 <th className="py-3 px-4">Categoria</th>
                 <th className="py-3 px-4 hidden md:table-cell">Pagamento</th>
@@ -298,6 +308,10 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                     <td className="py-3 px-4 text-slate-500 font-medium whitespace-nowrap">
                       {formatDateBR(expense.invoiceDueDate || expense.date)}
                       {inInvoice && <span className="block text-[10px] text-violet-700">Vencimento da fatura</span>}
+                    </td>
+
+                    <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
+                      {expense.createdAt && Number.isFinite(expense.createdAt) ? new Date(expense.createdAt).toLocaleString('pt-BR') : 'Não informada'}
                     </td>
 
                     {/* Description & Note & Badges */}
