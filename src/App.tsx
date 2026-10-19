@@ -1135,7 +1135,6 @@ export default function App() {
         cards={cards}
         contacts={contacts}
         costCenters={costCenters}
-        defaultDate={`${currentYearMonth}-01`}
       />
 
       <CategoryManagerModal

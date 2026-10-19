@@ -182,7 +182,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
         </select>
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 pt-1">
           {/* Search Input */}
-          <div className="sm:col-span-5 relative">
+          <div className="sm:col-span-6 relative">
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
             <input
               id="input-search-expenses"
@@ -212,7 +212,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
           </div>
 
           {/* Payment Method Filter */}
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-3">
             <select
               id="select-filter-payment"
               value={selectedPayment}
@@ -229,17 +229,18 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
           </div>
 
           {/* Sort By */}
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-12">
+            <label htmlFor="select-sort-expenses" className="block mb-1 text-xs font-semibold text-slate-600">Ordenar despesas</label>
             <select
               id="select-sort-expenses"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as SortOption)}
               className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white"
             >
-              <option value="date_desc">Mais recentes</option>
-              <option value="date_asc">Mais antigas</option>
-              <option value="amount_desc">Maior valor</option>
-              <option value="amount_asc">Menor valor</option>
+              <option value="date_desc">Data decrescente (mais recentes primeiro)</option>
+              <option value="date_asc">Data crescente (mais antigas primeiro)</option>
+              <option value="amount_desc">Valor decrescente (maior para menor)</option>
+              <option value="amount_asc">Valor crescente (menor para maior)</option>
             </select>
           </div>
         </div>

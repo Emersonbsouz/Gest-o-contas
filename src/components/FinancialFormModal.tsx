@@ -138,7 +138,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       setBilletDueDate(editingItem.billetData?.dueDate || '');
       setBilletAssignor(editingItem.billetData?.assignor || '');
     } else {
-      const today = new Date().toISOString().split('T')[0];
+      const today = localToday();
       setDescription('');
       setAmount('');
       setDate(defaultDate || today);
