@@ -86,7 +86,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   
   // Income specific (Installment Generator)
   const [isInstallment, setIsInstallment] = useState(false);
-  const [installmentValueMode, setInstallmentValueMode] = useState<'total' | 'each'>('total');
+  const [installmentValueMode, setInstallmentValueMode] = useState<'total' | 'each'>('each');
   const [boletoOverrides, setBoletoOverrides] = useState<Record<number, {date?: string; line?: string}>>({});
   const [currentInstallment, setCurrentInstallment] = useState('1');
   const [totalInstallments, setTotalInstallments] = useState('1');
@@ -172,7 +172,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       setBilletAssignor('');
     }
     setBoletoOverrides({});
-    setInstallmentValueMode('total');
+    setInstallmentValueMode('each');
     setActiveStep(1);
     setError('');
   }, [editingItem, isOpen, type]);

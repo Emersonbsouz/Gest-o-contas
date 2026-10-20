@@ -62,5 +62,6 @@ test('boleto expense saves every installment once in a batch, using due dates',a
   fireEvent.click(screen.getByRole('button',{name:'Cadastrar Despesa'}));
   await waitFor(()=>expect(batch).toHaveBeenCalledTimes(1));
   expect(save).not.toHaveBeenCalled();
+  expect(batch.mock.calls[0][0].map((item:Expense)=>item.amount)).toEqual([100,100,100]);
   expect(batch.mock.calls[0][0].map((item:Expense)=>item.date)).toEqual(['2026-01-31','2026-02-28','2026-03-31']);
 });
