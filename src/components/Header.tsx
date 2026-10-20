@@ -16,7 +16,6 @@ import {
   LogOut,
   User as UserIcon,
   ShieldCheck,
-  RotateCcw,
   UserPlus,
   AlertCircle,
   BarChart3,
@@ -42,7 +41,6 @@ interface HeaderProps {
   onOpenTransferModal: () => void;
   onOpenQuickRegisterModal?: () => void;
   onExportData: () => void;
-  onResetData: () => void;
   onOpenBackupModal?: () => void;
   cloudSyncStatus?: 'synced' | 'syncing' | 'error';
   // Multi-Company and Auth props
@@ -68,7 +66,6 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenTransferModal,
   onOpenQuickRegisterModal,
   onExportData,
-  onResetData,
   onOpenBackupModal,
   cloudSyncStatus = 'synced',
   companies,
@@ -147,15 +144,6 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </button>
 
-            <button
-              type="button"
-              onClick={onResetData}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition"
-              title="Zerar dados deste ambiente e começar limpo do zero"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Zerar Dados</span>
-            </button>
 
             <button
               type="button"

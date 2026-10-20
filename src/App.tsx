@@ -21,7 +21,6 @@ import { RegistriesView } from './components/RegistriesView';
 import { ReportsView } from './components/ReportsView';
 import { CreateCompanyModal } from './components/CreateCompanyModal';
 import { ManageMembersModal } from './components/ManageMembersModal';
-import { ResetConfirmModal } from './components/ResetConfirmModal';
 import { BackupSecurityModal } from './components/BackupSecurityModal';
 import { AuthView } from './components/AuthView';
 import { PasswordRecoveryView } from './components/PasswordRecoveryView';
@@ -206,13 +205,10 @@ export default function App() {
     deleteCategory,
     updateCategoryBudget,
     saveMonthlyBudget,
-    resetData,
-    clearAllData,
   } = useCompanyData(activeCompany?.id || null);
 
   // Modals state
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
-  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
 
@@ -921,7 +917,6 @@ export default function App() {
           onOpenTransferModal={() => handleOpenAddTransferModal()}
           onOpenQuickRegisterModal={() => setIsQuickRegisterOpen(true)}
           onExportData={handleExportExpensesCSV}
-          onResetData={() => setIsResetConfirmOpen(true)}
           onOpenBackupModal={() => setIsBackupModalOpen(true)}
           cloudSyncStatus={cloudSyncStatus}
           companies={companies}
@@ -1281,14 +1276,6 @@ export default function App() {
         onRemoveMember={handleRemoveMember}
       />
 
-      <ResetConfirmModal
-        isOpen={isResetConfirmOpen}
-        onClose={() => setIsResetConfirmOpen(false)}
-        onConfirmReset={async (keepCategories, createCleanAccount) => {
-          await clearAllData(keepCategories, createCleanAccount);
-        }}
-        companyName={activeCompany?.name || 'Ambiente Selecionado'}
-      />
 
       <BackupSecurityModal
         isOpen={isBackupModalOpen}
