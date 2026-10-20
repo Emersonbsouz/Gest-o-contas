@@ -1,3 +1,4 @@
+import { transactionEntryDate } from '../utils/entryDate';
 import { getCardInvoices } from '../utils/cardInvoices';
 import { allocatedExpenseAmount } from '../utils/financialReports';
 import { isOpen, isSettled, isCancelled } from '../utils/financialStatus';
@@ -115,11 +116,12 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
       })
       .sort((a, b) => {
         if (sortBy === 'created_asc' || sortBy === 'created_desc') {
-          const aTime = a.createdAt;
-          const bTime = b.createdAt;
-          if (!aTime || !Number.isFinite(aTime)) return !bTime || !Number.isFinite(bTime) ? 0 : 1;
-          if (!bTime || !Number.isFinite(bTime)) return -1;
-          return sortBy === 'created_asc' ? aTime - bTime : bTime - aTime;
+          const aDate = transactionEntryDate(a);
+          const bDate = transactionEntryDate(b);
+          if (!aDate) return bDate ? 1 : 0;
+          if (!bDate) return -1;
+          const compared = aDate.localeCompare(bDate) || (a.createdAt || 0) - (b.createdAt || 0);
+          return sortBy === 'created_asc' ? compared : -compared;
         }
         if (sortBy === 'date_desc') return b.date.localeCompare(a.date);
         if (sortBy === 'date_asc') return a.date.localeCompare(b.date);
@@ -246,8 +248,8 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
             >
               <option value="created_desc">Data de lançamento decrescente (últimos cadastros primeiro)</option>
               <option value="created_asc">Data de lançamento crescente (primeiros cadastros primeiro)</option>
-              <option value="date_desc">Data da despesa decrescente (mais recentes primeiro)</option>
-              <option value="date_asc">Data da despesa crescente (mais antigas primeiro)</option>
+              <option value="date_desc">Vencimento decrescente (mais recentes primeiro)</option>
+              <option value="date_asc">Vencimento crescente (mais antigas primeiro)</option>
               <option value="amount_desc">Valor decrescente (maior para menor)</option>
               <option value="amount_asc">Valor crescente (menor para maior)</option>
             </select>
@@ -311,7 +313,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                     </td>
 
                     <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
-                      {expense.createdAt && Number.isFinite(expense.createdAt) ? new Date(expense.createdAt).toLocaleString('pt-BR') : 'Não informada'}
+                      {transactionEntryDate(expense) ? formatDateBR(transactionEntryDate(expense)) : 'Não informada'}
                     </td>
 
                     {/* Description & Note & Badges */}

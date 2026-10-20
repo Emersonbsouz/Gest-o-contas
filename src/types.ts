@@ -165,6 +165,7 @@ export interface BilletData {
 }
 
 export interface Income {
+  entryDate?: string; // Data de lançamento, independente do vencimento
   settlementDate?: string;
   id: string;
   description: string;
@@ -232,6 +233,7 @@ export interface CardInvoicePayment {
 }
 
 export interface Expense {
+  entryDate?: string; // Data de lançamento, independente do vencimento
   purchaseStatus?: PaymentStatus;
   sourceExpenseId?: string;
   cardPurchaseAmount?: number;

@@ -1,3 +1,4 @@
+import { transactionEntryDate } from '../utils/entryDate';
 import { buildBoletoInstallments, installmentDate } from '../utils/boletoInstallments';
 import { hasContactRole, contactRoles } from '../utils/contactRoles';
 import { invoiceDueDate } from '../utils/cardInvoices';
@@ -66,6 +67,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState('');
+  const [entryDate, setEntryDate] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('transfer');
   const [accountId, setAccountId] = useState('');
@@ -108,6 +110,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       setDescription(editingItem.description);
       setAmount(editingItem.amount.toString());
       setDate(editingItem.purchaseDate || editingItem.date);
+      setEntryDate(transactionEntryDate(editingItem) || editingItem.purchaseDate || editingItem.date);
       setCategoryId(editingItem.categoryId);
       setPaymentMethod(editingItem.paymentMethod || ('transfer'));
       setAccountId(editingItem.accountId || (type === 'expense' ? '' : accounts?.[0]?.id) || '');
@@ -148,6 +151,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       setDescription('');
       setAmount('');
       setDate(defaultDate || today);
+      setEntryDate(today);
       setCategoryId(filteredCategories?.[0]?.id || '');
       setPaymentMethod('transfer');
       setAccountId(accounts?.[0]?.id || '');
@@ -217,7 +221,8 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       if (!description.trim()) return 'Informe a descrição.';
       const numAmount = parseFloat(amount.replace(',', '.'));
       if (isNaN(numAmount) || numAmount <= 0) return 'Informe um valor válido.';
-      if (!date) return 'Informe a data.';
+      if (!validCalendarDate(date)) return 'Informe uma data de vencimento válida.';
+      if (!validCalendarDate(entryDate)) return 'Informe uma data de lançamento válida.';
       if (!categoryId) return 'Selecione uma categoria.';
     }
     return null;
@@ -301,6 +306,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
             description: tot > 1 ? `${description.trim()} (${i + 1}/${tot})` : description.trim(),
             amount: Math.round(numAmount * 100) / 100,
             date: installmentDate.toISOString().split('T')[0],
+            entryDate,
             categoryId,
             paymentMethod,
             accountId: accountId || undefined,
@@ -331,6 +337,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
           ...(editingExpense ? editingItem : {}),
           description: description.trim(),
           amount: Math.round(numAmount * 100) / 100,
+          entryDate,
           date: paymentMethod === 'boleto' ? billetDueDate || date : date,
           categoryId,
           paymentMethod,
@@ -428,14 +435,21 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Data *</label>
+                  <label htmlFor="transaction-due-date" className="text-xs font-bold text-slate-700">{paymentMethod === 'credit_card' && type === 'expense' ? 'Data da compra *' : 'Data de vencimento *'}</label>
                   <input
                     type="date"
+                    id="transaction-due-date"
                     value={date}
-                    onChange={(e) => setDate(e.target.value)}
+                    onChange={(e) => { setDate(e.target.value); setBilletDueDate(e.target.value); }}
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-1">
+                <label htmlFor="transaction-entry-date" className="text-xs font-bold text-slate-700">Data de lançamento *</label>
+                <input id="transaction-entry-date" type="date" value={entryDate} onChange={e => setEntryDate(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" required />
+                <p className="text-xs text-slate-500">Dia em que o lançamento é registrado. O vencimento indica quando ele deve ser pago ou recebido.</p>
               </div>
 
               {type === 'expense' && (
@@ -711,7 +725,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                         type="date"
                         aria-label="Vencimento do boleto"
                         value={billetDueDate || date}
-                        onChange={(e) => setBilletDueDate(e.target.value)}
+                        onChange={(e) => { setBilletDueDate(e.target.value); setDate(e.target.value); }}
                         className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] outline-none"
                       /></label>
                       <input

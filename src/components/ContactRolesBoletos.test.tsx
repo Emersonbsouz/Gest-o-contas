@@ -27,6 +27,7 @@ test.each(['income','expense'] as const)('same contact is available for %s', typ
   render(<FinancialFormModal type={type} isOpen categories={DEFAULT_CATEGORIES} contacts={[contact]} costCenters={[center]} onClose={vi.fn()} onSave={vi.fn()} />);
   fireEvent.change(screen.getByPlaceholderText(type==='income'?'Ex: Salário, Venda, Reembolso':'Ex: Mercado, Aluguel, Internet'),{target:{value:'Compra'}});
   fireEvent.change(screen.getByPlaceholderText('0,00'),{target:{value:'100'}});
+  fireEvent.change(screen.getByLabelText('Data de lançamento *'),{target:{value:'2026-01-10'}});
   fireEvent.click(screen.getByRole('button',{name:'Continuar'}));
   expect(screen.getByRole('option',{name:contact.name})).toBeTruthy();
 });
@@ -51,6 +52,7 @@ test('boleto expense saves every installment once in a batch, using due dates',a
   const view=render(<FinancialFormModal type="expense" isOpen categories={DEFAULT_CATEGORIES} contacts={[contact]} costCenters={[center]} onClose={vi.fn()} onSave={save} onSaveExpenseInstallments={batch} />);
   fireEvent.change(screen.getByPlaceholderText('Ex: Mercado, Aluguel, Internet'),{target:{value:'Compra'}});
   fireEvent.change(screen.getByPlaceholderText('0,00'),{target:{value:'100'}});
+  fireEvent.change(screen.getByLabelText('Data de lançamento *'),{target:{value:'2026-01-10'}});
   fireEvent.click(screen.getByRole('button',{name:'Continuar'}));
   const payment=[...view.container.querySelectorAll('select')].find(select=>[...select.options].some(option=>option.value==='boleto'))!;
   fireEvent.change(payment,{target:{value:'boleto'}});
@@ -63,5 +65,20 @@ test('boleto expense saves every installment once in a batch, using due dates',a
   await waitFor(()=>expect(batch).toHaveBeenCalledTimes(1));
   expect(save).not.toHaveBeenCalled();
   expect(batch.mock.calls[0][0].map((item:Expense)=>item.amount)).toEqual([100,100,100]);
+  expect(batch.mock.calls[0][0].map((item:Expense)=>item.entryDate)).toEqual(['2026-01-10','2026-01-10','2026-01-10']);
   expect(batch.mock.calls[0][0].map((item:Expense)=>item.date)).toEqual(['2026-01-31','2026-02-28','2026-03-31']);
+});
+
+test.each(['expense','income'] as const)('%s saves independent registration and due dates',async type=>{
+  const save=vi.fn().mockResolvedValue(undefined);
+  render(<FinancialFormModal type={type} isOpen categories={DEFAULT_CATEGORIES} contacts={[contact]} costCenters={[center]} onClose={vi.fn()} onSave={save} />);
+  fireEvent.change(screen.getByPlaceholderText(type==='income'?'Ex: Salário, Venda, Reembolso':'Ex: Mercado, Aluguel, Internet'),{target:{value:'Registro'}});
+  fireEvent.change(screen.getByPlaceholderText('0,00'),{target:{value:'100'}});
+  fireEvent.change(screen.getByLabelText('Data de lançamento *'),{target:{value:'2026-10-20'}});
+  fireEvent.change(screen.getByLabelText('Data de vencimento *'),{target:{value:'2026-11-15'}});
+  fireEvent.click(screen.getByRole('button',{name:'Continuar'}));
+  fireEvent.change(screen.getByLabelText(type==='income'?'Cliente / Origem da Receita':'Fornecedor / Favorecido'),{target:{value:'person'}});
+  fireEvent.change(screen.getByLabelText('Centro de Custo'),{target:{value:'cc'}});
+  fireEvent.click(screen.getByRole('button',{name:type==='income'?'Cadastrar Receita':'Cadastrar Despesa'}));
+  await waitFor(()=>expect(save).toHaveBeenCalledWith(expect.objectContaining({entryDate:'2026-10-20',date:'2026-11-15'}),undefined));
 });
