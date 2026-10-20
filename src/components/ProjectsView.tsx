@@ -8,13 +8,17 @@ interface ProjectsViewProps {
   contacts: ContactPerson[];
   onOpenCostCenterModal: (cc?: CostCenter) => void;
   onDeleteCostCenter: (id: string) => void;
+  onViewDRE: (centerId: string) => void;
+  canViewReports?: boolean;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
   costCenters,
   contacts,
   onOpenCostCenterModal,
-  onDeleteCostCenter
+  onDeleteCostCenter,
+  onViewDRE,
+  canViewReports = true,
 }) => {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -84,7 +88,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   >
                     Editar
                   </button>
-                  <button className="flex-1 py-2 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl transition-colors">
+                  <button type="button" onClick={() => onViewDRE(cc.id)} disabled={!canViewReports} title={canViewReports ? "Ver resultado deste centro de custo" : "Você não tem permissão para visualizar relatórios"} className="disabled:opacity-50 disabled:cursor-not-allowed flex-1 py-2 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl transition-colors">
                     Ver DRE
                   </button>
                 </div>

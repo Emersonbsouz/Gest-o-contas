@@ -9,18 +9,20 @@ import { isCancelled, isOpen, isSettled, statusLabel } from '../utils/financialS
 interface ReportsViewProps {
   expenses: Expense[]; incomes: Income[]; categories: Category[]; accounts: TreasuryAccount[];
   contacts?: ContactPerson[]; costCenters?: CostCenter[]; treasuries?: TreasuryGroup[];
+  initialCostCenterId?: string;
+  initialPeriod?: 'month' | 'all';
   companyName?: string;
   selectedMonth: string; onMonthChange: (month: string) => void;
 }
 const statusNames = {all: 'Ativos (pagos e em aberto)', open: 'Em aberto', settled: 'Pagos / Recebidos', cancelled: 'Cancelados / Rejeitados'};
-export const ReportsView: React.FC<ReportsViewProps> = ({ expenses = [], incomes = [], categories = [], accounts = [], contacts = [], costCenters = [], treasuries = [], selectedMonth, companyName = '' }) => {
+export const ReportsView: React.FC<ReportsViewProps> = ({ expenses = [], incomes = [], categories = [], accounts = [], contacts = [], costCenters = [], treasuries = [], selectedMonth, companyName = '', initialCostCenterId, initialPeriod = 'month' }) => {
   const month = selectedMonth || new Date().toISOString().slice(0, 7);
-  const [range, setRange] = useState(() => monthRange(month));
-  const [preset, setPreset] = useState('month');
+  const [range, setRange] = useState(() => initialPeriod === 'all' ? {start: '', end: ''} : monthRange(month));
+  const [preset, setPreset] = useState(initialPeriod as string);
   const [status, setStatus] = useState<ReportFilters['status']>('all');
   const [kind, setKind] = useState<ReportFilters['kind']>('all');
   const [accountId, setAccountId] = useState('all');
-  const [costCenterId, setCostCenterId] = useState('all');
+  const [costCenterId, setCostCenterId] = useState(initialCostCenterId || 'all');
   const [treasuryId, setTreasuryId] = useState('all');
   const [search, setSearch] = useState('');
   const name = (items: {id: string; name: string}[], id?: string) => items.find(item => item.id === id)?.name || '';
@@ -64,7 +66,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ expenses = [], incomes
   }
   const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800';
   return <section className="space-y-5" id="financial-report">
-    <div className="flex flex-wrap justify-between gap-3"><div><h2 className="flex items-center gap-2 text-2xl font-bold text-slate-900"><BarChart3 className="text-indigo-600" />Relatórios financeiros</h2><p className="mt-1 text-sm text-slate-500">Escolha o período e acompanhe valores realizados e em aberto.</p>{companyName && <p className="mt-1 text-sm font-semibold text-indigo-700">{companyName}</p>}</div>
+    <div className="flex flex-wrap justify-between gap-3"><div><h2 className="flex items-center gap-2 text-2xl font-bold text-slate-900"><BarChart3 className="text-indigo-600" />{initialCostCenterId ? "DRE gerencial — " + (name(costCenters, costCenterId) || "Centro de custo") : "Relatórios financeiros"}</h2><p className="mt-1 text-sm text-slate-500">{initialCostCenterId ? "Resultado do projeto pela data de vencimento, com receitas, despesas e rateios do centro selecionado. Ajuste o período para consultar." : "Escolha o período e acompanhe valores realizados e em aberto."}</p>{companyName && <p className="mt-1 text-sm font-semibold text-indigo-700">{companyName}</p>}</div>
       <div className="flex items-center gap-2 print:hidden"><button onClick={() => window.print()} disabled={invalidRange} className="flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm"><Printer size={16} />Imprimir / PDF</button><button onClick={exportReport} disabled={invalidRange} className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"><Download size={16} />Exportar relatório</button></div></div>
     <div className="rounded-2xl border border-slate-200 bg-white p-5 print:hidden"><div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <label className="space-y-1 text-xs font-semibold text-slate-600">Período<select aria-label="Período" value={preset} onChange={e => choosePeriod(e.target.value)} className={inputClass}><option value="month">Mês selecionado</option><option value="quarter">Últimos 3 meses</option><option value="year">Ano selecionado</option><option value="all">Todo o histórico</option><option value="custom">Personalizado</option></select></label>

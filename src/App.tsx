@@ -87,6 +87,7 @@ export default function App() {
   const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
 
   // Active View & Month
+  const [dreCostCenterId, setDreCostCenterId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<'dashboard' | 'comercial' | 'projetos' | 'financeiro' | 'cadastros' | 'acompanhamento' | 'relatorios'>('dashboard');
   const [currentYearMonth, setCurrentYearMonth] = useState<string>(() => getCurrentYearMonth());
 
@@ -900,7 +901,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 flex font-sans text-slate-800 antialiased">
       <Sidebar 
         activeView={activeView}
-        onViewChange={(view) => setActiveView(view as any)}
+        onViewChange={(view) => { setDreCostCenterId(null); setActiveView(view as any); }}
         activeCompany={activeCompany}
         onLogout={logout}
         cloudSyncStatus={cloudSyncStatus}
@@ -1004,6 +1005,12 @@ export default function App() {
                 setIsCostCenterModalOpen(true);
               }}
               onDeleteCostCenter={deleteCostCenter}
+              canViewReports={currentUserPermissions.canViewReports}
+              onViewDRE={centerId => {
+                if (!currentUserPermissions.canViewReports) { alert('Você não tem permissão para visualizar relatórios.'); return; }
+                setDreCostCenterId(centerId);
+                setActiveView('relatorios');
+              }}
             />
           )}
 
@@ -1105,7 +1112,9 @@ export default function App() {
           )}
 
           {activeView === 'relatorios' && (
-            <ReportsView key={activeCompany?.id}
+            <ReportsView key={(activeCompany?.id || "") + ":" + (dreCostCenterId || "all")}
+              initialCostCenterId={dreCostCenterId || undefined}
+              initialPeriod={dreCostCenterId ? "all" : "month"}
               companyName={activeCompany?.name}
               contacts={contacts}
               costCenters={costCenters}
