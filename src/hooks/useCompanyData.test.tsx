@@ -2,7 +2,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { useCompanyData } from './useCompanyData';
 
-const service = vi.hoisted(() => ({ updateCompanyDoc: vi.fn(), createCompanyDoc: vi.fn(), loadCompanySubcollection: vi.fn(), saveCompanyDoc: vi.fn(), deleteCompanyDoc: vi.fn(),
+const service = vi.hoisted(() => ({ createExpenseInstallments: vi.fn(), updateCompanyDoc: vi.fn(), createCompanyDoc: vi.fn(), loadCompanySubcollection: vi.fn(), saveCompanyDoc: vi.fn(), deleteCompanyDoc: vi.fn(),
   subscribeToCompanySubcollection: vi.fn((_company:any,_name:any,_ok:any,_error?:any) => () => {}), clearCompanyData: vi.fn() }));
 vi.mock('../services/companyService', () => service);
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
@@ -166,4 +166,20 @@ test('a successful collection read does not hide a failed expenses query', () =>
  act(()=>{callbacks.get('expenses')!.error(new Error('offline'));callbacks.get('accounts')!.ok([]);});
  expect(result.current.cloudSyncStatus).toBe('error');expect(result.current.lastError).toContain('expenses');
  act(()=>callbacks.get('expenses')!.ok([]));expect(result.current.lastError).toBeNull();
+});
+
+test('installment batch updates local state only after server confirmation and preserves previous expenses', async () => {
+  const original = {id:'old',description:'Anterior',date:'2026-10-01',amount:10,categoryId:'cat',paymentMethod:'pix',createdAt:1};
+  localStorage.setItem('cg_company-a_expenses', JSON.stringify([original]));
+  const {result}=renderHook(()=>useCompanyData('company-a'));
+  const items=[{description:'Boleto 1/2',date:'2026-11-01',amount:50,categoryId:'cat',paymentMethod:'boleto' as const}, {description:'Boleto 2/2',date:'2026-12-01',amount:50,categoryId:'cat',paymentMethod:'boleto' as const}];
+  service.createExpenseInstallments.mockRejectedValueOnce(new Error('Falha no servidor'));
+  await act(async()=>{ await expect(result.current.saveExpenseInstallments(items)).rejects.toThrow('Falha no servidor'); });
+  expect(result.current.expenses).toEqual([original]);
+  expect(JSON.parse(localStorage.getItem('cg_company-a_expenses')!)).toEqual([original]);
+  service.createExpenseInstallments.mockResolvedValueOnce(undefined);
+  await act(async()=>{ await result.current.saveExpenseInstallments(items); });
+  expect(result.current.expenses).toHaveLength(3);
+  expect(result.current.expenses.find(e=>e.id==='old')).toEqual(original);
+  expect(service.createExpenseInstallments).toHaveBeenLastCalledWith('company-a',expect.arrayContaining([expect.objectContaining({description:'Boleto 2/2',createdAt:expect.any(Number)})]));
 });

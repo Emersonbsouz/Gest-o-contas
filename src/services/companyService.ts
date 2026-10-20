@@ -337,3 +337,11 @@ export async function clearCompanyData(companyId: string, keepCategories: boolea
   const { error } = await request;
   if (error) throw error;
 }
+
+export async function createExpenseInstallments(companyId: string, items: Array<{id: string}>) {
+  if (!items.length) throw new Error('Informe as parcelas.');
+  const { error } = await supabase.from('company_documents').insert(items.map(item => ({
+    company_id: companyId, collection_name: 'expenses', doc_id: item.id, payload: item,
+  })));
+  if (error) throw error;
+}

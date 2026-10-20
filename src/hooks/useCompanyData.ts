@@ -1,3 +1,4 @@
+import { createExpenseInstallments } from '../services/companyService';
 import {validateTransfer} from '../utils/transfers';
 import { invoiceDueDate, invoiceExpenses, getCardInvoices, validatePaidPurchaseEdit } from '../utils/cardInvoices';
 import type { CardInvoicePayment, CardPaymentSelection } from '../types';
@@ -325,6 +326,22 @@ export function useCompanyData(companyId: string | null) {
       throw error;
     }
   }, [companyId, expenses, cards, cardPayments]);
+
+  const saveExpenseInstallments = useCallback(async (items: Omit<Expense, 'id' | 'createdAt'>[]) => {
+    if (!companyId) throw new Error('Selecione uma empresa.');
+    if (!items.length || items.length > 120 || items.some(item => item.paymentMethod !== 'boleto' || !validCalendarDate(item.date) || !Number.isFinite(item.amount) || item.amount <= 0)) throw new Error('Confira os valores e vencimentos das parcelas.');
+    setCloudSyncStatus('syncing');
+    try {
+      const groupId = makeId('parcelas');
+      const records = items.map(item => ({...item, id: makeId('exp'), installmentGroupId: groupId, createdAt: Date.now()}));
+      await createExpenseInstallments(companyId, records);
+      setExpenses(prev => { const ids = new Set(records.map(record => record.id)); const next = [...records, ...prev.filter(record => !ids.has(record.id))]; persistLocal('expenses', next); return next; });
+      setCloudSyncStatus('synced'); setLastError(null);
+      return records;
+    } catch (error) {
+      setCloudSyncStatus('error'); setLastError(error instanceof Error ? error.message : String(error)); throw error;
+    }
+  }, [companyId]);
 
   const deleteExpense = useCallback(async (id: string) => {
     if(cardPayments.some(p=>p.status!=='cancelled' && p.expenseIds.includes(id))) throw new Error('Não é possível excluir uma compra de fatura paga.');
@@ -823,6 +840,7 @@ export function useCompanyData(companyId: string | null) {
     cloudSyncStatus,
     lastError,
     saveExpense,
+    saveExpenseInstallments,
     deleteExpense,
     saveIncome,
     deleteIncome,

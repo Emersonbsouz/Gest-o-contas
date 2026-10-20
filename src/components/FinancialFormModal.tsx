@@ -1,3 +1,5 @@
+import { buildBoletoInstallments, installmentDate } from '../utils/boletoInstallments';
+import { hasContactRole, contactRoles } from '../utils/contactRoles';
 import { invoiceDueDate } from '../utils/cardInvoices';
 import { getCardSummary } from '../utils/cardSummary';
 import { formatCurrency } from '../utils/formatters';
@@ -30,6 +32,7 @@ interface FinancialFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (data: any, id?: string) => void | Promise<unknown>;
+  onSaveExpenseInstallments?: (items: Omit<Expense, 'id' | 'createdAt'>[]) => Promise<unknown>;
   editingItem?: any | null;
   categories: Category[];
   accounts?: TreasuryAccount[];
@@ -47,6 +50,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   isOpen,
   onClose,
   onSave,
+  onSaveExpenseInstallments,
   editingItem,
   categories = [],
   accounts = [],
@@ -82,6 +86,8 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   
   // Income specific (Installment Generator)
   const [isInstallment, setIsInstallment] = useState(false);
+  const [installmentValueMode, setInstallmentValueMode] = useState<'total' | 'each'>('total');
+  const [boletoOverrides, setBoletoOverrides] = useState<Record<number, {date?: string; line?: string}>>({});
   const [currentInstallment, setCurrentInstallment] = useState('1');
   const [totalInstallments, setTotalInstallments] = useState('1');
   
@@ -165,6 +171,8 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       setBilletDueDate('');
       setBilletAssignor('');
     }
+    setBoletoOverrides({});
+    setInstallmentValueMode('total');
     setActiveStep(1);
     setError('');
   }, [editingItem, isOpen, type]);
@@ -198,6 +206,10 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
 
   const totalSplitAmount = splits.reduce((acc, s) => acc + s.amount, 0);
 
+  let boletoPreview: Omit<Expense, 'id' | 'createdAt'>[] = [];
+  if (isInstallment && paymentMethod === 'boleto' && type === 'expense' && !editingItem) {
+    try { boletoPreview = buildBoletoInstallments({description, amount: Number(amount.replace(',', '.')), date, categoryId, paymentMethod, billetData: {dueDate: billetDueDate || date}}, Number(totalInstallments), installmentValueMode, boletoOverrides); } catch { /* Incomplete fields are validated on submit. */ }
+  }
   if (!isOpen) return null;
 
   const validateStep = (step: number) => {
@@ -270,7 +282,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
     const billetData = paymentMethod === 'boleto' ? {
       barcode: billetBarcode.trim() || undefined,
       digitableLine: billetDigitableLine.trim() || undefined,
-      dueDate: billetDueDate || undefined,
+      dueDate: billetDueDate || date,
       assignor: billetAssignor.trim() || undefined,
     } : undefined;
 
@@ -315,11 +327,11 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
           }
         }
 
-        await onSave({
+        const expensePayload = {
           ...(editingExpense ? editingItem : {}),
           description: description.trim(),
           amount: Math.round(numAmount * 100) / 100,
-          date,
+          date: paymentMethod === 'boleto' ? billetDueDate || date : date,
           categoryId,
           paymentMethod,
           accountId: paymentMethod !== 'credit_card' ? accountId || undefined : undefined,
@@ -340,7 +352,15 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
             installmentNumber: parseInt(currentInstallment, 10),
             totalInstallments: parseInt(totalInstallments, 10),
           } : {})
-        }, editingItem?.id);
+        };
+        if (type === 'expense' && paymentMethod === 'boleto' && isInstallment && !editingItem) {
+          if (!onSaveExpenseInstallments) throw new Error('O salvamento das parcelas não está disponível.');
+          const items = buildBoletoInstallments(expensePayload, Number(totalInstallments), installmentValueMode, boletoOverrides);
+          await onSaveExpenseInstallments(items);
+        } else {
+          if (paymentMethod === 'boleto' && !validCalendarDate(expensePayload.date)) throw new Error('Informe o vencimento do boleto.');
+          await onSave(expensePayload, editingItem?.id);
+        }
       }
       onClose();
     } catch (err) {
@@ -662,7 +682,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white"
                   >
                     <option value="">Selecione quem paga ou recebe</option>
-                    {contacts.filter(c => c.id === contactId || c.type === 'other' || (type === 'income' ? c.type === 'client' : c.type !== 'client')).map(c => (
+                    {contacts.filter(c => c.id === contactId || hasContactRole(c, 'other') || (type === 'income' ? hasContactRole(c, 'client') : contactRoles(c).some(role => role !== 'client'))).map(c => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
@@ -677,6 +697,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                     <FileText className="w-3.5 h-3.5" />
                     <span className="text-[10px] font-bold uppercase tracking-wider">Informações do Boleto</span>
                   </div>
+                  <p className="text-xs text-indigo-700">O vencimento abaixo será a data da despesa nos relatórios e contas a pagar.</p>
                   <div className="grid grid-cols-1 gap-2">
                     <input
                       type="text"
@@ -686,12 +707,13 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                       className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] outline-none"
                     />
                     <div className="grid grid-cols-2 gap-2">
-                      <input
+                      <label className="text-xs text-slate-600">Vencimento do boleto<input
                         type="date"
-                        value={billetDueDate}
+                        aria-label="Vencimento do boleto"
+                        value={billetDueDate || date}
                         onChange={(e) => setBilletDueDate(e.target.value)}
-                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] outline-none"
-                      />
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] outline-none"
+                      /></label>
                       <input
                         type="text"
                         value={billetAssignor}
@@ -731,6 +753,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                       <label className="text-[9px] font-bold text-slate-400 uppercase">{type === 'expense' ? 'Parc. Atual' : 'Primeira Parc.'}</label>
                       <input
                         type="number"
+                        disabled={type === 'expense' && paymentMethod === 'boleto' && !editingItem}
                         value={currentInstallment}
                         onChange={(e) => setCurrentInstallment(e.target.value)}
                         className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-[11px]"
@@ -743,6 +766,8 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                       <label className="text-[9px] font-bold text-slate-400 uppercase">Total Parcelas</label>
                       <input
                         type="number"
+                        aria-label="Total de parcelas"
+                        min="1" max="120"
                         value={totalInstallments}
                         onChange={(e) => setTotalInstallments(e.target.value)}
                         className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-[11px]"
@@ -756,6 +781,25 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                   </p>
                 )}
               </div>
+
+              {type === 'expense' && paymentMethod === 'boleto' && isInstallment && !editingItem && (
+                <div className="space-y-3 rounded-xl border border-indigo-200 p-3">
+                  <label className="block text-xs font-bold">Valor informado
+                    <select aria-label="Valor informado no parcelamento" value={installmentValueMode} onChange={e => setInstallmentValueMode(e.target.value as 'total' | 'each')} className="mt-1 w-full border rounded-lg p-2">
+                      <option value="total">Total da compra (dividir entre as parcelas)</option>
+                      <option value="each">Valor de cada parcela</option>
+                    </select>
+                  </label>
+                  <p className="text-xs text-slate-600">Todos os boletos serão cadastrados. Confira os vencimentos e informe a linha digitável de cada parcela, se disponível.</p>
+                  {Array.from({length: Math.min(120, Math.max(0, Number(totalInstallments) || 0))}, (_, index) => (
+                    <div key={index} className="space-y-1 border-t pt-2">
+                      <span className="text-xs font-bold">Boleto {index + 1}/{totalInstallments}{boletoPreview[index] ? " · " + formatCurrency(boletoPreview[index].amount) : ""}</span>
+                      <input type="date" aria-label={'Vencimento da parcela ' + (index + 1)} value={boletoOverrides[index]?.date || (validCalendarDate(billetDueDate || date) ? installmentDate(billetDueDate || date, index) : '')} onChange={e => setBoletoOverrides(prev => ({...prev, [index]: {...prev[index], date: e.target.value}}))} className="w-full rounded-lg border p-2 text-xs" />
+                      <input aria-label={'Linha digitável da parcela ' + (index + 1)} value={boletoOverrides[index]?.line ?? (index === 0 ? billetDigitableLine : '')} onChange={e => setBoletoOverrides(prev => ({...prev, [index]: {...prev[index], line: e.target.value}}))} placeholder="Linha digitável deste boleto" className="w-full rounded-lg border p-2 text-xs" />
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Notes */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

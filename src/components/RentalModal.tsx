@@ -1,3 +1,4 @@
+import { hasContactRole } from '../utils/contactRoles';
 import React, { useState, useEffect } from 'react';
 import { X, Settings2, Calendar, DollarSign, Package } from 'lucide-react';
 import { Rental, ContactPerson, Equipment } from '../types';
@@ -102,7 +103,7 @@ export const RentalModal: React.FC<RentalModalProps> = ({
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
             >
               <option value="">Selecione o responsável...</option>
-              {contacts.filter(c => c.type === 'client').map(c => (
+              {contacts.filter(c => hasContactRole(c, 'client')).map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>

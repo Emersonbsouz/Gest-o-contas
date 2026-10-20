@@ -177,6 +177,7 @@ export default function App() {
     cloudSyncStatus,
     lastError,
     saveExpense,
+    saveExpenseInstallments,
     deleteExpense,
     saveIncome,
     deleteIncome,
@@ -1129,6 +1130,11 @@ export default function App() {
         onCreateContact={() => handleOpenAddContactModal(undefined, financialModalType === 'income' ? 'client' : 'supplier')}
         onCreateCostCenter={() => { setEditingCostCenter(null); setIsCostCenterModalOpen(true); }}
         onSave={financialModalType === 'expense' ? handleSaveExpense : handleSaveIncome}
+        onSaveExpenseInstallments={async items => {
+          if (!currentUserPermissions.canCreateTransactions) throw new Error('Você não tem permissão para lançar despesas.');
+          const saved = await saveExpenseInstallments(items);
+          if (saved[0]) setCurrentYearMonth(saved[0].date.slice(0, 7));
+        }}
         editingItem={editingFinancialItem}
         categories={categories}
         accounts={accounts}

@@ -1,3 +1,4 @@
+import { hasContactRole } from '../utils/contactRoles';
 import React, { useState, useEffect } from 'react';
 import { X, Hammer, MapPin, Calendar, Info } from 'lucide-react';
 import { CostCenter, ContactPerson } from '../types';
@@ -117,7 +118,7 @@ export const CostCenterModal: React.FC<CostCenterModalProps> = ({
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
               >
                 <option value="">Sem cliente vinculado (opcional)</option>
-                {contacts.filter(c => c.type === 'client').map(c => (
+                {contacts.filter(c => hasContactRole(c, 'client')).map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>

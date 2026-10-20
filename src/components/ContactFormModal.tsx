@@ -1,3 +1,4 @@
+import { contactRoles } from '../utils/contactRoles';
 import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState, useEffect } from 'react';
 import { X, Users, Phone, Mail, FileText, QrCode, Tag, MapPin } from 'lucide-react';
@@ -15,7 +16,8 @@ interface ContactFormModalProps {
 const CONTACT_TYPE_OPTIONS: { value: ContactType; label: string; desc: string }[] = [
   { value: 'supplier', label: 'Fornecedor / Favorecido', desc: 'Lojas, mercados, prestadores que você paga' },
   { value: 'client', label: 'Cliente / Fonte Pagadora', desc: 'Pessoas ou empresas que pagam você' },
-  { value: 'service_provider', label: 'Prestador de Serviços', desc: 'Médicos, mecânicos, diaristas, consultores' },
+  { value: 'service_provider', label: 'Terceirizado / Prestador de Serviços', desc: 'Médicos, mecânicos, diaristas, consultores' },
+  { value: 'employee', label: 'Funcionário', desc: 'Colaborador da empresa' },
   { value: 'other', label: 'Outros Contatos', desc: 'Amigos, familiares ou contatos gerais' },
 ];
 
@@ -28,7 +30,7 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
   fixedType = false,
 }) => {
   const [name, setName] = useState('');
-  const [type, setType] = useState<ContactType>(defaultType);
+  const [roles, setRoles] = useState<ContactType[]>([defaultType]);
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [document, setDocument] = useState('');
@@ -41,7 +43,7 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
   useEffect(() => {
     if (editingContact) {
       setName(editingContact.name);
-      setType(editingContact.type);
+      setRoles(contactRoles(editingContact));
       setPhone(editingContact.phone || '');
       setEmail(editingContact.email || '');
       setDocument(editingContact.document || '');
@@ -50,7 +52,7 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
       setNotes(editingContact.notes || '');
     } else {
       setName('');
-      setType(defaultType);
+      setRoles([defaultType]);
       setPhone('');
       setEmail('');
       setDocument('');
@@ -70,12 +72,14 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
       return;
     }
 
+    if (!roles.length) { setError('Marque pelo menos um papel para este cadastro.'); return; }
     setIsLoading(true);
     try {
       await onSave(
         {
           name: name.trim(),
-          type,
+          type: roles.includes(editingContact?.type as ContactType) ? editingContact!.type : roles[0],
+          roles,
           phone: phone.trim() || undefined,
           email: email.trim() || undefined,
           document: document.trim() || undefined,
@@ -147,23 +151,14 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
               <Tag className="w-3.5 h-3.5 text-slate-400" />
-              Tipo de Contato / Favorecido
+              Papéis do cadastro (marque um ou mais)
             </label>
             <div className="grid grid-cols-2 gap-2">
-              {CONTACT_TYPE_OPTIONS.filter(opt => !fixedType || opt.value === defaultType).map((opt) => (
-                <button
-                  type="button"
-                  key={opt.value}
-                  onClick={() => setType(opt.value)}
-                  className={`p-2.5 rounded-xl border text-left transition-all ${
-                    type === opt.value
-                      ? 'border-violet-600 bg-violet-50/70 text-violet-950 font-medium ring-1 ring-violet-500'
-                      : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100 text-slate-700'
-                  }`}
-                >
-                  <p className="text-xs font-semibold">{opt.label}</p>
-                  <p className="text-[10px] text-slate-500 leading-tight mt-0.5 line-clamp-1">{opt.desc}</p>
-                </button>
+              {CONTACT_TYPE_OPTIONS.map(opt => (
+                <label key={opt.value} className="flex gap-2 p-2.5 rounded-xl border border-slate-200 cursor-pointer">
+                  <input type="checkbox" checked={roles.includes(opt.value)} onChange={e => setRoles(prev => e.target.checked ? [...prev, opt.value] : prev.filter(role => role !== opt.value))} />
+                  <span><span className="block text-xs font-semibold">{opt.label}</span><span className="text-[10px] text-slate-500">{opt.desc}</span></span>
+                </label>
               ))}
             </div>
           </div>

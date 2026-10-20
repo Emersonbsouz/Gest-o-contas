@@ -1,3 +1,4 @@
+import { hasContactRole } from '../utils/contactRoles';
 import React, { useState, useEffect } from 'react';
 import { X, FileText, Calendar, DollarSign, Info } from 'lucide-react';
 import { Proposal, ContactPerson } from '../types';
@@ -141,11 +142,11 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-violet-500 transition-all"
             >
               <option value="">Selecione um cliente...</option>
-              {clientId && !contacts.some(c => c.id === clientId && c.type === 'client') && savedClient?.id !== clientId && (
+              {clientId && !contacts.some(c => c.id === clientId && hasContactRole(c, 'client')) && savedClient?.id !== clientId && (
                 <option value={clientId}>Cliente vinculado (indisponível no cadastro)</option>
               )}
               {savedClient && !contacts.some(c => c.id === savedClient.id) && <option value={savedClient.id}>{savedClient.name}</option>}
-              {contacts.filter(c => c.type === 'client').map(c => (
+              {contacts.filter(c => hasContactRole(c, 'client')).map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>

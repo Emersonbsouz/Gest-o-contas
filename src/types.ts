@@ -111,6 +111,7 @@ export interface ContactPerson {
   id: string;
   name: string;
   type: ContactType;
+  roles?: ContactType[];
   phone?: string;
   email?: string;
   document?: string; // CPF or CNPJ

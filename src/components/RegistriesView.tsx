@@ -1,3 +1,4 @@
+import { contactRoles, CONTACT_ROLE_LABELS } from '../utils/contactRoles';
 import { CardInvoicePanel } from './CardInvoicePanel';
 import type { CardInvoicePayment, CardPaymentSelection } from '../types';
 import { getCardSummary } from '../utils/cardSummary';
@@ -316,7 +317,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
         (c.document && c.document.includes(searchQuery)) ||
         (c.phone && c.phone.includes(searchQuery)) ||
         (c.email && c.email.toLowerCase().includes(searchQuery.toLowerCase()));
-      const matchType = typeFilter === 'all' || c.type === typeFilter;
+      const matchType = typeFilter === 'all' || contactRoles(c).some(role => role === typeFilter);
       return matchSearch && matchType;
     });
   }, [safeContacts, searchQuery, typeFilter]);
@@ -534,7 +535,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                 <option value="all">Todos os Contatos</option>
                 <option value="supplier">Apenas Fornecedores / Favorecidos</option>
                 <option value="client">Apenas Clientes / Pagadores</option>
-                <option value="service_provider">Apenas Prestadores de Serviços</option>
+                <option value="service_provider">Apenas Terceirizados / Prestadores</option>
                 <option value="other">Outros Contatos</option>
               </select>
 
@@ -596,7 +597,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${badgeStyles}`}
                           >
-                            {typeLabels}
+                            {contactRoles(contact).map(role => CONTACT_ROLE_LABELS[role]).join(' / ')}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-slate-600 font-mono text-[11px]">
