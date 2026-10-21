@@ -33,3 +33,10 @@ test('transfer from the wallet card forwards its account to the parent and prese
  fireEvent.click(screen.getByRole('button',{name:'Tesouraria'}));fireEvent.click(screen.getByTitle('Transferir a partir da conta Carteira'));expect(open).toHaveBeenCalledWith('wallet');
  const balances=calculateAccountBalances(accounts,[],[],[transfers[0]]);expect(balances.wallet).toBe(70);expect(balances.cash).toBe(30);expect(Object.values(balances).reduce((sum,value)=>sum+value,0)).toBe(600);
 });
+
+test('cash funding report shows only wallet-to-cash contributions and exports the same scope',()=>{
+ let content='';vi.stubGlobal('Blob',class {constructor(parts:string[]){content=parts.join('');}});URL.createObjectURL=vi.fn(()=>'blob:report');URL.revokeObjectURL=vi.fn();vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});
+ render(<TransferReport transfers={transfers} accounts={accounts} initialScope="cash" onBack={vi.fn()}/>);
+ expect(screen.getByRole('heading',{name:'Relatório de aportes entre caixas'})).toBeTruthy();expect(screen.getByText('Troco loja')).toBeTruthy();expect(screen.queryByText('Retirada banco')).toBeNull();
+ expect(screen.queryByRole('option',{name:'Banco'})).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Exportar aportes'}));expect(content).toContain('Total aportado');expect(content).toContain('Troco loja');expect(content).not.toContain('Retirada banco');
+});
