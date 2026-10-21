@@ -28,6 +28,7 @@ interface FinancialViewProps {
   cashClosings?: DailyCashClosing[];
   canCloseCash?: boolean;
   companyName?: string;
+  onNewCashMovement?: (kind: 'income' | 'expense', accountId: string, date: string) => void;
   onCloseDay?: (accountId: string, date: string, counted: number, notes?: string, signature?: string) => Promise<unknown>;
   expenses: Expense[];
   incomes: Income[];
@@ -57,7 +58,7 @@ interface FinancialViewProps {
 }
 
 export const FinancialView: React.FC<FinancialViewProps> = ({
-  cashClosings = [], canCloseCash = false, companyName, onCloseDay,
+  cashClosings = [], canCloseCash = false, companyName, onCloseDay, onNewCashMovement,
   expenses,
   incomes,
   accounts,
@@ -95,7 +96,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
         </div>
         
         <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-          <button onClick={() => setSubTab('fechamento')} className={`px-4 py-2 rounded-lg text-xs font-bold ${subTab === 'fechamento' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}>Fechamento diário</button>
+          <button onClick={() => setSubTab('fechamento')} className={`px-4 py-2 rounded-lg text-xs font-bold ${subTab === 'fechamento' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}>Caixa diário</button>
           <button
             onClick={() => setSubTab('tesouraria')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
@@ -126,7 +127,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
         </div>
       </div>
 
-      {subTab === 'fechamento' && onCloseDay && <DailyCashView accounts={accounts} incomes={incomes} expenses={expenses} transfers={transfers} closings={cashClosings} canClose={canCloseCash} companyName={companyName} onCloseDay={onCloseDay} />}
+      {subTab === 'fechamento' && onCloseDay && <DailyCashView onNewMovement={onNewCashMovement} accounts={accounts} incomes={incomes} expenses={expenses} transfers={transfers} closings={cashClosings} canClose={canCloseCash} companyName={companyName} onCloseDay={onCloseDay} />}
 
       {subTab === 'tesouraria' && (
         <TreasuryView

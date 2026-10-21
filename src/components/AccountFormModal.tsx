@@ -1,3 +1,4 @@
+import { localToday, validCalendarDate } from '../utils/dailyCash';
 import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState, useEffect } from 'react';
 import { X, Check, Landmark, DollarSign, Palette, ShieldCheck } from 'lucide-react';
@@ -53,6 +54,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
 }) => {
   const [name, setName] = useState('');
   const [type, setType] = useState<AccountType>('checking');
+  const [openingDate, setOpeningDate] = useState('');
   const [initialBalance, setInitialBalance] = useState('');
   const [treasuryId, setTreasuryId] = useState('');
   const [bankName, setBankName] = useState('');
@@ -67,6 +69,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
       setName(editingAccount.name);
       setType(editingAccount.type);
       setInitialBalance(editingAccount.initialBalance.toString());
+      setOpeningDate(editingAccount.openingDate || '');
       setBankName(editingAccount.bankName || '');
       setAccountNumber(editingAccount.accountNumber || '');
       setColor(editingAccount.color || COLOR_PRESETS[0]);
@@ -75,6 +78,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
       setType(defaultType);
       setTreasuryId('');
       setInitialBalance('0');
+      setOpeningDate(localToday());
       setBankName('');
       setAccountNumber('');
       setColor(COLOR_PRESETS[0]);
@@ -94,11 +98,12 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
     }
 
     const numBalance = parseFloat(initialBalance.replace(',', '.'));
-    if (isNaN(numBalance)) {
+    if (!Number.isFinite(numBalance)) {
       setError('Informe um valor de saldo inicial válido (pode ser 0).');
       return;
     }
 
+    if ((!editingAccount || openingDate) && !validCalendarDate(openingDate)) { setError('Informe uma data de abertura válida.'); return; }
     if (treasuryId && !treasuries.some(t => t.id === treasuryId)) {
       setError('Selecione uma tesouraria válida.');
       return;
@@ -112,6 +117,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
         treasuryId: treasuryId || undefined,
         type,
         initialBalance: Math.round(numBalance * 100) / 100,
+        openingDate: openingDate || undefined,
         color,
         bankName: bankName.trim() || undefined,
         accountNumber: accountNumber.trim() || undefined,
@@ -234,10 +240,14 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
               />
             </div>
             <p className="text-[11px] text-slate-500 mt-1">
-              O saldo atual será calculado automaticamente somando receitas e subtraindo despesas desta conta.
+              Este valor aparecerá no extrato como Entrada de abertura e será contado uma única vez no saldo.
             </p>
           </div>
 
+          <label className="block text-xs font-semibold text-slate-700">Data da abertura
+            <input aria-label="Data da abertura" type="date" value={openingDate} onChange={e => setOpeningDate(e.target.value)} required={!editingAccount} className="mt-1 w-full rounded-lg border p-2 text-sm" />
+            {editingAccount && !openingDate && <span className="block text-xs text-slate-500 mt-1">Cadastro antigo sem data de abertura. Informe a data original somente se conhecida.</span>}
+          </label>
           {/* Optional Bank and Details */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>

@@ -42,6 +42,8 @@ interface FinancialFormModalProps {
   contacts?: ContactPerson[];
   costCenters?: CostCenter[];
   defaultDate?: string;
+  defaultAccountId?: string;
+  cashMovement?: boolean;
   onCreateContact?: () => void;
   onCreateCostCenter?: () => void;
 }
@@ -60,6 +62,8 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   contacts = [],
   costCenters = [],
   defaultDate,
+  defaultAccountId,
+  cashMovement = false,
   onCreateContact,
   onCreateCostCenter,
 }) => {
@@ -153,12 +157,12 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       setDate(defaultDate || today);
       setEntryDate(today);
       setCategoryId(filteredCategories?.[0]?.id || '');
-      setPaymentMethod('transfer');
-      setAccountId(accounts?.[0]?.id || '');
+      setPaymentMethod(cashMovement ? 'cash' : 'transfer');
+      setAccountId(defaultAccountId || accounts?.[0]?.id || '');
       setCardId(cards?.[0]?.id || '');
       setContactId('');
-      setStatus('pending');
-      setSettlementDate(localToday());
+      setStatus(cashMovement ? 'paid' : 'pending');
+      setSettlementDate(cashMovement ? defaultDate || localToday() : localToday());
       setNotes('');
       setIsRecurring(false);
       setCostCenterId('');

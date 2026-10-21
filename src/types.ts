@@ -90,6 +90,7 @@ export interface TreasuryAccount {
   name: string;
   type: AccountType;
   initialBalance: number;
+  openingDate?: string; // Data da entrada de abertura da conta/carteira
   color: string;
   bankName?: string;
   accountNumber?: string;

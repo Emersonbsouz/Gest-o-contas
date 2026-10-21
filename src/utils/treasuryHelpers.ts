@@ -11,6 +11,7 @@ import {
 
 export interface UnifiedTransaction {
   id: string;
+  isOpeningBalance?: boolean;
   type: 'income' | 'expense' | 'transfer';
   date: string;
   description: string;
@@ -134,6 +135,15 @@ export function getUnifiedTransactions(
 
   const list: UnifiedTransaction[] = [];
 
+  // Virtual opening entry: balance is already counted by initialBalance, never create duplicate income.
+  safeAccounts.filter(account => account.initialBalance !== 0).forEach(account => list.push({
+    id: 'opening:' + account.id, isOpeningBalance: true,
+    type: account.initialBalance > 0 ? 'income' : 'expense', date: account.openingDate || '',
+    description: account.initialBalance > 0 ? 'Entrada de abertura — ' + account.name : 'Saldo de abertura negativo — ' + account.name,
+    amount: Math.abs(account.initialBalance), accountId: account.id, accountName: account.name,
+    categoryName: 'Saldo inicial de abertura', createdAt: 0,
+    notes: account.openingDate ? 'Entrada de abertura já incluída no saldo da carteira.' : 'Saldo anterior sem data de abertura informada.',
+  }));
   // Incomes
   safeIncomes.forEach((inc) => {
     list.push({
@@ -194,7 +204,7 @@ export function getUnifiedTransactions(
   // Apply filters
   return list
     .filter((item) => {
-      if (options?.yearMonth && !item.date.startsWith(options.yearMonth)) {
+      if (options?.yearMonth && item.date && !item.date.startsWith(options.yearMonth)) {
         return false;
       }
       if (options?.type && options.type !== 'all' && item.type !== options.type) {

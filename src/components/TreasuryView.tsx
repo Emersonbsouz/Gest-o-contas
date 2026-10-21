@@ -555,6 +555,7 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
           </div>
         </div>
 
+        <p className="px-4 py-2 text-xs text-slate-500">A receita de abertura representa o saldo inicial da carteira. Ela compõe o saldo uma única vez e fica separada das receitas operacionais e do resultado do mês.</p>
         {/* Ledger Table */}
         <div className="overflow-x-auto">
           {transactions.length === 0 ? (
@@ -589,7 +590,10 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
                         key={`${tr.type}-${tr.id}`}
                         className="hover:bg-slate-50/80 transition-colors cursor-pointer"
                         onClick={() => {
-                          if (isIncome) {
+                          if (tr.isOpeningBalance) {
+                            const account = accounts.find(a => a.id === tr.accountId);
+                            if (account) onOpenAccountModal(account);
+                          } else if (isIncome) {
                             const item = incomes.find((i) => i.id === tr.id);
                             if (item) onEditIncome(item);
                           } else if (isExpense) {
@@ -603,18 +607,19 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
                       >
                       {/* Date */}
                       <td className="py-3 px-4 text-slate-600 font-medium whitespace-nowrap">
-                        {formatDateBR(tr.date)}
+                        {tr.date ? formatDateBR(tr.date) : "Sem data (saldo anterior)"}
                       </td>
 
                       {/* Type Badge */}
                       <td className="py-3 px-3 whitespace-nowrap">
-                        {isIncome && (
+                        {tr.isOpeningBalance && <span className="rounded-full bg-indigo-100 px-2 py-1 text-xs font-bold text-indigo-700">{isIncome ? "Receita de abertura" : "Abertura negativa"}</span>}
+                        {isIncome && !tr.isOpeningBalance && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
                             <ArrowDownLeft className="w-3 h-3" />
                             Entrada
                           </span>
                         )}
-                        {isExpense && (
+                        {isExpense && !tr.isOpeningBalance && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">
                             <ArrowUpRight className="w-3 h-3" />
                             Saída
@@ -697,6 +702,7 @@ export const TreasuryView: React.FC<TreasuryViewProps> = ({
                       {/* Actions */}
                       <td className="py-3 px-4 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1">
+                          {tr.isOpeningBalance && <button type="button" onClick={() => onOpenAccountModal(accounts.find(a => a.id === tr.accountId))} className="text-xs text-indigo-700">Editar abertura</button>}
                           {isIncome && (
                             <>
                               {isOpen(incomes.find(i => i.id === tr.id)?.status) && onLiquidateIncome && (

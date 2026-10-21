@@ -216,6 +216,7 @@ export default function App() {
   const [isFinancialModalOpen, setIsFinancialModalOpen] = useState(false);
   const [financialModalType, setFinancialModalType] = useState<'expense' | 'income'>('expense');
   const [editingFinancialItem, setEditingFinancialItem] = useState<any | null>(null);
+  const [cashMovementDate, setCashMovementDate] = useState<string | undefined>();
   const [financialPreselectedAccountId, setFinancialPreselectedAccountId] = useState<string | undefined>();
 
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
@@ -425,6 +426,7 @@ export default function App() {
 
   // --- Handlers for Expenses ---
   const handleOpenAddExpenseModal = () => {
+    setCashMovementDate(undefined);
     if (!currentUserPermissions.canCreateTransactions) {
       alert('Você não tem permissão para lançar despesas nesta empresa.');
       return;
@@ -495,6 +497,7 @@ export default function App() {
 
   // --- Handlers for Treasury Incomes ---
   const handleOpenAddIncomeModal = (preselectedAccountId?: string) => {
+    setCashMovementDate(undefined);
     if (!currentUserPermissions.canCreateTransactions) {
       alert('Você não tem permissão para lançar receitas nesta empresa.');
       return;
@@ -1011,6 +1014,10 @@ export default function App() {
 
           {activeView === 'financeiro' && (
             <FinancialView
+              onNewCashMovement={(kind, accountId, date) => {
+                if (!currentUserPermissions.canCreateTransactions) { alert('Você não tem permissão para lançar movimentos.'); return; }
+                setFinancialModalType(kind); setEditingFinancialItem(null); setFinancialPreselectedAccountId(accountId); setCashMovementDate(date); setIsFinancialModalOpen(true);
+              }}
               onOpenCardInvoices={()=>setActiveView('acompanhamento')}
               key={activeCompany?.id}
               treasuries={treasuries}
@@ -1127,6 +1134,9 @@ export default function App() {
 
       {/* Modals */}
       <FinancialFormModal
+        defaultDate={cashMovementDate}
+        defaultAccountId={financialPreselectedAccountId}
+        cashMovement={!!cashMovementDate}
         expenses={expenses}
         type={financialModalType}
         isOpen={isFinancialModalOpen}
