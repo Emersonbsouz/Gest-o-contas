@@ -25,3 +25,20 @@
   #financial-report tr { break-inside: avoid; }
   #financial-report .overflow-x-auto { overflow: visible; }
 }
+
+/* Shared business interface: restrained surfaces, consistent controls and visible focus. */
+.enterprise-shell {
+  font-variant-numeric: tabular-nums;
+  --business-ink: #0f172a;
+}
+.enterprise-shell button:not(:disabled), .enterprise-shell select:not(:disabled) { cursor: pointer; }
+.enterprise-shell :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 3px;
+}
+#registry-center table thead th { letter-spacing: .025em; }
+#registry-center table tbody tr { transition: background-color 120ms ease; }
+#registry-center button { font-weight: 600; }
+@media (prefers-reduced-motion: reduce) {
+  .enterprise-shell *, .enterprise-shell *::before, .enterprise-shell *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
+}

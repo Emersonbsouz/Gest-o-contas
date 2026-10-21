@@ -1,10 +1,10 @@
 import React from 'react';
-import { 
-  LayoutDashboard, 
-  Briefcase, 
-  Hammer, 
-  DollarSign, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Briefcase,
+  Hammer,
+  DollarSign,
+  Settings,
   BarChart3,
   ChevronRight,
   LogOut,
@@ -24,12 +24,12 @@ interface SidebarProps {
   cloudSyncStatus: 'synced' | 'syncing' | 'error';
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ 
-  activeView, 
-  onViewChange, 
-  activeCompany, 
+export const Sidebar: React.FC<SidebarProps> = ({
+  activeView,
+  onViewChange,
+  activeCompany,
   onLogout,
-  cloudSyncStatus 
+  cloudSyncStatus
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
@@ -44,9 +44,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const navItemClass = (id: string) => `
-    flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group
-    ${activeView === id 
-      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' 
+    flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 group
+    ${activeView === id
+      ? 'bg-slate-900 text-white shadow-sm'
       : 'text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}
   `;
 
@@ -64,7 +64,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Backdrop for mobile */}
       {isMobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
@@ -79,12 +79,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Logo Section */}
         <div className="p-6 border-b border-slate-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-indigo-100 shadow-lg">
+            <div className="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center">
               <Building2 className="text-white w-6 h-6" />
             </div>
             <div>
-              <h1 className="font-bold text-slate-900 leading-tight">Engenharia</h1>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Gestão Técnica</p>
+              <h1 className="font-bold text-slate-900 leading-tight">Gestão Empresarial</h1>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Financeiro e Operações</p>
             </div>
           </div>
         </div>
@@ -93,7 +93,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {activeCompany && (
           <div className="px-6 py-4 bg-slate-50/50">
             <div className="flex items-center gap-3">
-              <div 
+              <div
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-white"
                 style={{ backgroundColor: activeCompany.color || '#4f46e5' }}
               >

@@ -897,7 +897,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans text-slate-800 antialiased">
+    <div className="enterprise-shell min-h-screen bg-slate-50 flex font-sans text-slate-800 antialiased">
       <Sidebar 
         activeView={activeView}
         onViewChange={(view) => { setDreCostCenterId(null); setActiveView(view as any); }}

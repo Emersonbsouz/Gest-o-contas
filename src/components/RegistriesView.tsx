@@ -1,3 +1,4 @@
+import { RegistryTable } from './RegistryTable';
 import { contactRoles, CONTACT_ROLE_LABELS } from '../utils/contactRoles';
 import { CardInvoicePanel } from './CardInvoicePanel';
 import type { CardInvoicePayment, CardPaymentSelection } from '../types';
@@ -361,10 +362,10 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
   }, [safeCards]);
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+    <div id="registry-center" className="space-y-5">
+      <div className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Organização financeira</p><h2 className="mt-1 text-2xl font-bold text-slate-900">Central de Cadastros Financeiros</h2><p className="mt-2 text-sm text-slate-500">Pessoas, centros de custo e locais onde você movimenta seu dinheiro.</p></div>
+          <div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Organização financeira</p><h2 className="mt-1 text-2xl font-bold text-slate-900">Central de Cadastros</h2><p className="mt-2 text-sm text-slate-500">Administre os dados da empresa com cadastros organizados e ações de manutenção em cada registro.</p></div>
         </div>
       </div>
       <nav aria-label="Áreas de cadastro" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -381,134 +382,18 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
           ['equipment', 'Patrimônio', 'Equipamentos e ferramentas', equipment.length, Package],
           ['members', 'Acessos', 'Equipe e permissões', activeCompany?.memberEmails?.length || 1, Users],
         ] as const).map(([tab, title, description, count, Icon]) => <button key={tab} aria-label={`${title} (${count})`} aria-pressed={activeTab === tab} onClick={() => {setActiveTab(tab); setSearchQuery(''); setTypeFilter('all');}}
-          className={`rounded-2xl border p-4 text-left transition-colors ${activeTab === tab ? 'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600' : 'border-slate-200 bg-white hover:border-indigo-300'}`}>
-          <div className="mb-3 flex items-center justify-between"><Icon className="h-5 w-5 text-indigo-600" /><span className="rounded-full bg-slate-100 px-2 text-xs font-bold text-slate-600">{count}</span></div><span className="block text-sm font-bold text-slate-900">{title}</span><span className="mt-1 block text-xs text-slate-500">{description}</span>
+          className={`rounded-lg border p-3 text-left transition-colors ${activeTab === tab ? 'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600' : 'border-slate-200 bg-white hover:border-indigo-300'}`}>
+          <div className="mb-2 flex items-center justify-between"><Icon className="h-5 w-5 text-indigo-600" /><span className="rounded-full bg-slate-100 px-2 text-xs font-bold text-slate-600">{count}</span></div><span className="block text-sm font-bold text-slate-900">{title}</span><span className="mt-1 block text-xs text-slate-500">{description}</span>
         </button>)}
       </nav>
       {!['costCenters', 'members'].includes(activeTab) && <input aria-label="Pesquisar cadastros" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Pesquisar nesta área..." className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" />}
-      {activeTab === 'costCenters' && <section className="space-y-3"><button aria-label="Cadastrar centro de custo" onClick={()=>onOpenCostCenterModal?.()} className="p-2 bg-indigo-50 rounded">Novo Centro de Custo</button>{costCenters.map(c=><article key={c.id} className="p-4 bg-white border rounded-xl"><h3 className="font-bold">{c.name}</h3><p>{c.status} · {contacts.find(p=>p.id===c.clientId)?.name || 'Sem cliente'}</p><button onClick={()=>onOpenCostCenterModal?.(c)} className="p-2">Editar cadastro</button></article>)}</section>}
-      {activeTab === 'treasuries' && onSaveTreasury && <section className="space-y-3"><button className="p-2 bg-indigo-50 rounded" onClick={()=>{const name=prompt('Nome da tesouraria:');if(name?.trim())void onSaveTreasury({name:name.trim()});}}>Nova Tesouraria</button>{treasuries.filter(t=>t.name.toLowerCase().includes(searchQuery.toLowerCase())).map(t=><article key={t.id} className="p-4 bg-white border rounded-xl"><h3 className="font-bold">{t.name}</h3><p>{t.notes}</p><p>Contas vinculadas: {accounts.filter(a=>a.treasuryId===t.id).map(a=>a.name).join(', ') || 'Nenhuma'}</p><button className="p-2" onClick={()=>{const name=prompt('Nome da tesouraria:',t.name);if(name?.trim())void onSaveTreasury({name:name.trim(),notes:t.notes},t.id);}}>Editar cadastro</button></article>)}</section>}
+      {activeTab === 'costCenters' && <CostCenterRegistry centers={costCenters} contacts={contacts} incomes={incomes} expenses={expenses} onCreate={()=>onOpenCostCenterModal?.()} onEdit={center=>onOpenCostCenterModal?.(center)} />}
+      {activeTab === 'treasuries' && onSaveTreasury && <TreasuryRegistry treasuries={treasuries} accounts={accounts} incomes={incomes} expenses={expenses} transfers={transfers} search={searchQuery} onSave={onSaveTreasury} />}
+
       {/* TAB 1: CARTÕES DE CRÉDITO */}
-      {activeTab === 'cards' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Cartões de Crédito Cadastrados</h3>
-              <p className="text-xs text-slate-500">
-                Cadastre limites e datas. Consulte faturas e pagamentos no menu Acompanhamento.
-              </p>
-            </div>
-            <button
-              onClick={() => onOpenCardModal()}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Novo Cartão
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredCards.map((card) => (
-              <div
-                key={card.id}
-                className="rounded-2xl border border-slate-200 bg-white shadow-2xs overflow-hidden flex flex-col justify-between hover:shadow-xs transition-shadow cursor-pointer"
-                onClick={() => onOpenCardModal(card)}
-              >
-                {/* Visual Card simulation */}
-                <div
-                  className="p-5 text-white relative overflow-hidden"
-                  style={{
-                    background: `linear-gradient(135deg, ${card.color}, ${card.color}cc 70%, #0f172a 120%)`,
-                  }}
-                >
-                  <div className="flex justify-between items-start mb-6">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold tracking-wider text-white/80">
-                        Cartão de Crédito
-                      </span>
-                      <h4 className="text-base font-black tracking-wide mt-0.5">{card.name}</h4>
-                    </div>
-                    <span className="text-[11px] font-black uppercase px-2 py-0.5 rounded-md bg-white/20 backdrop-blur-xs">
-                      {card.brand}
-                    </span>
-                  </div>
-
-                  <div className="flex items-end justify-between text-xs pt-3 border-t border-white/20">
-                    <div>
-                      <span className="text-[10px] text-white/70 block">Limite Total</span>
-                      <span className="text-base font-black tracking-tight">
-                        {formatCurrency(card.limit)}
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[10px] text-white/70 block">Fechamento / Vcto</span>
-                      <span className="font-bold">Dia {card.closingDay} / Dia {card.dueDay}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card Details & Actions */}
-                <div className="p-4 bg-white flex-1 flex flex-col justify-between text-xs space-y-3">
-                  <div className="space-y-1.5 text-slate-600">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400">Conta p/ Pagamento:</span>
-                      <span className="font-semibold text-slate-800">
-                        {card.linkedAccountId ? accountMap.get(card.linkedAccountId) || 'Não vinculada' : 'Não vinculada'}
-                      </span>
-                    </div>
-                    {card.notes && (
-                      <p className="text-[11px] text-slate-500 italic line-clamp-2 pt-1">
-                        "{card.notes}"
-                      </p>
-                    )}
-                  </div>
-
-                    <div className="flex items-center justify-end gap-1.5 pt-3 border-t border-slate-100">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onOpenCardModal(card);
-                        }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors font-medium"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                        Editar
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (window.confirm(`Deseja excluir o cartão "${card.name}"?`)) {
-                            onDeleteCard(card.id);
-                          }
-                        }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors font-medium"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Excluir
-                      </button>
-                    </div>
-                </div>
-              </div>
-            ))}
-
-            {filteredCards.length === 0 && (
-              <div className="col-span-full text-center py-12 bg-white rounded-2xl border border-slate-200 p-8">
-                <CreditCardIcon className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                <h4 className="text-sm font-bold text-slate-800">Nenhum cartão encontrado</h4>
-                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                  Cadastre seus cartões de crédito para registrar compras parceladas e datas de fatura.
-                </p>
-                <button
-                  onClick={() => onOpenCardModal()}
-                  className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-colors"
-                >
-                  Cadastrar Primeiro Cartão
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {activeTab === 'cards' && <RegistryTable title="Cartões de crédito" description="Limites, fechamento e vencimento dos cartões." items={filteredCards} onCreate={()=>onOpenCardModal()} createLabel="Novo Cartão"
+        columns={[{label:'Cartão',render:card=><strong>{card.name}</strong>},{label:'Bandeira',render:card=>card.brand.toUpperCase()},{label:'Limite',render:card=>formatCurrency(card.limit)},{label:'Fechamento / Vencimento',render:card=>'Dia '+card.closingDay+' / Dia '+card.dueDay},{label:'Conta vinculada',render:card=>accountMap.get(card.linkedAccountId||'')||'Não vinculada'}]}
+        actions={[{label:'Editar',run:card=>onOpenCardModal(card)},{label:'Excluir',destructive:true,confirm:card=>'Excluir o cartão "'+card.name+'"?',run:card=>onDeleteCard(card.id)}]} />}
 
       {/* TAB 2: FAVORECIDOS & FORNECEDORES */}
       {activeTab === 'contacts' && (
@@ -635,10 +520,10 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                               e.stopPropagation();
                               onOpenContactModal(contact);
                             }}
-                            className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                            title="Editar contato"
+                            className="inline-flex items-center gap-1.5 border border-slate-200 px-3 py-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                            title="Editar contato" aria-label={"Editar " + contact.name}
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            <Edit2 className="w-3.5 h-3.5" /><span>Editar</span>
                           </button>
                             <button
                               onClick={(e) => {
@@ -647,10 +532,10 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                                   onDeleteContact(contact.id);
                                 }
                               }}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                              title="Excluir contato"
+                              className="inline-flex items-center gap-1.5 border border-rose-200 px-3 py-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                              title="Excluir contato" aria-label={"Excluir " + contact.name}
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash2 className="w-3.5 h-3.5" /><span>Excluir</span>
                             </button>
                           </div>
                         </td>
@@ -681,341 +566,23 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
       )}
 
       {/* TAB 3: CONTAS RECORRENTES / FIXAS */}
-      {(activeTab === 'recurring' || activeTab === 'subscriptions') && (
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">{activeTab === 'subscriptions' ? 'Assinaturas mensais' : 'Contas Fixas & Recorrentes'}</h3>
-              <p className="text-xs text-slate-500">
-                Cadastre o serviço e o cartão. Gere e acompanhe as cobranças no menu Acompanhamento.
-              </p>
-            </div>
+      {(activeTab === 'recurring' || activeTab === 'subscriptions') && <RegistryTable title={activeTab==='subscriptions'?'Assinaturas mensais':'Contas recorrentes'} description="Compromissos, valores e datas de vencimento." items={filteredRecurring} onCreate={()=>onOpenRecurringModal(undefined,activeTab==='subscriptions')} createLabel={activeTab==='subscriptions'?'Nova Assinatura':'Nova Conta Recorrente'}
+        columns={[{label:'Descrição',render:bill=><strong>{bill.description}</strong>},{label:'Tipo',render:bill=>bill.type==='expense'?'Despesa':'Receita'},{label:'Valor mensal',render:bill=>formatCurrency(bill.amount)},{label:'Vencimento',render:bill=>'Dia '+bill.dueDay},{label:'Categoria',render:bill=>categoryMap.get(bill.categoryId)||'Geral'},{label:'Conta / Cartão',render:bill=>accountMap.get(bill.accountId||'')||safeCards.find(c=>c.id===bill.cardId)?.name||'Não vinculado'},{label:'Situação',render:bill=>bill.active?'Ativo':'Inativo'}]}
+        actions={[{label:'Editar',run:bill=>onOpenRecurringModal(bill)},{label:'Excluir',destructive:true,confirm:bill=>'Excluir "'+bill.description+'"?',run:bill=>onDeleteRecurring(bill.id)}]} />}
 
-            <div className="flex items-center gap-2 flex-wrap">
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-white font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-              >
-                <option value="all">Todas as Contas</option>
-                <option value="expense">Apenas Despesas Fixas</option>
-                <option value="income">Apenas Receitas Fixas</option>
-              </select>
-
-              <button
-                onClick={() => onOpenRecurringModal(undefined, activeTab === 'subscriptions')}
-                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                {activeTab === 'subscriptions' ? 'Nova Assinatura' : 'Nova Conta Recorrente'}
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredRecurring.map((bill) => {
-              const isExpense = bill.type === 'expense';
-              return (
-                <div
-                  key={bill.id}
-                  className={`rounded-2xl border p-4 bg-white shadow-2xs flex flex-col justify-between transition-all cursor-pointer ${
-                    bill.active ? 'border-slate-200 hover:border-indigo-200' : 'border-slate-200 opacity-60 bg-slate-50/50'
-                  }`}
-                  onClick={() => onOpenRecurringModal(bill)}
-                >
-                  <div>
-                    {/* Header with Type and Due Day */}
-                    <div className="flex items-center justify-between gap-2 mb-3">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
-                          isExpense
-                            ? 'bg-rose-50 text-rose-700 border-rose-200'
-                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        }`}
-                      >
-                        {isExpense ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownLeft className="w-3 h-3" />}
-                        {isExpense ? 'Despesa Fixa' : 'Receita Fixa'}
-                      </span>
-
-                      <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
-                        <Calendar className="w-3 h-3 text-slate-500" />
-                        Dia {bill.dueDay}
-                      </span>
-                    </div>
-
-                    <h4 className="text-sm font-bold text-slate-900">{bill.description}</h4>
-
-                    <div className="mt-2 flex items-baseline gap-1">
-                      <span className={`text-lg font-black ${isExpense ? 'text-rose-600' : 'text-emerald-600'}`}>
-                        {formatCurrency(bill.amount)}
-                      </span>
-                      <span className="text-[10px] text-slate-400">/mês</span>
-                    </div>
-
-                    <div className="mt-3 space-y-1 text-xs text-slate-500">
-                      <div className="flex justify-between">
-                        <span>Categoria:</span>
-                        <span className="font-semibold text-slate-700">
-                          {categoryMap.get(bill.categoryId) || 'Geral'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Conta / Cartão:</span>
-                        <span className="font-semibold text-slate-700">
-                          {bill.accountId
-                            ? accountMap.get(bill.accountId) || 'Conta'
-                            : bill.cardId
-                            ? safeCards.find(c => c.id === bill.cardId)?.name || 'Cartão removido'
-                            : 'Padrão'}
-                        </span>
-                      </div>
-                      {bill.contactId && (
-                        <div className="flex justify-between">
-                          <span>Favorecido:</span>
-                          <span className="font-semibold text-slate-700">
-                            {contactMap.get(bill.contactId) || 'Contato'}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                    <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end">
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenRecurringModal(bill);
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg transition-colors"
-                          title="Editar"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (window.confirm(`Excluir a conta recorrente "${bill.description}"?`)) {
-                              onDeleteRecurring(bill.id);
-                            }
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
-                          title="Excluir"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                </div>
-              );
-            })}
-
-            {filteredRecurring.length === 0 && (
-              <div className="col-span-full text-center py-12 bg-white rounded-2xl border border-slate-200 p-8">
-                <RefreshCw className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                <h4 className="text-sm font-bold text-slate-800">{activeTab === 'subscriptions' ? 'Nenhuma assinatura cadastrada' : 'Nenhuma conta recorrente cadastrada'}</h4>
-                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                  Cadastre suas despesas e receitas fixas mensais para poder lançá-las rapidamente a cada virada de mês.
-                </p>
-                <button
-                  onClick={() => onOpenRecurringModal(undefined, activeTab === 'subscriptions')}
-                  className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-colors"
-                >
-                  {activeTab === 'subscriptions' ? 'Cadastrar Primeira Assinatura' : 'Cadastrar Primeira Conta Recorrente'}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'goals' && <section className="space-y-3"><div className="flex justify-between"><h3 className="font-bold">Metas cadastradas</h3><button onClick={()=>onOpenGoalModal()} className="p-2 bg-indigo-50 rounded">Nova Meta</button></div>{filteredGoals.map(goal=><article key={goal.id} className="p-4 bg-white border rounded-xl"><h4 className="font-bold">{goal.title}</h4><p>Valor alvo: {formatCurrency(goal.targetAmount)}</p>{goal.deadline && <p>Prazo: {formatDateBR(goal.deadline)}</p>}<button className="p-2" onClick={()=>onOpenGoalModal(goal)}>Editar</button><button className="p-2" onClick={()=>{if(confirm('Excluir esta meta?'))onDeleteGoal(goal.id);}}>Excluir</button></article>)}{filteredGoals.length===0 && <p>Nenhuma meta cadastrada.</p>}</section>}
+      {activeTab === 'goals' && <RegistryTable title="Metas financeiras" description="Objetivos e valores planejados." items={filteredGoals} onCreate={()=>onOpenGoalModal()} createLabel="Nova Meta"
+        columns={[{label:'Meta',render:goal=><strong>{goal.title}</strong>},{label:'Valor alvo',render:goal=>formatCurrency(goal.targetAmount)},{label:'Acumulado',render:goal=>formatCurrency(goal.currentAmount)},{label:'Prazo',render:goal=>goal.deadline?formatDateBR(goal.deadline):'Sem prazo'}]}
+        actions={[{label:'Editar',run:goal=>onOpenGoalModal(goal)},{label:'Excluir',destructive:true,confirm:goal=>'Excluir a meta "'+goal.title+'"?',run:goal=>onDeleteGoal(goal.id)}]} />}
 
       {/* TAB 5: CONTAS BANCÁRIAS & CAIXAS */}
-      {activeTab === 'accounts' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Contas Bancárias & Caixas da Tesouraria</h3>
-              <p className="text-xs text-slate-500">
-                Configure os locais onde seu dinheiro está guardado (contas corrente, caixas físicos, poupança, investimentos)
-              </p>
-            </div>
-            <button
-              onClick={() => onOpenAccountModal()}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Nova Conta / Caixa
-            </button>
-          </div>
-
-          {onOpenCashModal && <button onClick={onOpenCashModal} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white">+ Novo Caixa</button>}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {accounts.filter(a => `${a.name} ${a.bankName || ""} ${treasuries.find(t => t.id === a.treasuryId)?.name || ""}`.toLowerCase().includes(searchQuery.toLowerCase())).map((acc) => {
-              const typeLabels = {
-                checking: 'Conta Corrente',
-                cash: 'Caixa Físico / Espécie',
-                savings: 'Poupança / Reserva',
-                investment: 'Investimentos',
-              }[acc.type] || 'Conta';
-
-              return (
-                <div
-                  key={acc.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs flex flex-col justify-between hover:shadow-xs transition-shadow cursor-pointer"
-                  onClick={() => onOpenAccountModal(acc)}
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-2 mb-3">
-                      <div
-                        className="w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-2xs"
-                        style={{ backgroundColor: acc.color }}
-                      >
-                        <Wallet className="w-4 h-4" />
-                      </div>
-                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                        {typeLabels}
-                      </span>
-                    </div>
-
-                    <h4 className="text-sm font-bold text-slate-900">{acc.name}</h4>
-                    <p className="mt-1 text-xs text-indigo-600">{treasuries.find(t => t.id === acc.treasuryId)?.name || "Sem tesouraria vinculada"}</p>
-                    {acc.bankName && (
-                      <p className="text-xs text-slate-500 mt-0.5">{acc.bankName}</p>
-                    )}
-                    {acc.accountNumber && (
-                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                        {acc.accountNumber}
-                      </p>
-                    )}
-
-                    <div className="mt-3 pt-3 border-t border-slate-100">
-                      <span className="text-[10px] text-slate-400 block">Saldo Inicial</span>
-                      <span className="text-base font-bold text-slate-800">
-                        {formatCurrency(acc.initialBalance || 0)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-end gap-1">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpenAccountModal(acc);
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors"
-                      title="Editar"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteAccount(acc.id);
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
-                      title="Excluir"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {activeTab === 'accounts' && <RegistryTable title="Contas bancárias e caixas" description="Contas, carteiras e saldos realizados da empresa." items={safeAccounts.filter(account=>account.name.toLowerCase().includes(searchQuery.toLowerCase()))} onCreate={()=>onOpenAccountModal()} createLabel="Nova Conta" toolbar={onOpenCashModal&&<button type="button" onClick={onOpenCashModal} className="rounded-lg border border-indigo-200 px-4 py-2.5 text-sm font-semibold text-indigo-700">Novo Caixa</button>}
+        columns={[{label:'Conta / Caixa',render:account=><strong>{account.name}</strong>},{label:'Tipo',render:account=>({checking:'Conta corrente',cash:'Caixa / Carteira',savings:'Poupança',investment:'Investimento'}[account.type])},{label:'Instituição',render:account=>account.bankName||'Não informada'},{label:'Tesouraria',render:account=>treasuries.find(t=>t.id===account.treasuryId)?.name||'Sem vínculo'},{label:'Saldo de abertura',render:account=>formatCurrency(account.initialBalance)},{label:'Saldo atual',render:account=>formatCurrency(accountBalances[account.id]||0)}]}
+        actions={[{label:'Editar',run:account=>onOpenAccountModal(account)},{label:'Excluir',destructive:true,confirm:account=>'Excluir a conta "'+account.name+'"?',run:account=>onDeleteAccount(account.id)}]} />}
 
       {/* TAB 6: GESTÃO DE CATEGORIAS */}
-      {activeTab === 'categories' && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Gestão de Categorias Financeiras</h3>
-              <p className="text-xs text-slate-500">
-                Organize seus lançamentos por categorias para ter relatórios mais precisos por tipo de gasto ou receita
-              </p>
-            </div>
-            <button
-              onClick={onOpenCategoryModal}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors border border-indigo-100"
-            >
-              <Tag className="w-3.5 h-3.5" />
-              Gerenciar Todas
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Categorias de Despesa */}
-            <div className="p-6 rounded-2xl border border-slate-200 bg-white shadow-2xs">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
-                    <TrendingDown className="w-4 h-4" />
-                  </div>
-                  <h4 className="font-bold text-slate-900">Despesas</h4>
-                </div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase">Top 10 Categorias</span>
-              </div>
-              <div className="space-y-2">
-                {categories
-                  .filter((c) => c.type === 'expense')
-                  .slice(0, 10)
-                  .map((cat) => (
-                    <div key={cat.id} className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all">
-                      <div className="flex items-center gap-3">
-                        <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0" style={{ backgroundColor: cat.color }}>
-                          <CategoryIcon name={cat.icon} className="w-4 h-4" />
-                        </div>
-                        <span className="text-xs font-bold text-slate-700">{cat.name}</span>
-                      </div>
-                      {cat.budgetLimit && (
-                        <div className="text-right">
-                          <span className="block text-[10px] font-bold text-indigo-600">Limite</span>
-                          <span className="text-[11px] font-bold text-slate-500">R$ {cat.budgetLimit.toFixed(0)}</span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-              </div>
-            </div>
-
-            {/* Categorias de Receita */}
-            <div className="p-6 rounded-2xl border border-slate-200 bg-white shadow-2xs">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                    <TrendingUp className="w-4 h-4" />
-                  </div>
-                  <h4 className="font-bold text-slate-900">Receitas</h4>
-                </div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase">Categorias de Entrada</span>
-              </div>
-              <div className="space-y-2">
-                {categories
-                  .filter((c) => c.type === 'income')
-                  .map((cat) => (
-                    <div key={cat.id} className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all">
-                      <div className="flex items-center gap-3">
-                        <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0" style={{ backgroundColor: cat.color }}>
-                          <CategoryIcon name={cat.icon} className="w-4 h-4" />
-                        </div>
-                        <span className="text-xs font-bold text-slate-700">{cat.name}</span>
-                      </div>
-                    </div>
-                  ))}
-                {categories.filter((c) => c.type === 'income').length === 0 && (
-                  <div className="text-center py-12">
-                    <Tag className="w-10 h-10 text-slate-100 mx-auto mb-2" />
-                    <p className="text-xs text-slate-400">Nenhuma categoria de receita cadastrada.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {activeTab === 'categories' && <RegistryTable title="Categorias financeiras" description="Classificação de receitas e despesas. Use Gerenciar para manter as categorias e seus limites." items={categories.filter(category=>category.name.toLowerCase().includes(searchQuery.toLowerCase()))} onCreate={onOpenCategoryModal} createLabel="Gerenciar Categorias"
+        columns={[{label:'Categoria',render:category=><span className="flex items-center gap-2"><CategoryIcon name={category.icon} className="h-4 w-4"/><strong>{category.name}</strong></span>},{label:'Tipo',render:category=>category.type==='income'?'Receita':'Despesa'},{label:'Categoria principal',render:category=>categories.find(c=>c.id===category.parentId)?.name||'Principal'},{label:'Limite mensal',render:category=>category.budgetLimit?formatCurrency(category.budgetLimit):'Sem limite'}]}
+        actions={[{label:'Gerenciar',run:()=>onOpenCategoryModal()}]} />}
 
       {/* TAB 7: PESSOAS COM ACESSO & USUÁRIOS */}
       {activeTab === 'members' && (
@@ -1429,10 +996,10 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
                             type="button"
                             onClick={() => handleRemoveMemberAction(email)}
                             disabled={memberLoading}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                            className="inline-flex items-center gap-1.5 border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 rounded-lg transition"
                             title="Revogar acesso"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4" /><span>Revogar acesso</span>
                           </button>
                         )}
                       </div>
@@ -1445,87 +1012,9 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
       )}
 
       {/* TAB: PATRIMÔNIO / EQUIPAMENTOS */}
-      {activeTab === 'equipment' && (
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Gestão de Patrimônio e Ferramental</h3>
-              <p className="text-xs text-slate-500">
-                Cadastre betoneiras, andaimes, ferramentas e outros equipamentos para controle de locações e obras.
-              </p>
-            </div>
-            <button
-              onClick={() => onOpenEquipmentModal()}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Novo Equipamento
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {equipment.filter(e => 
-              e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              (e.brand || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-              (e.serialNumber || '').toLowerCase().includes(searchQuery.toLowerCase())
-            ).map((item) => (
-              <div
-                key={item.id}
-                className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between"
-                onClick={() => onOpenEquipmentModal(item)}
-              >
-                <div>
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center">
-                      <Package className="w-5 h-5" />
-                    </div>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${
-                      item.status === 'available' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                      item.status === 'rented' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' :
-                      item.status === 'maintenance' ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                      'bg-rose-50 text-rose-700 border-rose-100'
-                    }`}>
-                      {item.status === 'available' ? 'Disponível' : 
-                       item.status === 'rented' ? 'Locado' : 
-                       item.status === 'maintenance' ? 'Manutenção' : 'Avariado'}
-                    </span>
-                  </div>
-                  <h4 className="text-sm font-bold text-slate-900">{item.name}</h4>
-                  <p className="text-[11px] text-slate-500 font-medium">
-                    {item.brand || 'Marca não inf.'} • SN: {item.serialNumber || 'N/A'}
-                  </p>
-                  <div className="mt-3 flex items-baseline gap-1">
-                    <span className="text-lg font-black text-slate-900">{formatCurrency(item.dailyRate)}</span>
-                    <span className="text-[10px] text-slate-400">/dia</span>
-                  </div>
-                </div>
-                <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end gap-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenEquipmentModal(item);
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (window.confirm(`Deseja excluir "${item.name}"?`)) {
-                        onDeleteEquipment(item.id);
-                      }
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {activeTab === 'equipment' && <RegistryTable title="Patrimônio e equipamentos" description="Inventário de equipamentos, ferramentas e valores de locação." items={equipment.filter(item=>(item.name+' '+(item.brand||'')+' '+(item.serialNumber||'')).toLowerCase().includes(searchQuery.toLowerCase()))} onCreate={()=>onOpenEquipmentModal()} createLabel="Novo Equipamento"
+        columns={[{label:'Equipamento',render:item=><strong>{item.name}</strong>},{label:'Marca',render:item=>item.brand||'Não informada'},{label:'Nº de série',render:item=>item.serialNumber||'Não informado'},{label:'Situação',render:item=>({available:'Disponível',rented:'Locado',maintenance:'Manutenção',broken:'Avariado'}[item.status])},{label:'Diária',render:item=>formatCurrency(item.dailyRate)}]}
+        actions={[{label:'Editar',run:item=>onOpenEquipmentModal(item)},{label:'Excluir',destructive:true,confirm:item=>'Excluir o equipamento "'+item.name+'"?',run:item=>onDeleteEquipment(item.id)}]} />}
 
       {/* Permissions Modal from Registries tab */}
       {editingMemberForPerms && onUpdateMember && activeCompany && (

@@ -1,3 +1,4 @@
+import { RegistryTable } from './RegistryTable';
 import React, { useState } from 'react';
 import { Landmark, Plus, X } from 'lucide-react';
 import type { TreasuryGroup, TreasuryAccount, Income, Expense, AccountTransfer } from '../types';
@@ -23,12 +24,9 @@ export const TreasuryRegistry: React.FC<Props> = ({treasuries, accounts, incomes
     catch (err) {setError(err instanceof Error && /tesouraria|esse nome/.test(err.message) ? err.message : getSaveErrorMessage(err));} finally {setSaving(false);}
   }
   return <div className="space-y-4">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-bold text-slate-900">Tesourarias</h3><p className="text-sm text-slate-500">Agrupe caixas e contas. Vincule cada um em seu cadastro.</p></div><button onClick={() => open()} className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white"><Plus size={16} />Nova Tesouraria</button></div>
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{treasuries.filter(t => `${t.name} ${t.notes || ''}`.toLowerCase().includes(search.toLowerCase())).map(t => {
-      const linked = accounts.filter(a => a.treasuryId === t.id);
-      return <button key={t.id} onClick={() => open(t)} className="rounded-2xl border border-slate-200 bg-white p-5 text-left hover:border-indigo-400"><Landmark className="mb-3 text-indigo-600" /><h4 className="font-bold">{t.name}</h4><p className="mt-1 text-xs text-slate-500">{linked.length} caixas / contas vinculados</p><p className="mt-3 text-xl font-bold">{formatCurrency(linked.reduce((sum, a) => sum + (balances[a.id] || 0), 0))}</p><p className="text-xs text-slate-500">Saldo realizado consolidado</p><p className="mt-2 text-xs text-slate-600">{linked.map(a => a.name).join(', ') || 'Vincule um caixa ou conta para começar.'}</p></button>;
-    })}</div>
-    {!treasuries.length && <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">Crie uma tesouraria, como Tesouraria Principal, e vincule os caixas em Contas e Caixas.</div>}
+    <RegistryTable title="Tesourarias" description="Agrupe contas e caixas e consulte o saldo consolidado." items={treasuries.filter(t=>(t.name+' '+(t.notes||'')).toLowerCase().includes(search.toLowerCase()))} onCreate={()=>open()} createLabel="Nova Tesouraria"
+      columns={[{label:'Tesouraria',render:item=><strong>{item.name}</strong>},{label:'Contas e caixas',render:item=>accounts.filter(a=>a.treasuryId===item.id).map(a=>a.name).join(', ')||'Nenhuma conta vinculada'},{label:'Saldo consolidado',render:item=>formatCurrency(accounts.filter(a=>a.treasuryId===item.id).reduce((sum,a)=>sum+(balances[a.id]||0),0))},{label:'Observações',render:item=>item.notes||'—'}]}
+      actions={[{label:'Editar',run:item=>open(item)}]} />
     {show && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"><form onSubmit={submit} className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6"><div className="flex items-center justify-between"><h3 className="font-bold">{editing ? 'Editar Tesouraria' : 'Nova Tesouraria'}</h3><button type="button" aria-label="Fechar tesouraria" disabled={saving} onClick={() => setShow(false)}><X size={20} /></button></div>
       {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
       <label className="block text-sm">Nome da tesouraria<input aria-label="Nome da tesouraria" autoFocus required value={name} onChange={e => setName(e.target.value)} className="mt-1 w-full rounded-xl border p-3" /></label>
