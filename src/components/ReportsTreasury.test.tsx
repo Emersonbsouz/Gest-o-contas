@@ -58,3 +58,15 @@ test('CSV center report exports allocated product amounts rather than the comple
  fireEvent.click(screen.getByRole('button',{name:'Exportar relatório'}));
  expect(content).toContain('Cimento');expect(content).toContain('80,00');expect(content).not.toContain('120,00');expect(content).not.toContain('Areia');
 });
+
+test('wallet opening is visible in project DRE and export without inflating operating receipts', () => {
+  let content=''; vi.stubGlobal('Blob',class {constructor(parts:string[]){content=parts.join('');}});
+  URL.createObjectURL=vi.fn(()=>'blob:report');URL.revokeObjectURL=vi.fn();vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});
+  render(<ReportsView incomes={[]} expenses={[]} accounts={[{id:'wallet',name:'Carteira',type:'cash',initialBalance:1200,color:'#123'},{id:'bank',name:'Outro banco',type:'checking',initialBalance:900,color:'#123'}]} categories={[]} costCenters={[{id:'personal',name:'Pessoal',clientId:'',status:'active',color:'#123',createdAt:1}]} initialCostCenterId="personal" initialPeriod="all" selectedMonth="2026-10" onMonthChange={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText('Conta / Caixa'),{target:{value:'wallet'}});
+  expect(screen.getByRole('region',{name:'Saldos de abertura das contas'}).textContent).toContain('1.200,00');
+  expect(screen.getByText('Sem data (saldo anterior)')).toBeTruthy();
+  expect(screen.getByText('Resultado realizado:').textContent).toContain('0,00');
+  fireEvent.click(screen.getByRole('button',{name:'Exportar relatório'}));
+  expect(content).toContain('1200,00');expect(content).not.toContain('900,00');
+});
