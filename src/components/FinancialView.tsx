@@ -44,7 +44,7 @@ interface FinancialViewProps {
   onOpenCardInvoices?: () => void;
   onOpenExpenseModal: () => void;
   onOpenIncomeModal: () => void;
-  onOpenTransferModal: () => void;
+  onOpenTransferModal: (accountId?: string) => void;
   onEditExpense: (e: Expense) => void;
   onDeleteExpense: (id: string) => void;
   onEditIncome: (i: Income) => void;

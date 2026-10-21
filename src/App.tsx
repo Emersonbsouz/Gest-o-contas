@@ -1040,7 +1040,7 @@ export default function App() {
               onMonthChange={setCurrentYearMonth}
               onOpenExpenseModal={handleOpenAddExpenseModal}
               onOpenIncomeModal={() => handleOpenAddIncomeModal()}
-              onOpenTransferModal={() => handleOpenAddTransferModal()}
+              onOpenTransferModal={handleOpenAddTransferModal}
               onEditExpense={handleEditExpense}
               onDeleteExpense={handleDeleteExpense}
               onEditIncome={handleEditIncome}
@@ -1114,7 +1114,7 @@ export default function App() {
           )}
 
           {activeView === 'relatorios' && (
-            <ReportsView key={(activeCompany?.id || "") + ":" + (dreCostCenterId || "all")}
+            <ReportsView transfers={transfers} key={(activeCompany?.id || "") + ":" + (dreCostCenterId || "all")}
               initialCostCenterId={dreCostCenterId || undefined}
               initialPeriod={dreCostCenterId ? "all" : "month"}
               companyName={activeCompany?.name}
@@ -1181,7 +1181,6 @@ export default function App() {
         onSave={handleSaveTransfer}
         editingTransfer={editingTransfer}
         accounts={accounts}
-        defaultDate={`${currentYearMonth}-01`}
         defaultFromAccountId={preselectedTransferAccountId}
       />
 
