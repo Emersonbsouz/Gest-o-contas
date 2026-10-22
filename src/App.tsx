@@ -960,7 +960,7 @@ export default function App() {
           )}
 
           {activeView === 'dashboard' && (
-            <DashboardView 
+            <DashboardView key={activeCompany.id} treasuries={treasuries} 
               expenses={expenses}
               incomes={incomes}
               accounts={accounts}

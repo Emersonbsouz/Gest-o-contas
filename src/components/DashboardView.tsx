@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react';
+import {isOpen} from '../utils/financialStatus';
+import React, { useMemo, useState } from 'react';
 import { 
   DollarSign, 
   TrendingUp, 
@@ -11,7 +12,8 @@ import {
 import { 
   Expense, 
   Income, 
-  TreasuryAccount, 
+  TreasuryAccount,
+  TreasuryGroup, 
   AccountTransfer,
   CostCenter,
   Proposal
@@ -23,6 +25,7 @@ interface DashboardViewProps {
   expenses: Expense[];
   incomes: Income[];
   accounts: TreasuryAccount[];
+  treasuries?: TreasuryGroup[];
   transfers: AccountTransfer[];
   costCenters: CostCenter[];
   proposals: Proposal[];
@@ -34,6 +37,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   expenses,
   incomes,
   accounts,
+  treasuries = [],
   transfers,
   costCenters,
   proposals,
@@ -41,7 +45,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onViewChange
 }) => {
   const balances = useMemo(() => calculateAccountBalances(accounts, incomes, expenses, transfers), [accounts, incomes, expenses, transfers]);
-  const totalBalance = Object.values(balances).reduce((acc, val) => acc + val, 0);
+  const [selectedIds,setSelectedIds] = useState<string[] | null>(null);
+  const visibleAccounts = accounts.filter(account => selectedIds === null || selectedIds.includes(account.id));
+  const selectedSet = new Set(visibleAccounts.map(account=>account.id));
+  const totalBalance = visibleAccounts.reduce((sum,account)=>sum+(balances[account.id]||0),0);
+  const scopedExpenses = expenses.filter(expense=>selectedIds===null || selectedSet.has(expense.accountId || ''));
+  const openExpenses = scopedExpenses.filter(expense=>isOpen(expense.status) && expense.status!=='draft');
+  function toggleAccounts(ids:string[],checked:boolean){
+    setSelectedIds(previous=>{const next=new Set(previous===null?accounts.map(account=>account.id):previous);ids.forEach(id=>{if(checked)next.add(id);else next.delete(id);});return [...next];});
+  }
+
 
   const activeProjects = costCenters.filter(c => c.status === 'active').length;
   const pendingProposals = proposals.filter(p => p.status === 'draft' || p.status === 'sent').length;
@@ -72,6 +85,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
+      <section aria-label="Filtros do dashboard" className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-base font-semibold text-slate-900">Personalizar visão financeira</h3><p className="mt-1 text-sm text-slate-500">Marque vários caixas, contas ou tesourarias. Cada conta entra uma única vez no total.</p></div><div className="flex gap-2"><button type="button" onClick={()=>setSelectedIds(null)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Selecionar todos</button><button type="button" onClick={()=>setSelectedIds([])} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Limpar seleção</button></div></div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <fieldset className="rounded-lg border border-slate-200 p-3"><legend className="px-1 text-sm font-semibold">Tesourarias</legend><div className="max-h-48 space-y-2 overflow-y-auto">{treasuries.map(treasury=>{
+            const linked=accounts.filter(account=>account.treasuryId===treasury.id),selected=linked.filter(account=>selectedSet.has(account.id));
+            const checked=linked.length>0&&selected.length===linked.length,mixed=selected.length>0&&!checked;
+            return <label key={treasury.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 p-2 text-sm"><span className="flex items-center gap-2"><input type="checkbox" aria-label={'Selecionar tesouraria '+treasury.name} aria-checked={mixed?'mixed':checked} checked={checked} ref={input=>{if(input)input.indeterminate=mixed;}} disabled={!linked.length} onChange={e=>toggleAccounts(linked.map(account=>account.id),e.target.checked)}/><span>{treasury.name}<small className="block text-slate-500">{selected.length} de {linked.length} contas / caixas selecionados</small></span></span><b className="whitespace-nowrap">{formatCurrency(selected.reduce((sum,account)=>sum+(balances[account.id]||0),0))}</b></label>;
+          })}{!treasuries.length&&<p className="text-sm text-slate-500">Nenhuma tesouraria cadastrada. Selecione diretamente os caixas e contas.</p>}</div></fieldset>
+          <fieldset className="rounded-lg border border-slate-200 p-3"><legend className="px-1 text-sm font-semibold">Caixas, carteiras e contas</legend><div className="max-h-48 space-y-2 overflow-y-auto">{accounts.map(account=><label key={account.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 p-2 text-sm"><span className="flex items-center gap-2"><input type="checkbox" aria-label={'Selecionar conta '+account.name} checked={selectedSet.has(account.id)} onChange={e=>toggleAccounts([account.id],e.target.checked)}/><span>{account.name}<small className="block text-slate-500">{treasuries.find(t=>t.id===account.treasuryId)?.name||'Sem tesouraria vinculada'}</small></span></span><b className="whitespace-nowrap">{formatCurrency(balances[account.id]||0)}</b></label>)}{!accounts.length&&<p className="text-sm text-slate-500">Cadastre um caixa ou conta para personalizar a visão.</p>}</div></fieldset>
+        </div>
+        <p role="status" className="text-sm font-medium text-indigo-700">{visibleAccounts.length} de {accounts.length} contas / caixas na visão · Saldo selecionado: {formatCurrency(totalBalance)}</p>
+        {!visibleAccounts.length&&<p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Nenhum caixa ou conta selecionado. Marque os itens que deseja acompanhar.</p>}
+        <p className="text-xs text-slate-500">A seleção filtra saldos e contas a pagar. Comercial e projetos mantêm a visão geral da empresa. Lançamentos sem conta vinculada aparecem somente na visão geral.</p>
+      </section>
+
       {/* Hero Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow group">
@@ -79,10 +107,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
               <DollarSign className="w-6 h-6" />
             </div>
-            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full uppercase tracking-wider">Saldo Global</span>
+            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full uppercase tracking-wider">{selectedIds===null?'Saldo Global':'Saldo Selecionado'}</span>
           </div>
           <h3 className="text-2xl font-black text-slate-900 tracking-tight">{formatCurrency(totalBalance)}</h3>
-          <p className="text-slate-400 text-[11px] font-medium mt-1">Consolidação de {accounts.length} caixas</p>
+          <p className="text-slate-400 text-[11px] font-medium mt-1">Consolidação de {visibleAccounts.length} contas / caixas</p>
         </div>
 
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow group">
@@ -115,9 +143,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-1 rounded-full uppercase tracking-wider">Pagar</span>
           </div>
           <h3 className="text-2xl font-black text-slate-900 tracking-tight">
-            {expenses.filter(e => e.status === 'pending').length}
+            {openExpenses.length}
           </h3>
-          <p className="text-slate-400 text-[11px] font-medium mt-1">Contas vencendo em breve</p>
+          <p className="text-slate-400 text-[11px] font-medium mt-1">Contas em aberto na visão</p>
         </div>
       </div>
 
@@ -135,7 +163,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </button>
             </div>
             <div className="divide-y divide-slate-50">
-              {accounts.slice(0, 5).map(acc => (
+              {visibleAccounts.map(acc => (
                 <div key={acc.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white" style={{ backgroundColor: acc.color }}>
@@ -143,7 +171,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </div>
                     <div>
                       <p className="text-sm font-bold text-slate-800">{acc.name}</p>
-                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">{acc.type}</p>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">{treasuries.find(t=>t.id===acc.treasuryId)?.name || ({cash:'Caixa / Carteira',checking:'Conta corrente',savings:'Poupança',investment:'Investimento'}[acc.type])}</p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -167,8 +195,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </button>
             </div>
             <div className="divide-y divide-slate-50">
-              {expenses
-                .filter(e => e.status === 'pending')
+              {openExpenses
                 .sort((a, b) => a.date.localeCompare(b.date))
                 .slice(0, 5)
                 .map(exp => (
@@ -190,7 +217,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </div>
                   </div>
                 ))}
-              {expenses.filter(e => e.status === 'pending').length === 0 && (
+              {openExpenses.length === 0 && (
                 <div className="p-8 text-center text-slate-400 text-sm italic">
                   Nenhuma conta pendente para os próximos dias.
                 </div>
