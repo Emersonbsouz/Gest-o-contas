@@ -287,6 +287,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
               <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
                 <th className="py-3 px-4">Vencimento</th>
                 <th className="py-3 px-4">Data de lançamento</th>
+                <th className="py-3 px-4">Data de pagamento</th>
                 <th className="py-3 px-4">Descrição</th>
                 <th className="py-3 px-4">Categoria</th>
                 <th className="py-3 px-4 hidden md:table-cell">Pagamento</th>
@@ -314,6 +315,12 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
 
                     <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
                       {transactionEntryDate(expense) ? formatDateBR(transactionEntryDate(expense)) : 'Não informada'}
+                    </td>
+
+                    <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
+                      {isSettled(expense.status)
+                        ? expense.settlementDate ? formatDateBR(expense.settlementDate) : 'Não informada'
+                        : isCancelled(expense.status) ? '—' : 'Em aberto'}
                     </td>
 
                     {/* Description & Note & Badges */}
