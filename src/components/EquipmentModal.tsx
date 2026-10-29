@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState, useEffect } from 'react';
 import { X, Package, Shield, Hash, DollarSign } from 'lucide-react';
@@ -16,6 +17,7 @@ export const EquipmentModal: React.FC<EquipmentModalProps> = ({
   onSave,
   editingItem
 }) => {
+  const {reviewForm}=useActionReview();
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
@@ -47,6 +49,7 @@ export const EquipmentModal: React.FC<EquipmentModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!await reviewForm(e.currentTarget as HTMLFormElement, 'Revisar equipamento')) return;
     setSaving(true);
     setError('');
     try {

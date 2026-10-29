@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 import React, { useState } from 'react';
 import { AlertCircle, Loader2, Lock, Mail, ShieldCheck, User, Wallet } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -23,6 +24,7 @@ export function getAuthErrorMessage(error: unknown): string {
 }
 
 export const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
+  const {reviewForm}=useActionReview();
   const { login, signup, resetPassword, sessionError } = useAuth();
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
@@ -50,6 +52,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
       return;
     }
 
+    if(isRegistering && !await reviewForm(event.currentTarget as HTMLFormElement,'Revisar cadastro de usuário'))return;
     setLoading(true);
     try {
       if (isRegistering) {

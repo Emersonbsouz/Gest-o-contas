@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState, useEffect } from 'react';
 import { X, Target, Calendar, DollarSign, Tag, TrendingUp } from 'lucide-react';
@@ -26,6 +27,7 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
   onSave,
   editingGoal,
 }) => {
+  const {reviewForm}=useActionReview();
   const [title, setTitle] = useState('');
   const [targetAmount, setTargetAmount] = useState('');
   const [currentAmount, setCurrentAmount] = useState('');
@@ -78,6 +80,7 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
       return;
     }
 
+    if (!await reviewForm(e.currentTarget as HTMLFormElement, 'Revisar meta financeira')) return;
     setSaving(true);
     setError('');
     try {

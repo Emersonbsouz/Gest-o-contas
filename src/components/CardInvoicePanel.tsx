@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 
 import React, { useState } from 'react';
 import type { CreditCard, Expense, TreasuryAccount, CardInvoicePayment, CardPaymentSelection, ContactPerson } from '../types';
@@ -12,6 +13,7 @@ interface Props {
  onPay?: (cardId:string,dueDate:string,accountId:string,paymentDate:string,selection?:CardPaymentSelection)=>Promise<void>;
 }
 export function CardInvoicePanel({contacts=[],card,expenses,accounts,payments,onPay,onCancelPayment,onUpdatePayment}:Props) {
+ const {reviewForm}=useActionReview();
  const contactMap=new Map(contacts.map(c=>[c.id,c.name]));
  const purchaseInfo=(e:Expense)=><span className="block text-[11px] text-slate-500">Compra: {e.purchaseDate?formatDateBR(e.purchaseDate):'Data não informada'} · Fornecedor: {e.contactId?contactMap.get(e.contactId)||'Cadastro indisponível':'Não informado'}</span>;
  const purchasesFor=(due:string)=>{
@@ -61,6 +63,7 @@ export function CardInvoicePanel({contacts=[],card,expenses,accounts,payments,on
    {invoice && <form onSubmit={async e=>{
       e.preventDefault();if(busy || !onPay)return;
       if(!ids.length || !Number.isFinite(value) || valueCents<=0 || valueCents>selectedTotal){setError('Selecione despesas e um valor maior que zero, até o total selecionado.');return;}
+      if(!await reviewForm(e.currentTarget as HTMLFormElement,'Revisar pagamento: '+card.name+' · '+formatDateBR(invoice.dueDate)))return;
       setBusy(true);setError('');
       try{await onPay(card.id,invoice.dueDate,accountId,date,{expenseIds:ids,amount:valueCents/100,expectedBalance:selectedTotal/100});setSelected(null);}
       catch(err){setError(err instanceof Error?err.message:'Não foi possível pagar a fatura.');}finally{setBusy(false);}
@@ -102,7 +105,7 @@ export function CardInvoicePanel({contacts=[],card,expenses,accounts,payments,on
          }}>Cancelar pagamento</button>}
        </div>}
        {editing===p.id && p.status!=='cancelled' && onUpdatePayment && <form className="p-3 bg-indigo-50 rounded space-y-2" onSubmit={async e=>{
-         e.preventDefault();if(busy)return;setBusy(true);setHistoryError('');
+         e.preventDefault();if(busy)return;if(!await reviewForm(e.currentTarget as HTMLFormElement,'Revisar correção do pagamento'))return;setBusy(true);setHistoryError('');
          try{await onUpdatePayment(p.id,{amount:Number(editAmount.replace(',','.')),accountId:editAccount,paymentDate:editDate});setEditing(null);}catch(err){setHistoryError(err instanceof Error?err.message:'Falha ao corrigir.');}finally{setBusy(false);}
        }}>
          <p>Corrigir o registro recalcula o saldo em aberto e o valor descontado da conta. O cartão e o vencimento desta fatura são preservados.</p>

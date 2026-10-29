@@ -60,7 +60,7 @@ test('preserves data and closes only after confirmed update', async () => {
   render(<ProposalModal isOpen onClose={close} onSave={save} onSaveClient={vi.fn()} editingProposal={proposal} contacts={[client]} />);
   fireEvent.change(screen.getByDisplayValue('Projeto A'), {target:{value:'Projeto revisado'}});
   fireEvent.click(screen.getByRole('button',{name:'Salvar Alterações'}));
-  expect(save).toHaveBeenCalledWith({...proposal,title:'Projeto revisado',notes:'',commercialTerms:undefined,deliveryTime:undefined},proposal.id,proposal);
+  await waitFor(()=>expect(save).toHaveBeenCalledWith({...proposal,title:'Projeto revisado',notes:'',commercialTerms:undefined,deliveryTime:undefined},proposal.id,proposal));
   expect(close).not.toHaveBeenCalled();
   expect(screen.getByRole('button',{name:'Salvando...'}).matches(':disabled')).toBe(true);
   await act(async () => confirm());

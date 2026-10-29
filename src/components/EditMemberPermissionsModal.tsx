@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 import React, { useState, useEffect } from 'react';
 import {
   X,
@@ -44,6 +45,7 @@ export const EditMemberPermissionsModal: React.FC<EditMemberPermissionsModalProp
   currentUserEmail,
   onSave,
 }) => {
+  const {reviewForm}=useActionReview();
   const [name, setName] = useState('');
   const [role, setRole] = useState<CompanyRole>('partner');
   const [permissions, setPermissions] = useState<MemberPermissions>(DEFAULT_ROLE_PERMISSIONS.partner);
@@ -91,6 +93,7 @@ export const EditMemberPermissionsModal: React.FC<EditMemberPermissionsModalProp
       return;
     }
 
+    if (!await reviewForm(e.currentTarget as HTMLFormElement, 'Revisar permissões de acesso')) return;
     try {
       setLoading(true);
       setError('');

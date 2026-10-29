@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 import { localToday, validCalendarDate } from '../utils/dailyCash';
 import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState, useEffect } from 'react';
@@ -52,6 +53,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   treasuries = [],
   defaultType = "checking",
 }) => {
+  const {reviewForm}=useActionReview();
   const [name, setName] = useState('');
   const [type, setType] = useState<AccountType>('checking');
   const [openingDate, setOpeningDate] = useState('');
@@ -108,6 +110,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
       setError('Selecione uma tesouraria válida.');
       return;
     }
+    if (!await reviewForm(e.currentTarget as HTMLFormElement, 'Revisar conta ou caixa')) return;
     setSaving(true);
     setError('');
     try {

@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState, useEffect } from 'react';
 import { X, CreditCard as CreditCardIcon, Calendar, DollarSign, Wallet, Shield } from 'lucide-react';
@@ -39,6 +40,7 @@ export const CreditCardFormModal: React.FC<CreditCardFormModalProps> = ({
   editingCard,
   accounts = [],
 }) => {
+  const {reviewForm}=useActionReview();
   const [name, setName] = useState('');
   const [brand, setBrand] = useState<CardBrand>('mastercard');
   const [limit, setLimit] = useState('');
@@ -101,6 +103,7 @@ export const CreditCardFormModal: React.FC<CreditCardFormModalProps> = ({
       return;
     }
 
+    if (!await reviewForm(e.currentTarget as HTMLFormElement, 'Revisar cartão de crédito')) return;
     setSaving(true);
     setError('');
     try {

@@ -1,3 +1,5 @@
+import {getSaveErrorMessage} from '../utils/saveErrors';
+import {useActionReview} from '../context/ActionReviewContext';
 import React, { useState, useEffect } from 'react';
 import { X, Target, Check } from 'lucide-react';
 import { formatCurrency, formatMonthYearLabel } from '../utils/formatters';
@@ -17,6 +19,8 @@ export const MonthlyBudgetModal: React.FC<MonthlyBudgetModalProps> = ({
   currentBudget,
   onSaveBudget,
 }) => {
+  const {review}=useActionReview();
+  const [saving,setSaving]=useState(false),[error,setError]=useState('');
   const [budgetVal, setBudgetVal] = useState('');
 
   useEffect(() => {
@@ -27,11 +31,14 @@ export const MonthlyBudgetModal: React.FC<MonthlyBudgetModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(saving)return;
     const val = parseFloat(budgetVal.replace(',', '.'));
-    onSaveBudget(yearMonth, !isNaN(val) && val >= 0 ? val : 0);
-    onClose();
+    if(!Number.isFinite(val)||val<0){setError('Informe um orçamento válido.');return;}
+    if(!await review({title:'Revisar orçamento mensal',fields:[{label:'Mês',value:formatMonthYearLabel(yearMonth)},{label:'Orçamento',value:formatCurrency(val)}]}))return;
+    setSaving(true);setError('');
+    try{await onSaveBudget(yearMonth,val);onClose();}catch(err){setError(getSaveErrorMessage(err));}finally{setSaving(false);}
   };
 
   return (
@@ -58,7 +65,7 @@ export const MonthlyBudgetModal: React.FC<MonthlyBudgetModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">{error&&<p role="alert" className="text-sm text-rose-700">{error}</p>}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
               Limite Máximo Desejado (R$)
@@ -90,7 +97,7 @@ export const MonthlyBudgetModal: React.FC<MonthlyBudgetModalProps> = ({
               Cancelar
             </button>
             <button
-              type="submit"
+              type="submit" disabled={saving}
               id="btn-save-monthly-budget"
               className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5"
             >

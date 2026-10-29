@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 import React, { useState } from 'react';
 import {
   X,
@@ -64,6 +65,7 @@ export const ManageMembersModal: React.FC<ManageMembersModalProps> = ({
   onUpdateMember,
   onRemoveMember,
 }) => {
+  const {reviewForm}=useActionReview();
   const [newEmail, setNewEmail] = useState('');
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState<CompanyRole>('partner');
@@ -118,6 +120,7 @@ export const ManageMembersModal: React.FC<ManageMembersModalProps> = ({
       return;
     }
 
+    if (!await reviewForm(e.currentTarget as HTMLFormElement, 'Revisar cadastro de acesso')) return;
     try {
       setLoading(true);
       await onAddMember(company.id, emailToAdd, newName.trim(), newRole, newPermissions);

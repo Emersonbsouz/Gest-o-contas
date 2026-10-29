@@ -38,7 +38,7 @@ test('seleciona tesouraria e aguarda confirmação do salvamento',async()=>{
  fireEvent.change(screen.getByLabelText('Tipo de destino'),{target:{value:'treasury'}});
  fireEvent.change(screen.getByLabelText('Tesouraria de destino'),{target:{value:'t'}});
  fireEvent.click(screen.getByRole('button',{name:'Realizar Transferência'}));
- expect(save).toHaveBeenCalledWith(expect.objectContaining({fromAccountId:'a',toAccountId:'d',toTreasuryId:'t',amount:75}),undefined);
+ await waitFor(()=>expect(save).toHaveBeenCalledWith(expect.objectContaining({fromAccountId:'a',toAccountId:'d',toTreasuryId:'t',amount:75}),undefined));
  expect(close).not.toHaveBeenCalled();
  await act(async()=>resolve());expect(close).toHaveBeenCalledTimes(1);
 });

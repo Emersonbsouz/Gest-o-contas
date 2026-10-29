@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 import { RegistryTable } from './RegistryTable';
 import { contactRoles, CONTACT_ROLE_LABELS } from '../utils/contactRoles';
 import { CardInvoicePanel } from './CardInvoicePanel';
@@ -182,6 +183,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
   onOpenEquipmentModal,
   onDeleteEquipment,
 }) => {
+  const {reviewForm}=useActionReview();
   const [activeTab, setActiveTab] = useState<ActiveRegistryTab>('contacts');
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -235,6 +237,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
       return;
     }
 
+    if (!await reviewForm(e.currentTarget as HTMLFormElement, 'Revisar cadastro de acesso')) return;
     try {
       setMemberLoading(true);
       await onAddMember(activeCompany.id, cleanEmail, newMemberName.trim(), newMemberRole, newMemberPermissions);

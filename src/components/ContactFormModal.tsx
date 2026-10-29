@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 import { contactRoles } from '../utils/contactRoles';
 import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState, useEffect } from 'react';
@@ -29,6 +30,7 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
   defaultType = 'supplier',
   fixedType = false,
 }) => {
+  const {reviewForm}=useActionReview();
   const [name, setName] = useState('');
   const [roles, setRoles] = useState<ContactType[]>([defaultType]);
   const [phone, setPhone] = useState('');
@@ -73,6 +75,7 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
     }
 
     if (!roles.length) { setError('Marque pelo menos um papel para este cadastro.'); return; }
+    if (!await reviewForm(e.currentTarget as HTMLFormElement, 'Revisar cliente ou fornecedor')) return;
     setIsLoading(true);
     try {
       await onSave(

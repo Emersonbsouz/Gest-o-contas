@@ -1,3 +1,5 @@
+import {getSaveErrorMessage} from '../utils/saveErrors';
+import {useActionReview} from '../context/ActionReviewContext';
 import { hasContactRole } from '../utils/contactRoles';
 import React, { useState, useEffect } from 'react';
 import { X, Settings2, Calendar, DollarSign, Package } from 'lucide-react';
@@ -20,6 +22,8 @@ export const RentalModal: React.FC<RentalModalProps> = ({
   contacts,
   equipment
 }) => {
+  const {reviewForm}=useActionReview();
+  const [saving,setSaving]=useState(false),[error,setError]=useState('');
   const [equipmentId, setEquipmentId] = useState('');
   const [clientId, setClientId] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -47,9 +51,12 @@ export const RentalModal: React.FC<RentalModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({
+    if(saving)return;
+    if (!await reviewForm(e.currentTarget as HTMLFormElement, 'Revisar locação')) return;
+    setSaving(true);setError('');
+    try {await onSave({
       equipmentId,
       clientId,
       startDate,
@@ -57,7 +64,7 @@ export const RentalModal: React.FC<RentalModalProps> = ({
       amount,
       status,
     }, editingRental?.id);
-    onClose();
+    onClose();}catch(err){setError(getSaveErrorMessage(err));}finally{setSaving(false);}
   };
 
   return (
@@ -78,7 +85,7 @@ export const RentalModal: React.FC<RentalModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-5">
+        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-5">{error&&<p role="alert" className="text-sm text-rose-700">{error}</p>}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Equipamento / Ferramenta</label>
             <select
@@ -171,6 +178,7 @@ export const RentalModal: React.FC<RentalModalProps> = ({
             </button>
             <button
               type="submit"
+              disabled={saving}
               className="flex-[2] px-4 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-100 transition-all text-sm"
             >
               {editingRental ? 'Salvar Alterações' : 'Confirmar Locação'}

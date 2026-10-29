@@ -1,3 +1,4 @@
+import {useActionReview,formReviewDetails} from '../context/ActionReviewContext';
 import { buildDownPaymentPlan } from '../utils/downPayment';
 import { buildCardInstallments } from '../utils/cardInstallments';
 import { transactionEntryDate } from '../utils/entryDate';
@@ -71,6 +72,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   onCreateContact,
   onCreateCostCenter,
 }) => {
+  const {review}=useActionReview();
   const [downSchedule,setDownSchedule] = useState<{key:string; values:Record<number,{date?:string; amount?:string}>}>({key:'',values:{}});
   const [hasDownPayment,setHasDownPayment] = useState(false);
   const [downPaymentAmount,setDownPaymentAmount] = useState('');
@@ -333,6 +335,21 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       assignor: billetAssignor.trim() || undefined,
     } : undefined;
 
+    if(hasDownPayment && !accounts.some(a=>a.id===downPaymentAccount)){setError('Selecione uma conta válida para a entrada.');return;}
+    if(hasDownPayment && type==='income' && (!accounts.some(a=>a.id===accountId)||paymentMethod==='credit_card')){setError('Selecione a conta e um meio de recebimento válido para o saldo.');return;}
+    const reviewDetails=formReviewDetails(e.currentTarget as HTMLFormElement,type==='expense'?'Revisar despesa':'Revisar receita');
+    reviewDetails.fields.unshift(
+      {label:'Descrição',value:description.trim()},{label:hasDownPayment?'Valor total':'Valor informado',value:formatCurrency(numAmount)},
+      {label:paymentMethod==='credit_card'?'Data da compra':'Vencimento',value:date.split('-').reverse().join('/')},
+      {label:'Data de lançamento',value:entryDate.split('-').reverse().join('/')},
+      {label:'Categoria',value:categories.find(c=>c.id===categoryId)?.name||'Não informada'},
+    );
+    if(showSplits && type==='expense')reviewDetails.fields.push(...splits.map((split,index)=>({label:'Produto '+(index+1),value:(split.description||split.notes||'Item')+' · '+formatCurrency(split.amount)+' · '+(costCenters.find(c=>c.id===split.costCenterId)?.name||'Centro indisponível')})));
+    if(hasDownPayment){
+      reviewDetails.fields.push({label:'Situação da entrada',value:type==='expense'?'Paga':'Recebida'},
+        ...downPreview.map((part,index)=>({label:'Parcela '+(index+1),value:formatCurrency(Number((downOverrides[index]?.amount??String(part.amount)).replace(',','.')))+' · '+(downOverrides[index]?.date??part.date).split('-').reverse().join('/')+' · Pendente'})));
+    }
+    if(!await review(reviewDetails))return;
     setIsLoading(true);
     try {
       if (hasDownPayment && !editingItem) {

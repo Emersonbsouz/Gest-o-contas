@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 import React, { useState } from 'react';
 import { X, Building2, User, Sparkles, Check } from 'lucide-react';
 import { CompanyType } from '../types';
@@ -22,6 +23,7 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({
   onClose,
   onCreate,
 }) => {
+  const {reviewForm}=useActionReview();
   const [name, setName] = useState('');
   const [type, setType] = useState<CompanyType>('business');
   const [color, setColor] = useState('#059669');
@@ -37,6 +39,7 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({
       return;
     }
 
+    if (!await reviewForm(e.currentTarget as HTMLFormElement, 'Revisar nova empresa')) return;
     try {
       setLoading(true);
       setError('');

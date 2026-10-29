@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 import React, { useMemo, useState } from 'react';
 import type { TreasuryAccount, Income, Expense, AccountTransfer, DailyCashClosing } from '../types';
 import { dailyCashSummary, localToday } from '../utils/dailyCash';
@@ -13,6 +14,7 @@ interface Props {
 }
 export const DailyCashView: React.FC<Props> = ({accounts,incomes,expenses,transfers,closings,canClose,onCloseDay,companyName,onNewMovement}) => {
   const cashAccounts = accounts.filter(a => a.type === 'cash');
+  const {review}=useActionReview();
   const [accountId,setAccountId] = useState(''), [date,setDate] = useState(localToday);
   const [counted,setCounted] = useState(''), [notes,setNotes] = useState(''), [saving,setSaving] = useState(false), [error,setError] = useState('');
   const activeId = accountId || cashAccounts[0]?.id || '';
@@ -31,6 +33,11 @@ export const DailyCashView: React.FC<Props> = ({accounts,incomes,expenses,transf
     if (closing) {setError('Este caixa já foi fechado nessa data.'); return;}
     if (!canClose) {setError('Você não tem permissão para fechar o caixa.'); return;}
     if (difference !== 0 && !notes.trim()) {setError('Descreva o motivo da diferença antes de fechar.'); return;}
+    if(!await review({title:'Revisar fechamento diário',fields:[
+      {label:'Caixa',value:account.name},{label:'Data',value:formatDateBR(date)},
+      {label:'Saldo esperado',value:formatCurrency(summary?.expectedBalance||0)},
+      {label:'Saldo contado',value:formatCurrency(countedValue)},{label:'Diferença',value:formatCurrency(difference||0)},
+      {label:'Observações',value:notes||'Sem observações'}]}))return;
     setSaving(true);setError('');
     try {await onCloseDay(activeId,date,countedValue,notes,summary?.movementSignature);setCounted('');setNotes('');}
     catch(err) {const detail = err as {code?:string;message?:string}; setError(detail?.code === '23505' ? 'Este caixa já foi fechado nessa data. Atualize a consulta.' : /Selecione|Informe|diferença|fechado|movimentos mudaram/.test(detail?.message || '') ? detail.message! : getSaveErrorMessage(err));}

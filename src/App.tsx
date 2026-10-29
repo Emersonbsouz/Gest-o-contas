@@ -1,3 +1,5 @@
+import {formatCurrency} from './utils/formatters';
+import {useActionReview} from './context/ActionReviewContext';
 import { MonitoringView } from './components/MonitoringView';
 import { recurringDate } from './utils/cardSummary';
 import { localToday } from './utils/dailyCash';
@@ -78,6 +80,7 @@ export default function App() {
   const { currentUser, loading: authLoading, recoveringPassword, logout } = useAuth();
 
   // Multi-Company State
+  const {review}=useActionReview();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [activeCompany, setActiveCompany] = useState<Company | null>(null);
   const [companiesLoading, setCompaniesLoading] = useState(true);
@@ -688,6 +691,7 @@ export default function App() {
     }
     if (bill.cardId && !cards.some(c => c.id === bill.cardId)) { alert('Selecione um cartão válido no cadastro.'); return; }
     const billDate = recurringDate(currentYearMonth, bill.dueDay);
+    if(!await review({title:'Revisar lançamento recorrente',fields:[{label:'Descrição',value:bill.description},{label:'Valor',value:formatCurrency(bill.amount)},{label:'Vencimento',value:formatDateBR(billDate)},{label:'Situação',value:'Pendente'}]}))return;
     recurringInFlight.current.add(token);
     try {
       if (bill.type === 'expense') {
@@ -715,7 +719,7 @@ export default function App() {
   };
 
   const handleConvertProposal = async (proposal: Proposal) => {
-    if (!window.confirm(`Deseja converter a proposta "${proposal.title}" em um novo Centro de Custo?`)) return;
+    if(!await review({title:'Revisar conversão da proposta',fields:[{label:'Proposta',value:proposal.title},{label:'Valor',value:formatCurrency(proposal.amount)},{label:'Resultado',value:'Criar centro de custo e receita pendente'}]}))return;
 
     const newCC = await saveCostCenter({
       name: proposal.title,
@@ -760,6 +764,7 @@ export default function App() {
   const handleUpdateGoalAmount = async (goalId: string, currentAmount: number) => {
     const goal = goals.find((g) => g.id === goalId);
     if (goal) {
+      if(!await review({title:'Revisar atualização da meta',fields:[{label:'Meta',value:goal.title},{label:'Valor acumulado',value:formatCurrency(currentAmount)}]}))return;
       await saveGoal({ ...goal, currentAmount }, goalId);
     }
   };

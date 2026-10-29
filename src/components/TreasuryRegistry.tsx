@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 import { RegistryTable } from './RegistryTable';
 import React, { useState } from 'react';
 import { Landmark, Plus, X } from 'lucide-react';
@@ -12,6 +13,7 @@ interface Props {
   onSave: (data: Omit<TreasuryGroup, 'id'>, id?: string) => Promise<unknown>;
 }
 export const TreasuryRegistry: React.FC<Props> = ({treasuries, accounts, incomes, expenses, transfers = [], search = '', onSave}) => {
+  const {reviewForm}=useActionReview();
   const [editing, setEditing] = useState<TreasuryGroup | null>(null);
   const [show, setShow] = useState(false), [name, setName] = useState(''), [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false), [error, setError] = useState('');
@@ -19,6 +21,7 @@ export const TreasuryRegistry: React.FC<Props> = ({treasuries, accounts, incomes
   function open(item?: TreasuryGroup) {setEditing(item || null); setName(item?.name || ''); setNotes(item?.notes || ''); setError(''); setShow(true);}
   async function submit(e: React.FormEvent) {
     e.preventDefault(); if (!name.trim()) {setError('Informe o nome da tesouraria.'); return;}
+    if (!await reviewForm(e.currentTarget as HTMLFormElement, 'Revisar tesouraria')) return;
     setSaving(true); setError('');
     try {await onSave({name: name.trim(), notes: notes.trim() || undefined}, editing?.id); setShow(false);}
     catch (err) {setError(err instanceof Error && /tesouraria|esse nome/.test(err.message) ? err.message : getSaveErrorMessage(err));} finally {setSaving(false);}

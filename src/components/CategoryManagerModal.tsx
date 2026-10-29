@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState } from 'react';
 import { X, Plus, Trash2, Tag, Check, Palette } from 'lucide-react';
@@ -36,6 +37,8 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   onDeleteCategory,
   onUpdateCategoryBudget,
 }) => {
+  const {reviewForm,review}=useActionReview();
+  const [budgetDrafts,setBudgetDrafts]=useState<Record<string,string>>({});
   const [activeTab, setActiveTab] = useState<'expense' | 'income'>('expense');
   const [isCreating, setIsCreating] = useState(false);
   const [newCatName, setNewCatName] = useState('');
@@ -68,6 +71,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
 
     const limit = newCatLimit ? parseFloat(newCatLimit) : undefined;
 
+    if (!await reviewForm(e.currentTarget as HTMLFormElement, 'Revisar categoria')) return;
     setSaving(true);
     setError('');
     try {
@@ -303,16 +307,19 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                           <span className="text-[10px] text-slate-400 font-bold uppercase">Meta:</span>
                           <input
                             type="number"
-                            defaultValue={parent.budgetLimit}
+                            value={budgetDrafts[parent.id]??String(parent.budgetLimit??'')}
                             placeholder="Limite R$"
-                            onBlur={(e) => {
-                              const val = e.target.value ? parseFloat(e.target.value) : undefined;
-                              if (val !== parent.budgetLimit) {
-                                onUpdateCategoryBudget(parent.id, val);
-                              }
-                            }}
+                            onChange={e=>setBudgetDrafts(previous=>({...previous,[parent.id]:e.target.value}))}
                             className="w-20 px-2 py-0.5 text-[10px] border border-slate-200 rounded focus:border-indigo-300 outline-none font-bold text-slate-700"
                           />
+                          <button type="button" disabled={saving} onClick={async()=>{
+                            const raw=budgetDrafts[parent.id]??String(parent.budgetLimit??'');
+                            const value=raw===''?undefined:Number(raw);
+                            if(value!==undefined&&(!Number.isFinite(value)||value<0)){setError('Informe um limite válido.');return;}
+                            if(!await review({title:'Revisar limite da categoria',fields:[{label:'Categoria',value:parent.name},{label:'Limite mensal',value:value===undefined?'Sem limite':String(value)}]}))return;
+                            setSaving(true);setError('');
+                            try{await onUpdateCategoryBudget(parent.id,value);}catch(err){setError(getSaveErrorMessage(err));}finally{setSaving(false);}
+                          }} className="rounded border border-slate-200 px-2 py-1 text-[10px] font-bold">Salvar limite</button>
                         </div>
                       )}
                     </div>

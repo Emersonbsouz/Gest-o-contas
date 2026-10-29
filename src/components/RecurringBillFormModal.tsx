@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 import { getSaveErrorMessage } from '../utils/saveErrors';
 import React, { useState, useEffect } from 'react';
 import { X, RefreshCw, Calendar, DollarSign, Wallet, CreditCard as CreditCardIcon, Users } from 'lucide-react';
@@ -32,6 +33,7 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
   cards = [],
   contacts = [],
 }) => {
+  const {reviewForm}=useActionReview();
   const [description, setDescription] = useState('');
   const [subscription, setSubscription] = useState(false);
   const [type, setType] = useState<'expense' | 'income'>('expense');
@@ -108,6 +110,7 @@ export const RecurringBillFormModal: React.FC<RecurringBillFormModalProps> = ({
       setError('Cadastre e selecione um cartão válido para vincular esta assinatura ou recorrência.');
       return;
     }
+    if (!await reviewForm(e.currentTarget as HTMLFormElement, 'Revisar assinatura ou recorrência')) return;
     setSaving(true);
     setError('');
     try {

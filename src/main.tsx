@@ -1,3 +1,4 @@
+import {ActionReviewProvider} from './context/ActionReviewContext';
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
@@ -17,7 +18,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <AuthProvider>
-        <App />
+        <ActionReviewProvider><App /></ActionReviewProvider>
       </AuthProvider>
     </ErrorBoundary>
   </StrictMode>,

@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { X, ArrowRightLeft } from 'lucide-react';
@@ -13,6 +14,7 @@ interface Props {
  defaultDate?:string;defaultFromAccountId?:string;
 }
 export function TransferFormModal({isOpen,onClose,onSave,editingTransfer,accounts=[],treasuries=[],defaultDate,defaultFromAccountId}:Props) {
+ const {reviewForm}=useActionReview();
  const [fromId,setFromId]=useState(''),[toId,setToId]=useState('');
  const [fromKind,setFromKind]=useState<Kind>('account'),[toKind,setToKind]=useState<Kind>('account');
  const [fromTreasury,setFromTreasury]=useState(''),[toTreasury,setToTreasury]=useState('');
@@ -49,6 +51,7 @@ export function TransferFormModal({isOpen,onClose,onSave,editingTransfer,account
   const value=Number(amount.replace(',','.'));
   const data={fromAccountId:fromId,toAccountId:toId,amount:Math.round(value*100)/100,date,description:description.trim()||'Transferência interna',fromTreasuryId:fromKind==='treasury'?fromTreasury:undefined,toTreasuryId:toKind==='treasury'?toTreasury:undefined};
   try{validateTransfer(data,accounts,treasuries);}catch(err){setError(err instanceof Error?err.message:'Confira os dados.');return;}
+    if (!await reviewForm(e.currentTarget as HTMLFormElement, 'Revisar transferência')) return;
   savingRef.current=true;setSaving(true);setError('');
   try{await onSave(data,editingTransfer?.id);onClose();}catch(err){setError(getSaveErrorMessage(err));}finally{savingRef.current=false;setSaving(false);}
  }

@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 import { hasContactRole } from '../utils/contactRoles';
 import React, { useState, useEffect } from 'react';
 import { X, Hammer, MapPin, Calendar, Info } from 'lucide-react';
@@ -19,6 +20,7 @@ export const CostCenterModal: React.FC<CostCenterModalProps> = ({
   editingCC,
   contacts
 }) => {
+  const {reviewForm}=useActionReview();
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [status, setStatus] = useState<'active' | 'completed' | 'on_hold'>('active');
@@ -54,6 +56,7 @@ export const CostCenterModal: React.FC<CostCenterModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) { setError('Informe o nome do centro de custo.'); return; }
+    if (!await reviewForm(e.currentTarget as HTMLFormElement, 'Revisar centro de custo')) return;
     setSaving(true);
     setError('');
     try {

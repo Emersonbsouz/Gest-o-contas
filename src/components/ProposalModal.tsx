@@ -1,3 +1,4 @@
+import {useActionReview} from '../context/ActionReviewContext';
 import { hasContactRole } from '../utils/contactRoles';
 import React, { useState, useEffect } from 'react';
 import { X, FileText, Calendar, DollarSign, Info } from 'lucide-react';
@@ -22,6 +23,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
   editingProposal,
   contacts
 }) => {
+  const {reviewForm}=useActionReview();
   const [title, setTitle] = useState('');
   const [clientId, setClientId] = useState('');
   const [amount, setAmount] = useState(0);
@@ -71,6 +73,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
       setError('Informe título, cliente, data e um valor válido.');
       return;
     }
+    if (!await reviewForm(e.currentTarget as HTMLFormElement, 'Revisar proposta comercial')) return;
     setIsSaving(true);
     setError('');
     try {
