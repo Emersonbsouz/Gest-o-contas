@@ -71,6 +71,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   onCreateContact,
   onCreateCostCenter,
 }) => {
+  const [downSchedule,setDownSchedule] = useState<{key:string; values:Record<number,{date?:string; amount?:string}>}>({key:'',values:{}});
   const [hasDownPayment,setHasDownPayment] = useState(false);
   const [downPaymentAmount,setDownPaymentAmount] = useState('');
   const [downPaymentDate,setDownPaymentDate] = useState(localToday);
@@ -189,6 +190,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       setBilletDueDate('');
       setBilletAssignor('');
     }
+    setDownSchedule({key:'',values:{}});
     setHasDownPayment(false); setDownPaymentAmount(''); setDownPaymentDate(localToday());
     setDownPaymentAccount(defaultAccountId || accounts[0]?.id || ''); setDownPaymentMethod('pix');
     setCardInstallmentValueMode('total');
@@ -231,6 +233,22 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   if (isInstallment && paymentMethod === 'boleto' && type === 'expense' && !editingItem) {
     try { boletoPreview = buildBoletoInstallments({description, amount: Number(amount.replace(',', '.')), date, categoryId, paymentMethod, billetData: {dueDate: billetDueDate || date}}, Number(totalInstallments), installmentValueMode, boletoOverrides); } catch { /* Incomplete fields are validated on submit. */ }
   }
+  const downScheduleKey=JSON.stringify([amount,downPaymentAmount,date,billetDueDate,paymentMethod,cardId,totalInstallments,isInstallment,downPaymentDate]);
+  const downOverrides=downSchedule.key===downScheduleKey?downSchedule.values:{};
+  const changeDownInstallment=(index:number,patch:{date?:string;amount?:string})=>setDownSchedule(previous=>{
+    const values=previous.key===downScheduleKey?previous.values:{};
+    return {key:downScheduleKey,values:{...values,[index]:{...values[index],...patch}}};
+  });
+  let downPreview: Omit<Expense,'id'|'createdAt'>[]=[];
+  let downPreviewError='';
+  if(hasDownPayment){
+    try{downPreview=buildDownPaymentPlan({description,amount:Number(amount.replace(',','.')),date:paymentMethod==='boleto'?billetDueDate||date:date,
+      categoryId,paymentMethod,cardId,accountId}, {amount:Number(downPaymentAmount.replace(',','.')),date:downPaymentDate,
+      accountId:downPaymentAccount||'preview',paymentMethod:downPaymentMethod,count:isInstallment?Number(totalInstallments):1,card:cards.find(c=>c.id===cardId)}).slice(1);}
+    catch(err){downPreviewError=err instanceof Error?err.message:'Confira os dados da entrada.';}
+  }
+  const downPreviewTotal=downPreview.reduce((sum,part,index)=>sum+Math.round(Number((downOverrides[index]?.amount??String(part.amount)).replace(',','.'))*100),0);
+  const remainingCents=Math.round(Number(amount.replace(',','.'))*100)-Math.round(Number(downPaymentAmount.replace(',','.'))*100);
   if (!isOpen) return null;
 
   const validateStep = (step: number) => {
@@ -301,6 +319,13 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       return;
     }
 
+    if (hasDownPayment && !editingItem) {
+      if (downPreviewError) {setError(downPreviewError);return;}
+      if (downPreviewTotal !== remainingCents) {setError('A soma das parcelas deve ser igual ao saldo restante.');return;}
+      if (downPreview.some((part,index)=>!Number.isFinite(Number((downOverrides[index]?.amount??String(part.amount)).replace(',','.'))) || Number((downOverrides[index]?.amount??String(part.amount)).replace(',','.'))<=0)) {setError('Cada parcela precisa ter um valor maior que zero.');return;}
+      if (downPreview.some((part,index)=>!validCalendarDate(downOverrides[index]?.date??part.date) || (downOverrides[index]?.date??part.date)<downPaymentDate)) {setError('Confira as datas: os vencimentos não podem ser anteriores à entrada.');return;}
+    }
+
     const billetData = paymentMethod === 'boleto' ? {
       barcode: billetBarcode.trim() || undefined,
       digitableLine: billetDigitableLine.trim() || undefined,
@@ -320,7 +345,8 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
           notes:notes.trim()||undefined, documentNumber:type==='expense'?documentNumber:undefined, billetData,
           splits:type==='expense'&&showSplits?splits.map((split,index)=>({...split,id:(split as TransactionSplit).id||`item-${Date.now()}-${index}`})):undefined,
         }, {amount:Number(downPaymentAmount.replace(',','.')), date:downPaymentDate, accountId:downPaymentAccount,
-          paymentMethod:downPaymentMethod, count:isInstallment?Number(totalInstallments):1, card:cards.find(c=>c.id===cardId)});
+          paymentMethod:downPaymentMethod, count:isInstallment?Number(totalInstallments):1, card:cards.find(c=>c.id===cardId),
+          overrides:Object.fromEntries(Object.entries(downOverrides).map(([index,value])=>[index,{date:value.date,amount:value.amount===undefined?undefined:Number(value.amount.replace(',','.'))}]))});
         if(type==='expense') {
           if(!onSaveExpenseInstallments)throw new Error('O salvamento da entrada e das parcelas não está disponível.');
           await onSaveExpenseInstallments(plan);
@@ -710,10 +736,24 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
               </div>
 
               {isSettled(status) && paymentMethod !== 'credit_card' && <label className="block text-sm font-bold">{type === 'expense' ? 'Data do pagamento' : 'Data do recebimento'}<input aria-label={type === 'expense' ? 'Data do pagamento' : 'Data do recebimento'} type="date" value={settlementDate} onChange={e => setSettlementDate(e.target.value)} className="mt-1 w-full rounded-xl border p-3" required /></label>}
+              {!editingItem && !cashMovement && <section className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/40 p-3">
+                <label className="flex items-center gap-2 text-sm font-bold text-slate-800"><input type="checkbox" checked={hasDownPayment} onChange={e=>{setHasDownPayment(e.target.checked);if(e.target.checked){setStatus('pending');setIsRecurring(false);}}} className="rounded border-slate-300"/>Tem entrada?</label>
+                {hasDownPayment && <>
+                  <p className="text-xs text-slate-600">O valor principal é o total da compra ou venda. A entrada será registrada como {type==='expense'?'paga':'recebida'} e somente o saldo restante ficará em aberto. A quantidade de parcelas se refere ao saldo, sem contar a entrada.</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="text-xs font-semibold">Valor da entrada<input aria-label="Valor da entrada" inputMode="decimal" required value={downPaymentAmount} onChange={e=>setDownPaymentAmount(e.target.value)} className="mt-1 block w-full rounded-lg border p-2"/></label>
+                    <label className="text-xs font-semibold">Data da entrada<input aria-label="Data da entrada" type="date" max={localToday()} required value={downPaymentDate} onChange={e=>setDownPaymentDate(e.target.value)} className="mt-1 block w-full rounded-lg border p-2"/></label>
+                    <label className="text-xs font-semibold">Conta da entrada<select aria-label="Conta da entrada" required value={downPaymentAccount} onChange={e=>setDownPaymentAccount(e.target.value)} className="mt-1 block w-full rounded-lg border p-2"><option value="">Selecione uma conta</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
+                    <label className="text-xs font-semibold">Meio de pagamento da entrada<select aria-label="Meio de pagamento da entrada" value={downPaymentMethod} onChange={e=>setDownPaymentMethod(e.target.value as PaymentMethod)} className="mt-1 block w-full rounded-lg border p-2">{Object.entries(PAYMENT_METHOD_LABELS).filter(([key])=>!['credit_card','boleto'].includes(key)).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
+                  </div>
+                  <p className="text-xs font-bold text-indigo-800">Total: {formatCurrency(Number(amount.replace(',','.'))||0)} · Entrada: {formatCurrency(Number(downPaymentAmount.replace(',','.'))||0)} · Saldo a parcelar: {formatCurrency(Math.max(0,(Number(amount.replace(',','.'))||0)-(Number(downPaymentAmount.replace(',','.'))||0)))} em {isInstallment?totalInstallments:1} parcela(s).</p>
+                </>}
+              </section>}
+
               {/* Status & Contact Group */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Situação</label>
+                  <label className="text-xs font-bold text-slate-700">{hasDownPayment?'Situação do saldo restante':'Situação'}</label>
                   <select
                     aria-label="Situação do lançamento"
                     value={status}
@@ -871,18 +911,17 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                 </div>
               )}
 
-              {!editingItem && !cashMovement && <section className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/40 p-3">
-                <label className="flex items-center gap-2 text-sm font-bold text-slate-800"><input type="checkbox" checked={hasDownPayment} onChange={e=>{setHasDownPayment(e.target.checked);if(e.target.checked){setStatus('pending');setIsRecurring(false);}}} className="rounded border-slate-300"/>Tem entrada?</label>
-                {hasDownPayment && <>
-                  <p className="text-xs text-slate-600">O valor principal é o total da compra ou venda. A entrada será registrada como {type==='expense'?'paga':'recebida'} e somente o saldo restante ficará em aberto. A quantidade de parcelas se refere ao saldo, sem contar a entrada.</p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="text-xs font-semibold">Valor da entrada<input aria-label="Valor da entrada" inputMode="decimal" required value={downPaymentAmount} onChange={e=>setDownPaymentAmount(e.target.value)} className="mt-1 block w-full rounded-lg border p-2"/></label>
-                    <label className="text-xs font-semibold">Data da entrada<input aria-label="Data da entrada" type="date" max={localToday()} required value={downPaymentDate} onChange={e=>setDownPaymentDate(e.target.value)} className="mt-1 block w-full rounded-lg border p-2"/></label>
-                    <label className="text-xs font-semibold">Conta da entrada<select aria-label="Conta da entrada" required value={downPaymentAccount} onChange={e=>setDownPaymentAccount(e.target.value)} className="mt-1 block w-full rounded-lg border p-2"><option value="">Selecione uma conta</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
-                    <label className="text-xs font-semibold">Meio de pagamento da entrada<select aria-label="Meio de pagamento da entrada" value={downPaymentMethod} onChange={e=>setDownPaymentMethod(e.target.value as PaymentMethod)} className="mt-1 block w-full rounded-lg border p-2">{Object.entries(PAYMENT_METHOD_LABELS).filter(([key])=>!['credit_card','boleto'].includes(key)).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
-                  </div>
-                  <p className="text-xs font-bold text-indigo-800">Total: {formatCurrency(Number(amount.replace(',','.'))||0)} · Entrada: {formatCurrency(Number(downPaymentAmount.replace(',','.'))||0)} · Saldo a parcelar: {formatCurrency(Math.max(0,(Number(amount.replace(',','.'))||0)-(Number(downPaymentAmount.replace(',','.'))||0)))} em {isInstallment?totalInstallments:1} parcela(s).</p>
-                </>}
+
+              {hasDownPayment && !editingItem && <section aria-label="Parcelas do saldo restante" className="space-y-3 rounded-xl border border-indigo-200 p-3">
+                <h4 className="text-sm font-bold text-slate-800">Parcelas do saldo restante · Pendente</h4>
+                <p className="text-xs text-slate-600">Entrada {type==='expense'?'paga':'recebida'}. Ajuste o vencimento e o valor de cada parcela do saldo. A soma deve corresponder ao saldo restante.</p>
+                {downPreviewError && <p className="text-xs text-amber-700">{downPreviewError}</p>}
+                {downPreview.map((part,index)=><div key={index} className="grid items-end gap-2 border-t pt-2 sm:grid-cols-[auto_1fr_1fr]">
+                  <span className="text-xs font-bold">Parcela {index+1}/{downPreview.length}</span>
+                  <label className="text-xs font-semibold">Vencimento<input aria-label={'Vencimento da parcela do saldo '+(index+1)} type="date" required min={downPaymentDate} value={downOverrides[index]?.date??part.date} onChange={e=>changeDownInstallment(index,{date:e.target.value})} className="mt-1 block w-full rounded-lg border p-2"/></label>
+                  <label className="text-xs font-semibold">Valor<input aria-label={'Valor da parcela do saldo '+(index+1)} inputMode="decimal" required value={downOverrides[index]?.amount??part.amount.toFixed(2)} onChange={e=>changeDownInstallment(index,{amount:e.target.value})} className="mt-1 block w-full rounded-lg border p-2"/></label>
+                </div>)}
+                {downPreview.length>0 && <p aria-live="polite" className={'text-xs font-bold '+(downPreviewTotal===remainingCents?'text-emerald-700':'text-rose-700')}>Soma das parcelas: {formatCurrency(Number.isFinite(downPreviewTotal)?downPreviewTotal/100:0)} · Saldo restante: {formatCurrency(remainingCents/100)}{downPreviewTotal!==remainingCents?' · Ajuste os valores para fechar o saldo.':''}</p>}
               </section>}
 
               {/* Notes */}

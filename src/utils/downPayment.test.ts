@@ -40,3 +40,27 @@ test('reject entry without valid date or account and balance before entry',()=>{
  expect(()=>buildDownPaymentPlan(base,{...options,date:'2026-02-30'})).toThrow();
  expect(()=>buildDownPaymentPlan({...base,date:'2026-10-01'},options)).toThrow();
 });
+
+
+test('custom amounts and dates preserve every product allocation and total',()=>{
+ const plan=buildDownPaymentPlan({...base,splits:[{id:'a',categoryId:'cat',costCenterId:'a',amount:350},{id:'b',categoryId:'cat',costCenterId:'b',amount:650}]},
+ {...options,overrides:{0:{amount:300,date:'2026-11-09'},1:{amount:500,date:'2026-12-19'}}});
+ expect(plan.map(i=>i.amount)).toEqual([200,300,500]);
+ expect(plan.map(i=>i.date)).toEqual(['2026-10-28','2026-11-09','2026-12-19']);
+ for(const id of ['a','b'])expect(plan.reduce((n,i)=>n+i.splits!.filter(s=>s.id===id).reduce((sum,s)=>sum+Math.round(s.amount*100),0),0)).toBe(id==='a'?35000:65000);
+ expect(plan.every(i=>Math.round(i.amount*100)===i.splits!.reduce((n,s)=>n+Math.round(s.amount*100),0))).toBe(true);
+});
+test('custom dates are used as boleto due dates and card invoice dates',()=>{
+ const overrides={0:{date:'2026-11-09'},1:{date:'2026-12-19'}};
+ const boletos=buildDownPaymentPlan({...base,paymentMethod:'boleto'}, {...options,overrides});
+ expect(boletos.slice(1).map(i=>i.billetData?.dueDate)).toEqual(['2026-11-09','2026-12-19']);
+ const card={id:'c',name:'Cartão',brand:'visa' as const,limit:5000,closingDay:20,dueDay:5,color:'#000'};
+ const cards=buildDownPaymentPlan({...base,paymentMethod:'credit_card',cardId:'c'}, {...options,card,overrides});
+ expect(cards.slice(1).map(i=>i.invoiceDueDate)).toEqual(['2026-11-09','2026-12-19']);
+});
+test('invalid custom totals, values and dates are rejected',()=>{
+ expect(()=>buildDownPaymentPlan(base,{...options,overrides:{0:{amount:300}}})).toThrow('soma das parcelas');
+ expect(()=>buildDownPaymentPlan(base,{...options,overrides:{0:{amount:0},1:{amount:800}}})).toThrow('maior que zero');
+ expect(()=>buildDownPaymentPlan(base,{...options,overrides:{0:{date:'2026-02-30'}}})).toThrow('vencimento');
+ expect(()=>buildDownPaymentPlan(base,{...options,overrides:{0:{date:'2026-10-01'}}})).toThrow('anterior');
+});
