@@ -329,7 +329,7 @@ export function useCompanyData(companyId: string | null) {
 
   const saveExpenseInstallments = useCallback(async (items: Omit<Expense, 'id' | 'createdAt'>[]) => {
     if (!companyId) throw new Error('Selecione uma empresa.');
-    if (!items.length || items.length > 120 || items.some(item => item.paymentMethod !== 'boleto' || !validCalendarDate(item.date) || !Number.isFinite(item.amount) || item.amount <= 0)) throw new Error('Confira os valores e vencimentos das parcelas.');
+    if (!items.length || items.length > 120 || items.some(item => !['boleto', 'credit_card'].includes(item.paymentMethod) || (item.paymentMethod === 'credit_card' && (!item.cardId || !cards.some(card => card.id === item.cardId) || !validCalendarDate(item.purchaseDate || '') || item.invoiceDueDate !== item.date)) || !validCalendarDate(item.date) || !Number.isFinite(item.amount) || item.amount <= 0)) throw new Error('Confira os valores e vencimentos das parcelas.');
     setCloudSyncStatus('syncing');
     try {
       const groupId = makeId('parcelas');
@@ -341,7 +341,7 @@ export function useCompanyData(companyId: string | null) {
     } catch (error) {
       setCloudSyncStatus('error'); setLastError(error instanceof Error ? error.message : String(error)); throw error;
     }
-  }, [companyId]);
+  }, [companyId, cards]);
 
   const deleteExpense = useCallback(async (id: string) => {
     if(cardPayments.some(p=>p.status!=='cancelled' && p.expenseIds.includes(id))) throw new Error('Não é possível excluir uma compra de fatura paga.');

@@ -82,3 +82,30 @@ test.each(['expense','income'] as const)('%s saves independent registration and 
   fireEvent.click(screen.getByRole('button',{name:type==='income'?'Cadastrar Receita':'Cadastrar Despesa'}));
   await waitFor(()=>expect(save).toHaveBeenCalledWith(expect.objectContaining({entryDate:'2026-10-20',date:'2026-11-15'}),undefined));
 });
+
+
+test('new credit card purchase creates all installments in one batch instead of a single expense', async()=>{
+ const save=vi.fn(); const batch=vi.fn().mockResolvedValue(undefined);
+ const card={id:'card',name:'Cartão teste',brand:'visa' as const,limit:1000,closingDay:20,dueDay:5,color:'#000'};
+ const view=render(<FinancialFormModal type="expense" isOpen cards={[card]} categories={DEFAULT_CATEGORIES} contacts={[contact]} costCenters={[center]} onClose={vi.fn()} onSave={save} onSaveExpenseInstallments={batch}/>);
+ fireEvent.change(screen.getByPlaceholderText('Ex: Mercado, Aluguel, Internet'),{target:{value:'Compra parcelada'}});
+ fireEvent.change(screen.getByPlaceholderText('0,00'),{target:{value:'200'}});
+ fireEvent.change(screen.getByLabelText('Data de lançamento *'),{target:{value:'2026-10-21'}});
+ fireEvent.change(screen.getByLabelText('Data de vencimento *'),{target:{value:'2026-10-21'}});
+ fireEvent.click(screen.getByRole('button',{name:'Continuar'}));
+ const payment=[...view.container.querySelectorAll('select')].find(select=>[...select.options].some(option=>option.value==='credit_card'))!;
+ fireEvent.change(payment,{target:{value:'credit_card'}});
+ const cardSelect=[...view.container.querySelectorAll('select')].find(select=>[...select.options].some(option=>option.value==='card'))!;
+ fireEvent.change(cardSelect,{target:{value:'card'}});
+ fireEvent.change(screen.getByLabelText('Fornecedor / Favorecido'),{target:{value:'person'}});
+ fireEvent.change(screen.getByLabelText('Centro de Custo'),{target:{value:'cc'}});
+ fireEvent.click(screen.getByRole('checkbox',{name:'Compra Parcelada'}));
+ fireEvent.change(screen.getByLabelText('Total de parcelas'),{target:{value:'2'}});
+ fireEvent.click(screen.getByRole('button',{name:'Cadastrar Despesa'}));
+ await waitFor(()=>expect(batch).toHaveBeenCalledTimes(1));
+ expect(save).not.toHaveBeenCalled();
+ const items=batch.mock.calls[0][0] as Expense[];
+ expect(items.map(i=>i.amount)).toEqual([100,100]);
+ expect(items.map(i=>i.invoiceDueDate)).toEqual(['2026-12-05','2027-01-05']);
+ expect(items.every(i=>i.purchaseDate==='2026-10-21')).toBe(true);
+});

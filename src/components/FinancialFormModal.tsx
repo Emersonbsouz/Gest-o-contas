@@ -1,3 +1,4 @@
+import { buildCardInstallments } from '../utils/cardInstallments';
 import { transactionEntryDate } from '../utils/entryDate';
 import { buildBoletoInstallments, installmentDate } from '../utils/boletoInstallments';
 import { hasContactRole, contactRoles } from '../utils/contactRoles';
@@ -92,6 +93,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   
   // Income specific (Installment Generator)
   const [isInstallment, setIsInstallment] = useState(false);
+  const [cardInstallmentValueMode, setCardInstallmentValueMode] = useState<'total' | 'each'>('total');
   const [installmentValueMode, setInstallmentValueMode] = useState<'total' | 'each'>('each');
   const [boletoOverrides, setBoletoOverrides] = useState<Record<number, {date?: string; line?: string}>>({});
   const [currentInstallment, setCurrentInstallment] = useState('1');
@@ -364,7 +366,11 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
             totalInstallments: parseInt(totalInstallments, 10),
           } : {})
         };
-        if (type === 'expense' && paymentMethod === 'boleto' && isInstallment && !editingItem) {
+        if (type === 'expense' && paymentMethod === 'credit_card' && isInstallment && !editingItem) {
+          const card = cards.find(c => c.id === cardId);
+          if (!card || !onSaveExpenseInstallments) throw new Error('Selecione um cartão válido para gerar as parcelas.');
+          await onSaveExpenseInstallments(buildCardInstallments(expensePayload, card, Number(totalInstallments), cardInstallmentValueMode));
+        } else if (type === 'expense' && paymentMethod === 'boleto' && isInstallment && !editingItem) {
           if (!onSaveExpenseInstallments) throw new Error('O salvamento das parcelas não está disponível.');
           const items = buildBoletoInstallments(expensePayload, Number(totalInstallments), installmentValueMode, boletoOverrides);
           await onSaveExpenseInstallments(items);
@@ -771,7 +777,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                       <label className="text-[9px] font-bold text-slate-400 uppercase">{type === 'expense' ? 'Parc. Atual' : 'Primeira Parc.'}</label>
                       <input
                         type="number"
-                        disabled={type === 'expense' && paymentMethod === 'boleto' && !editingItem}
+                        disabled={type === 'expense' && ['boleto', 'credit_card'].includes(paymentMethod) && !editingItem}
                         value={currentInstallment}
                         onChange={(e) => setCurrentInstallment(e.target.value)}
                         className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-[11px]"
@@ -799,6 +805,18 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                   </p>
                 )}
               </div>
+
+              {type === 'expense' && paymentMethod === 'credit_card' && isInstallment && !editingItem && (
+                <div className="space-y-2 rounded-xl border border-indigo-200 p-3">
+                  <label className="block text-xs font-bold">Valor informado
+                    <select aria-label="Valor informado no parcelamento do cartão" value={cardInstallmentValueMode} onChange={e => setCardInstallmentValueMode(e.target.value as 'total' | 'each')} className="mt-1 w-full border rounded-lg p-2">
+                      <option value="total">Total da compra (dividir entre as parcelas)</option>
+                      <option value="each">Valor de cada parcela</option>
+                    </select>
+                  </label>
+                  <p className="text-xs text-slate-600">Serão geradas {totalInstallments} parcelas em faturas mensais consecutivas, a partir da primeira fatura calculada para esta compra. A data da compra será preservada.</p>
+                </div>
+              )}
 
               {type === 'expense' && paymentMethod === 'boleto' && isInstallment && !editingItem && (
                 <div className="space-y-3 rounded-xl border border-indigo-200 p-3">
