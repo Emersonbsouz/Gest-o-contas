@@ -185,6 +185,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
   const [activeTab, setActiveTab] = useState<ActiveRegistryTab>('contacts');
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [contactSort,setContactSort] = useState('name_asc');
 
   // Member management state
   const [newMemberEmail, setNewMemberEmail] = useState('');
@@ -320,8 +321,14 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
         (c.email && c.email.toLowerCase().includes(searchQuery.toLowerCase()));
       const matchType = typeFilter === 'all' || contactRoles(c).some(role => role === typeFilter);
       return matchSearch && matchType;
+    }).sort((a,b)=>{
+      const field=contactSort.startsWith('document')?'document':contactSort.startsWith('email')?'email':'name';
+      const av=a[field]||'',bv=b[field]||'';
+      if(!av)return bv?1:0;if(!bv)return -1;
+      const result=av.localeCompare(bv,'pt-BR',{sensitivity:'base',numeric:true});
+      return contactSort.endsWith('_desc')?-result:result;
     });
-  }, [safeContacts, searchQuery, typeFilter]);
+  }, [safeContacts, searchQuery, typeFilter, contactSort]);
 
   // Filtered Recurring Bills
   const filteredRecurring = useMemo(() => {
@@ -392,7 +399,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
 
       {/* TAB 1: CARTÕES DE CRÉDITO */}
       {activeTab === 'cards' && <RegistryTable title="Cartões de crédito" description="Limites, fechamento e vencimento dos cartões." items={filteredCards} onCreate={()=>onOpenCardModal()} createLabel="Novo Cartão"
-        columns={[{label:'Cartão',render:card=><strong>{card.name}</strong>},{label:'Bandeira',render:card=>card.brand.toUpperCase()},{label:'Limite',render:card=>formatCurrency(card.limit)},{label:'Fechamento / Vencimento',render:card=>'Dia '+card.closingDay+' / Dia '+card.dueDay},{label:'Conta vinculada',render:card=>accountMap.get(card.linkedAccountId||'')||'Não vinculada'}]}
+        columns={[{label:'Cartão',render:card=><strong>{card.name}</strong>},{label:'Bandeira',render:card=>card.brand.toUpperCase()},{label:'Limite',sortValue:card=>card.limit,render:card=>formatCurrency(card.limit)},{label:'Fechamento / Vencimento',sortValue:card=>card.closingDay,render:card=>'Dia '+card.closingDay+' / Dia '+card.dueDay},{label:'Conta vinculada',render:card=>accountMap.get(card.linkedAccountId||'')||'Não vinculada'}]}
         actions={[{label:'Editar',run:card=>onOpenCardModal(card)},{label:'Excluir',destructive:true,confirm:card=>'Excluir o cartão "'+card.name+'"?',run:card=>onDeleteCard(card.id)}]} />}
 
       {/* TAB 2: FAVORECIDOS & FORNECEDORES */}
@@ -434,6 +441,13 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
             </div>
           </div>
 
+          <label className="block text-xs font-semibold text-slate-600">Ordenar clientes e fornecedores
+            <select aria-label="Ordenar clientes e fornecedores" value={contactSort} onChange={e=>setContactSort(e.target.value)} className="ml-2 rounded-lg border border-slate-200 bg-white p-2">
+              <option value="name_asc">Nome: A → Z</option><option value="name_desc">Nome: Z → A</option>
+              <option value="document_asc">CPF / CNPJ: crescente</option><option value="document_desc">CPF / CNPJ: decrescente</option>
+              <option value="email_asc">E-mail: A → Z</option><option value="email_desc">E-mail: Z → A</option>
+            </select>
+          </label>
           {/* Table of Contacts */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
@@ -567,21 +581,21 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
 
       {/* TAB 3: CONTAS RECORRENTES / FIXAS */}
       {(activeTab === 'recurring' || activeTab === 'subscriptions') && <RegistryTable title={activeTab==='subscriptions'?'Assinaturas mensais':'Contas recorrentes'} description="Compromissos, valores e datas de vencimento." items={filteredRecurring} onCreate={()=>onOpenRecurringModal(undefined,activeTab==='subscriptions')} createLabel={activeTab==='subscriptions'?'Nova Assinatura':'Nova Conta Recorrente'}
-        columns={[{label:'Descrição',render:bill=><strong>{bill.description}</strong>},{label:'Tipo',render:bill=>bill.type==='expense'?'Despesa':'Receita'},{label:'Valor mensal',render:bill=>formatCurrency(bill.amount)},{label:'Vencimento',render:bill=>'Dia '+bill.dueDay},{label:'Categoria',render:bill=>categoryMap.get(bill.categoryId)||'Geral'},{label:'Conta / Cartão',render:bill=>accountMap.get(bill.accountId||'')||safeCards.find(c=>c.id===bill.cardId)?.name||'Não vinculado'},{label:'Situação',render:bill=>bill.active?'Ativo':'Inativo'}]}
+        columns={[{label:'Descrição',render:bill=><strong>{bill.description}</strong>},{label:'Tipo',render:bill=>bill.type==='expense'?'Despesa':'Receita'},{label:'Valor mensal',sortValue:bill=>bill.amount,render:bill=>formatCurrency(bill.amount)},{label:'Vencimento',sortValue:bill=>bill.dueDay,render:bill=>'Dia '+bill.dueDay},{label:'Categoria',render:bill=>categoryMap.get(bill.categoryId)||'Geral'},{label:'Conta / Cartão',render:bill=>accountMap.get(bill.accountId||'')||safeCards.find(c=>c.id===bill.cardId)?.name||'Não vinculado'},{label:'Situação',render:bill=>bill.active?'Ativo':'Inativo'}]}
         actions={[{label:'Editar',run:bill=>onOpenRecurringModal(bill)},{label:'Excluir',destructive:true,confirm:bill=>'Excluir "'+bill.description+'"?',run:bill=>onDeleteRecurring(bill.id)}]} />}
 
       {activeTab === 'goals' && <RegistryTable title="Metas financeiras" description="Objetivos e valores planejados." items={filteredGoals} onCreate={()=>onOpenGoalModal()} createLabel="Nova Meta"
-        columns={[{label:'Meta',render:goal=><strong>{goal.title}</strong>},{label:'Valor alvo',render:goal=>formatCurrency(goal.targetAmount)},{label:'Acumulado',render:goal=>formatCurrency(goal.currentAmount)},{label:'Prazo',render:goal=>goal.deadline?formatDateBR(goal.deadline):'Sem prazo'}]}
+        columns={[{label:'Meta',render:goal=><strong>{goal.title}</strong>},{label:'Valor alvo',sortValue:goal=>goal.targetAmount,render:goal=>formatCurrency(goal.targetAmount)},{label:'Acumulado',sortValue:goal=>goal.currentAmount,render:goal=>formatCurrency(goal.currentAmount)},{label:'Prazo',sortValue:goal=>goal.deadline,render:goal=>goal.deadline?formatDateBR(goal.deadline):'Sem prazo'}]}
         actions={[{label:'Editar',run:goal=>onOpenGoalModal(goal)},{label:'Excluir',destructive:true,confirm:goal=>'Excluir a meta "'+goal.title+'"?',run:goal=>onDeleteGoal(goal.id)}]} />}
 
       {/* TAB 5: CONTAS BANCÁRIAS & CAIXAS */}
       {activeTab === 'accounts' && <RegistryTable title="Contas bancárias e caixas" description="Contas, carteiras e saldos realizados da empresa." items={safeAccounts.filter(account=>account.name.toLowerCase().includes(searchQuery.toLowerCase()))} onCreate={()=>onOpenAccountModal()} createLabel="Nova Conta" toolbar={onOpenCashModal&&<button type="button" onClick={onOpenCashModal} className="rounded-lg border border-indigo-200 px-4 py-2.5 text-sm font-semibold text-indigo-700">Novo Caixa</button>}
-        columns={[{label:'Conta / Caixa',render:account=><strong>{account.name}</strong>},{label:'Tipo',render:account=>({checking:'Conta corrente',cash:'Caixa / Carteira',savings:'Poupança',investment:'Investimento'}[account.type])},{label:'Instituição',render:account=>account.bankName||'Não informada'},{label:'Tesouraria',render:account=>treasuries.find(t=>t.id===account.treasuryId)?.name||'Sem vínculo'},{label:'Saldo de abertura',render:account=>formatCurrency(account.initialBalance)},{label:'Saldo atual',render:account=>formatCurrency(accountBalances[account.id]||0)}]}
+        columns={[{label:'Conta / Caixa',render:account=><strong>{account.name}</strong>},{label:'Tipo',render:account=>({checking:'Conta corrente',cash:'Caixa / Carteira',savings:'Poupança',investment:'Investimento'}[account.type])},{label:'Instituição',render:account=>account.bankName||'Não informada'},{label:'Tesouraria',render:account=>treasuries.find(t=>t.id===account.treasuryId)?.name||'Sem vínculo'},{label:'Saldo de abertura',sortValue:account=>account.initialBalance,render:account=>formatCurrency(account.initialBalance)},{label:'Saldo atual',sortValue:account=>accountBalances[account.id]||0,render:account=>formatCurrency(accountBalances[account.id]||0)}]}
         actions={[{label:'Editar',run:account=>onOpenAccountModal(account)},{label:'Excluir',destructive:true,confirm:account=>'Excluir a conta "'+account.name+'"?',run:account=>onDeleteAccount(account.id)}]} />}
 
       {/* TAB 6: GESTÃO DE CATEGORIAS */}
       {activeTab === 'categories' && <RegistryTable title="Categorias financeiras" description="Classificação de receitas e despesas. Use Gerenciar para manter as categorias e seus limites." items={categories.filter(category=>category.name.toLowerCase().includes(searchQuery.toLowerCase()))} onCreate={onOpenCategoryModal} createLabel="Gerenciar Categorias"
-        columns={[{label:'Categoria',render:category=><span className="flex items-center gap-2"><CategoryIcon name={category.icon} className="h-4 w-4"/><strong>{category.name}</strong></span>},{label:'Tipo',render:category=>category.type==='income'?'Receita':'Despesa'},{label:'Categoria principal',render:category=>categories.find(c=>c.id===category.parentId)?.name||'Principal'},{label:'Limite mensal',render:category=>category.budgetLimit?formatCurrency(category.budgetLimit):'Sem limite'}]}
+        columns={[{label:'Categoria',render:category=><span className="flex items-center gap-2"><CategoryIcon name={category.icon} className="h-4 w-4"/><strong>{category.name}</strong></span>},{label:'Tipo',render:category=>category.type==='income'?'Receita':'Despesa'},{label:'Categoria principal',render:category=>categories.find(c=>c.id===category.parentId)?.name||'Principal'},{label:'Limite mensal',sortValue:category=>category.budgetLimit,render:category=>category.budgetLimit?formatCurrency(category.budgetLimit):'Sem limite'}]}
         actions={[{label:'Gerenciar',run:()=>onOpenCategoryModal()}]} />}
 
       {/* TAB 7: PESSOAS COM ACESSO & USUÁRIOS */}
@@ -1013,7 +1027,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
 
       {/* TAB: PATRIMÔNIO / EQUIPAMENTOS */}
       {activeTab === 'equipment' && <RegistryTable title="Patrimônio e equipamentos" description="Inventário de equipamentos, ferramentas e valores de locação." items={equipment.filter(item=>(item.name+' '+(item.brand||'')+' '+(item.serialNumber||'')).toLowerCase().includes(searchQuery.toLowerCase()))} onCreate={()=>onOpenEquipmentModal()} createLabel="Novo Equipamento"
-        columns={[{label:'Equipamento',render:item=><strong>{item.name}</strong>},{label:'Marca',render:item=>item.brand||'Não informada'},{label:'Nº de série',render:item=>item.serialNumber||'Não informado'},{label:'Situação',render:item=>({available:'Disponível',rented:'Locado',maintenance:'Manutenção',broken:'Avariado'}[item.status])},{label:'Diária',render:item=>formatCurrency(item.dailyRate)}]}
+        columns={[{label:'Equipamento',render:item=><strong>{item.name}</strong>},{label:'Marca',render:item=>item.brand||'Não informada'},{label:'Nº de série',render:item=>item.serialNumber||'Não informado'},{label:'Situação',render:item=>({available:'Disponível',rented:'Locado',maintenance:'Manutenção',broken:'Avariado'}[item.status])},{label:'Diária',sortValue:item=>item.dailyRate,render:item=>formatCurrency(item.dailyRate)}]}
         actions={[{label:'Editar',run:item=>onOpenEquipmentModal(item)},{label:'Excluir',destructive:true,confirm:item=>'Excluir o equipamento "'+item.name+'"?',run:item=>onDeleteEquipment(item.id)}]} />}
 
       {/* Permissions Modal from Registries tab */}

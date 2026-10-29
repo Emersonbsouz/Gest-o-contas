@@ -1,4 +1,4 @@
-import { createExpenseInstallments } from '../services/companyService';
+import { createExpenseInstallments, createIncomeInstallments } from '../services/companyService';
 import {validateTransfer} from '../utils/transfers';
 import { invoiceDueDate, invoiceExpenses, getCardInvoices, validatePaidPurchaseEdit } from '../utils/cardInvoices';
 import type { CardInvoicePayment, CardPaymentSelection } from '../types';
@@ -329,7 +329,12 @@ export function useCompanyData(companyId: string | null) {
 
   const saveExpenseInstallments = useCallback(async (items: Omit<Expense, 'id' | 'createdAt'>[]) => {
     if (!companyId) throw new Error('Selecione uma empresa.');
-    if (!items.length || items.length > 120 || items.some(item => !['boleto', 'credit_card'].includes(item.paymentMethod) || (item.paymentMethod === 'credit_card' && (!item.cardId || !cards.some(card => card.id === item.cardId) || !validCalendarDate(item.purchaseDate || '') || item.invoiceDueDate !== item.date)) || !validCalendarDate(item.date) || !Number.isFinite(item.amount) || item.amount <= 0)) throw new Error('Confira os valores e vencimentos das parcelas.');
+    if (!items.length || items.length > 121 || items.some(item =>
+      !validCalendarDate(item.date) || !Number.isFinite(item.amount) || item.amount <= 0 ||
+      (item.paymentMethod === 'credit_card'
+        ? !item.cardId || !cards.some(card => card.id === item.cardId) || !validCalendarDate(item.purchaseDate || '') || item.invoiceDueDate !== item.date
+        : item.status === 'paid' && (!item.accountId || !accounts.some(account => account.id === item.accountId) || !validCalendarDate(item.settlementDate || '')))
+    )) throw new Error('Confira os valores, contas e vencimentos das parcelas.');
     setCloudSyncStatus('syncing');
     try {
       const groupId = makeId('parcelas');
@@ -341,7 +346,7 @@ export function useCompanyData(companyId: string | null) {
     } catch (error) {
       setCloudSyncStatus('error'); setLastError(error instanceof Error ? error.message : String(error)); throw error;
     }
-  }, [companyId, cards]);
+  }, [companyId, cards, accounts]);
 
   const deleteExpense = useCallback(async (id: string) => {
     if(cardPayments.some(p=>p.status!=='cancelled' && p.expenseIds.includes(id))) throw new Error('Não é possível excluir uma compra de fatura paga.');
@@ -355,6 +360,22 @@ export function useCompanyData(companyId: string | null) {
     });
 
   }, [companyId, cardPayments]);
+
+  const saveIncomeInstallments = useCallback(async (items: Omit<Income, 'id' | 'createdAt'>[]) => {
+    if (!companyId) throw new Error('Selecione uma empresa.');
+    if (!items.length || items.length > 121 || items.some(item => !validCalendarDate(item.date) || !Number.isFinite(item.amount) || item.amount <= 0 || !accounts.some(a => a.id === item.accountId) || (isSettled(item.status) && !validCalendarDate(item.settlementDate || '')))) throw new Error('Confira as contas, valores e datas da entrada e das parcelas.');
+    setCloudSyncStatus('syncing');
+    try {
+      const groupId = makeId('parcelas');
+      const records = items.map(item => ({...item, id: makeId('inc'), installmentGroupId: groupId, createdAt: Date.now()}));
+      await createIncomeInstallments(companyId, records);
+      setIncomes(prev => { const ids = new Set(records.map(record => record.id)); const next = [...records, ...prev.filter(record => !ids.has(record.id))]; persistLocal('incomes', next); return next; });
+      setCloudSyncStatus('synced'); setLastError(null);
+      return records;
+    } catch (error) {
+      setCloudSyncStatus('error'); setLastError(error instanceof Error ? error.message : String(error)); throw error;
+    }
+  }, [companyId, accounts]);
 
   const saveIncome = useCallback(async (data: Omit<Income, 'id' | 'createdAt'>, incomeId?: string) => {
     if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');
@@ -841,6 +862,7 @@ export function useCompanyData(companyId: string | null) {
     lastError,
     saveExpense,
     saveExpenseInstallments,
+    saveIncomeInstallments,
     deleteExpense,
     saveIncome,
     deleteIncome,

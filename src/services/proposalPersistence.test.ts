@@ -1,5 +1,5 @@
 import { beforeEach, expect, test, vi } from 'vitest';
-import { createExpenseInstallments, updateCompanyDoc } from './companyService';
+import { createIncomeInstallments, createExpenseInstallments, updateCompanyDoc } from './companyService';
 
 const db = vi.hoisted(() => ({from:vi.fn(),insert:vi.fn(),update:vi.fn(),eq:vi.fn(),select:vi.fn()}));
 vi.mock('../lib/supabase',() => ({supabase:{from:db.from}}));
@@ -45,4 +45,15 @@ test('all expense installments are inserted together, without overwriting existi
   expect(db.insert).toHaveBeenCalledWith(items.map(item=>({company_id:'company-a',collection_name:'expenses',doc_id:item.id,payload:item})));
   db.insert.mockResolvedValueOnce({error:{message:'permission denied'}});
   await expect(createExpenseInstallments('company-a',items)).rejects.toMatchObject({message:'permission denied'});
+});
+
+
+test('entry and income installments use one insert with the company scope and report failures',async()=>{
+ const items=[{id:'entry',amount:200},{id:'part1',amount:400},{id:'part2',amount:400}];
+ db.insert.mockResolvedValueOnce({error:null});
+ await createIncomeInstallments('company-a',items);
+ expect(db.insert).toHaveBeenCalledTimes(1);
+ expect(db.insert).toHaveBeenCalledWith(items.map(item=>({company_id:'company-a',collection_name:'incomes',doc_id:item.id,payload:item})));
+ db.insert.mockResolvedValueOnce({error:{message:'permission denied'}});
+ await expect(createIncomeInstallments('company-a',items)).rejects.toMatchObject({message:'permission denied'});
 });

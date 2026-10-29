@@ -109,3 +109,28 @@ test('new credit card purchase creates all installments in one batch instead of 
  expect(items.map(i=>i.invoiceDueDate)).toEqual(['2026-12-05','2027-01-05']);
  expect(items.every(i=>i.purchaseDate==='2026-10-21')).toBe(true);
 });
+
+
+test.each(['expense','income'] as const)('%s records entry and only installments the remaining balance',async type=>{
+ const single=vi.fn(),batch=vi.fn().mockResolvedValue(undefined);
+ const accounts=[{id:'bank',name:'Banco teste',type:'checking' as const,initialBalance:0,color:'#000'}];
+ render(<FinancialFormModal type={type} isOpen accounts={accounts} categories={DEFAULT_CATEGORIES} contacts={[contact]} costCenters={[center]} onClose={vi.fn()} onSave={single} onSaveExpenseInstallments={batch} onSaveIncomeInstallments={batch}/>);
+ fireEvent.change(screen.getByPlaceholderText(type==='expense'?'Ex: Mercado, Aluguel, Internet':'Ex: Salário, Venda, Reembolso'),{target:{value:'Compra com entrada'}});
+ fireEvent.change(screen.getByPlaceholderText('0,00'),{target:{value:'1000'}});
+ fireEvent.change(screen.getByLabelText('Data de lançamento *'),{target:{value:'2026-10-28'}});
+ fireEvent.change(screen.getByLabelText('Data de vencimento *'),{target:{value:'2026-11-05'}});
+ fireEvent.click(screen.getByRole('button',{name:'Continuar'}));
+ fireEvent.change(screen.getByLabelText(type==='expense'?'Fornecedor / Favorecido':'Cliente / Origem da Receita'),{target:{value:'person'}});
+ fireEvent.change(screen.getByLabelText('Centro de Custo'),{target:{value:'cc'}});
+ fireEvent.click(screen.getByRole('checkbox',{name:type==='expense'?'Compra Parcelada':'Gerar Parcelas Automáticas'}));
+ fireEvent.change(screen.getByLabelText('Total de parcelas'),{target:{value:'2'}});
+ fireEvent.click(screen.getByRole('checkbox',{name:'Tem entrada?'}));
+ fireEvent.change(screen.getByLabelText('Valor da entrada'),{target:{value:'200'}});
+ fireEvent.change(screen.getByLabelText('Data da entrada'),{target:{value:'2026-10-28'}});
+ fireEvent.click(screen.getByRole('button',{name:type==='expense'?'Cadastrar Despesa':'Cadastrar Receita'}));
+ await waitFor(()=>expect(batch).toHaveBeenCalledTimes(1));expect(single).not.toHaveBeenCalled();
+ const plan=batch.mock.calls[0][0];
+ expect(plan.map((i:Expense)=>i.amount)).toEqual([200,400,400]);
+ expect(plan.map((i:Expense)=>i.status)).toEqual(['paid','pending','pending']);
+ expect(plan[0]).toMatchObject({isDownPayment:true,accountId:'bank',paymentMethod:'pix',settlementDate:'2026-10-28'});
+});

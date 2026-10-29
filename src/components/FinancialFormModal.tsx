@@ -1,3 +1,4 @@
+import { buildDownPaymentPlan } from '../utils/downPayment';
 import { buildCardInstallments } from '../utils/cardInstallments';
 import { transactionEntryDate } from '../utils/entryDate';
 import { buildBoletoInstallments, installmentDate } from '../utils/boletoInstallments';
@@ -34,6 +35,7 @@ interface FinancialFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (data: any, id?: string) => void | Promise<unknown>;
+  onSaveIncomeInstallments?: (items: Omit<Income, 'id' | 'createdAt'>[]) => Promise<unknown>;
   onSaveExpenseInstallments?: (items: Omit<Expense, 'id' | 'createdAt'>[]) => Promise<unknown>;
   editingItem?: any | null;
   categories: Category[];
@@ -55,6 +57,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   onClose,
   onSave,
   onSaveExpenseInstallments,
+  onSaveIncomeInstallments,
   editingItem,
   categories = [],
   accounts = [],
@@ -68,6 +71,11 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
   onCreateContact,
   onCreateCostCenter,
 }) => {
+  const [hasDownPayment,setHasDownPayment] = useState(false);
+  const [downPaymentAmount,setDownPaymentAmount] = useState('');
+  const [downPaymentDate,setDownPaymentDate] = useState(localToday);
+  const [downPaymentAccount,setDownPaymentAccount] = useState('');
+  const [downPaymentMethod,setDownPaymentMethod] = useState<PaymentMethod>('pix');
   // State
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -181,6 +189,9 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
       setBilletDueDate('');
       setBilletAssignor('');
     }
+    setHasDownPayment(false); setDownPaymentAmount(''); setDownPaymentDate(localToday());
+    setDownPaymentAccount(defaultAccountId || accounts[0]?.id || ''); setDownPaymentMethod('pix');
+    setCardInstallmentValueMode('total');
     setBoletoOverrides({});
     setInstallmentValueMode('each');
     setActiveStep(1);
@@ -251,7 +262,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
     e.preventDefault();
     if (activeStep === 1) { handleNext(); return; }
     if (isLoading) return;
-    if (isSettled(status) && paymentMethod !== 'credit_card' && !validCalendarDate(settlementDate)) {setError('Informe a data do pagamento ou recebimento.'); return;}
+    if (!hasDownPayment && isSettled(status) && paymentMethod !== 'credit_card' && !validCalendarDate(settlementDate)) {setError('Informe a data do pagamento ou recebimento.'); return;}
     const err = validateStep(1);
     if (err) { setError(err); setActiveStep(1); return; }
     // Older expenses predate these required registries. Keep an absent link when
@@ -274,7 +285,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
     const unchangedMissingPayment = editingExpense && isSettled(editingItem.status) &&
       paymentMethod === editingItem.paymentMethod &&
       (paymentMethod === 'credit_card' ? !editingItem.cardId && !cardId : !editingItem.accountId && !accountId);
-    if (['paid', 'liquidated', 'PAGO'].includes(status) && !unchangedMissingPayment &&
+    if (!hasDownPayment && ['paid', 'liquidated', 'PAGO'].includes(status) && !unchangedMissingPayment &&
       !(paymentMethod === 'credit_card' ? cards.some(c => c.id === cardId) : accounts.some(a => a.id === accountId))) {
       setError('Selecione a conta ou o cartão utilizado no pagamento ou recebimento.'); return;
     }
@@ -299,7 +310,27 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
 
     setIsLoading(true);
     try {
-      if (type === 'income' && isInstallment && !editingItem) {
+      if (hasDownPayment && !editingItem) {
+        if (!accounts.some(a=>a.id===downPaymentAccount)) throw new Error('Selecione uma conta válida para a entrada.');
+        if (type === 'income' && (!accounts.some(a=>a.id===accountId) || paymentMethod === 'credit_card')) throw new Error('Selecione a conta e um meio de recebimento válido para o saldo.');
+        const plan = buildDownPaymentPlan({
+          description:description.trim(), amount:Math.round(numAmount*100)/100, date:paymentMethod==='boleto'?billetDueDate||date:date,
+          entryDate, categoryId, paymentMethod, accountId:paymentMethod==='credit_card'?undefined:accountId||undefined,
+          cardId:paymentMethod==='credit_card'?cardId||undefined:undefined, contactId, costCenterId:showSplits&&type==='expense'?undefined:costCenterId,
+          notes:notes.trim()||undefined, documentNumber:type==='expense'?documentNumber:undefined, billetData,
+          splits:type==='expense'&&showSplits?splits.map((split,index)=>({...split,id:(split as TransactionSplit).id||`item-${Date.now()}-${index}`})):undefined,
+        }, {amount:Number(downPaymentAmount.replace(',','.')), date:downPaymentDate, accountId:downPaymentAccount,
+          paymentMethod:downPaymentMethod, count:isInstallment?Number(totalInstallments):1, card:cards.find(c=>c.id===cardId)});
+        if(type==='expense') {
+          if(!onSaveExpenseInstallments)throw new Error('O salvamento da entrada e das parcelas não está disponível.');
+          await onSaveExpenseInstallments(plan);
+        } else {
+          if(!onSaveIncomeInstallments)throw new Error('O salvamento da entrada e das parcelas não está disponível.');
+          await onSaveIncomeInstallments(plan.map(item=>({...item,accountId:item.accountId||'',
+            installmentNumber:item.isDownPayment?undefined:item.installments?.current,
+            totalInstallments:item.isDownPayment?undefined:item.installments?.total})));
+        }
+      } else if (type === 'income' && isInstallment && !editingItem) {
         // Installment Generator for new Incomes
         const tot = parseInt(totalInstallments, 10);
         const baseDate = new Date(date + 'T12:00:00');
@@ -340,6 +371,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
         }
 
         const expensePayload = {
+          ...(editingItem ? {isDownPayment:editingItem.isDownPayment,installmentGroupId:editingItem.installmentGroupId} : {}),
           ...(editingExpense ? editingItem : {}),
           description: description.trim(),
           amount: Math.round(numAmount * 100) / 100,
@@ -484,6 +516,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                   <button
                     type="button"
                     onClick={handleToggleRecurring}
+                    disabled={hasDownPayment}
                     className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/20 ${isRecurring ? 'bg-indigo-600' : 'bg-slate-200'}`}
                   >
                     <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isRecurring ? 'translate-x-5' : 'translate-x-1'}`} />
@@ -684,6 +717,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                   <select
                     aria-label="Situação do lançamento"
                     value={status}
+                    disabled={hasDownPayment}
                     onChange={(e) => {setStatus(e.target.value as PaymentStatus); if (isSettled(e.target.value as PaymentStatus)) setSettlementDate(localToday());}}
                     className={`w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white font-bold ${
                       status === 'paid' || status === 'PAGO' ? 'text-emerald-600' : 
@@ -764,7 +798,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                       {type === 'income' ? 'Gerar Parcelas Automáticas' : 'Compra Parcelada'}
                     </span>
                   </label>
-                  {isInstallment && type === 'income' && (
+                  {isInstallment && type === 'income' && !hasDownPayment && (
                     <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
                       Automação Ativa
                     </span>
@@ -799,14 +833,14 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                     </div>
                   </div>
                 )}
-                {isInstallment && type === 'income' && (
+                {isInstallment && type === 'income' && !hasDownPayment && (
                   <p className="text-[9px] text-slate-400 italic">
                     O sistema criará {totalInstallments} lançamentos mensais automáticos no valor de R$ {parseFloat((amount || '0').replace(',','.')).toFixed(2)} cada.
                   </p>
                 )}
               </div>
 
-              {type === 'expense' && paymentMethod === 'credit_card' && isInstallment && !editingItem && (
+              {type === 'expense' && paymentMethod === 'credit_card' && isInstallment && !editingItem && !hasDownPayment && (
                 <div className="space-y-2 rounded-xl border border-indigo-200 p-3">
                   <label className="block text-xs font-bold">Valor informado
                     <select aria-label="Valor informado no parcelamento do cartão" value={cardInstallmentValueMode} onChange={e => setCardInstallmentValueMode(e.target.value as 'total' | 'each')} className="mt-1 w-full border rounded-lg p-2">
@@ -818,7 +852,7 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                 </div>
               )}
 
-              {type === 'expense' && paymentMethod === 'boleto' && isInstallment && !editingItem && (
+              {type === 'expense' && paymentMethod === 'boleto' && isInstallment && !editingItem && !hasDownPayment && (
                 <div className="space-y-3 rounded-xl border border-indigo-200 p-3">
                   <label className="block text-xs font-bold">Valor informado
                     <select aria-label="Valor informado no parcelamento" value={installmentValueMode} onChange={e => setInstallmentValueMode(e.target.value as 'total' | 'each')} className="mt-1 w-full border rounded-lg p-2">
@@ -836,6 +870,20 @@ export const FinancialFormModal: React.FC<FinancialFormModalProps> = ({
                   ))}
                 </div>
               )}
+
+              {!editingItem && !cashMovement && <section className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/40 p-3">
+                <label className="flex items-center gap-2 text-sm font-bold text-slate-800"><input type="checkbox" checked={hasDownPayment} onChange={e=>{setHasDownPayment(e.target.checked);if(e.target.checked){setStatus('pending');setIsRecurring(false);}}} className="rounded border-slate-300"/>Tem entrada?</label>
+                {hasDownPayment && <>
+                  <p className="text-xs text-slate-600">O valor principal é o total da compra ou venda. A entrada será registrada como {type==='expense'?'paga':'recebida'} e somente o saldo restante ficará em aberto. A quantidade de parcelas se refere ao saldo, sem contar a entrada.</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="text-xs font-semibold">Valor da entrada<input aria-label="Valor da entrada" inputMode="decimal" required value={downPaymentAmount} onChange={e=>setDownPaymentAmount(e.target.value)} className="mt-1 block w-full rounded-lg border p-2"/></label>
+                    <label className="text-xs font-semibold">Data da entrada<input aria-label="Data da entrada" type="date" max={localToday()} required value={downPaymentDate} onChange={e=>setDownPaymentDate(e.target.value)} className="mt-1 block w-full rounded-lg border p-2"/></label>
+                    <label className="text-xs font-semibold">Conta da entrada<select aria-label="Conta da entrada" required value={downPaymentAccount} onChange={e=>setDownPaymentAccount(e.target.value)} className="mt-1 block w-full rounded-lg border p-2"><option value="">Selecione uma conta</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
+                    <label className="text-xs font-semibold">Meio de pagamento da entrada<select aria-label="Meio de pagamento da entrada" value={downPaymentMethod} onChange={e=>setDownPaymentMethod(e.target.value as PaymentMethod)} className="mt-1 block w-full rounded-lg border p-2">{Object.entries(PAYMENT_METHOD_LABELS).filter(([key])=>!['credit_card','boleto'].includes(key)).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
+                  </div>
+                  <p className="text-xs font-bold text-indigo-800">Total: {formatCurrency(Number(amount.replace(',','.'))||0)} · Entrada: {formatCurrency(Number(downPaymentAmount.replace(',','.'))||0)} · Saldo a parcelar: {formatCurrency(Math.max(0,(Number(amount.replace(',','.'))||0)-(Number(downPaymentAmount.replace(',','.'))||0)))} em {isInstallment?totalInstallments:1} parcela(s).</p>
+                </>}
+              </section>}
 
               {/* Notes */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

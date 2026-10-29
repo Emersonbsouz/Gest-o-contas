@@ -166,6 +166,8 @@ export interface BilletData {
 }
 
 export interface Income {
+  isDownPayment?: boolean;
+  installmentGroupId?: string;
   entryDate?: string; // Data de lançamento, independente do vencimento
   settlementDate?: string;
   id: string;
@@ -234,6 +236,7 @@ export interface CardInvoicePayment {
 }
 
 export interface Expense {
+  isDownPayment?: boolean;
   entryDate?: string; // Data de lançamento, independente do vencimento
   purchaseStatus?: PaymentStatus;
   sourceExpenseId?: string;

@@ -2,7 +2,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { useCompanyData } from './useCompanyData';
 
-const service = vi.hoisted(() => ({ createExpenseInstallments: vi.fn(), updateCompanyDoc: vi.fn(), createCompanyDoc: vi.fn(), loadCompanySubcollection: vi.fn(), saveCompanyDoc: vi.fn(), deleteCompanyDoc: vi.fn(),
+const service = vi.hoisted(() => ({ createIncomeInstallments: vi.fn(), createExpenseInstallments: vi.fn(), updateCompanyDoc: vi.fn(), createCompanyDoc: vi.fn(), loadCompanySubcollection: vi.fn(), saveCompanyDoc: vi.fn(), deleteCompanyDoc: vi.fn(),
   subscribeToCompanySubcollection: vi.fn((_company:any,_name:any,_ok:any,_error?:any) => () => {}), clearCompanyData: vi.fn() }));
 vi.mock('../services/companyService', () => service);
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
@@ -182,4 +182,23 @@ test('installment batch updates local state only after server confirmation and p
   expect(result.current.expenses).toHaveLength(3);
   expect(result.current.expenses.find(e=>e.id==='old')).toEqual(original);
   expect(service.createExpenseInstallments).toHaveBeenLastCalledWith('company-a',expect.arrayContaining([expect.objectContaining({description:'Boleto 2/2',createdAt:expect.any(Number)})]));
+});
+
+
+test('income entry and installments persist together, and a server error leaves no partial local plan',async()=>{
+ localStorage.setItem('cg_company-a_accounts',JSON.stringify([{id:'bank',name:'Banco',type:'checking',initialBalance:0,color:'#000'}]));
+ const {result,unmount}=renderHook(()=>useCompanyData('company-a'));
+ const plan=[{description:'Venda (Entrada)',amount:200,date:'2026-10-28',settlementDate:'2026-10-28',status:'paid' as const,isDownPayment:true,accountId:'bank',categoryId:'cat'},
+ {description:'Venda (1/2)',amount:400,date:'2026-11-05',status:'pending' as const,accountId:'bank',categoryId:'cat'},
+ {description:'Venda (2/2)',amount:400,date:'2026-12-05',status:'pending' as const,accountId:'bank',categoryId:'cat'}];
+ service.createIncomeInstallments.mockRejectedValueOnce(new Error('Falha'));
+ await act(async()=>{await expect(result.current.saveIncomeInstallments(plan)).rejects.toThrow('Falha');});
+ expect(result.current.incomes).toEqual([]);
+ service.createIncomeInstallments.mockResolvedValueOnce(undefined);
+ await act(async()=>{await result.current.saveIncomeInstallments(plan);});
+ expect(result.current.incomes).toHaveLength(3);
+ expect(new Set(result.current.incomes.map(i=>i.installmentGroupId)).size).toBe(1);
+ expect(service.createIncomeInstallments).toHaveBeenCalledTimes(2);
+ unmount();const again=renderHook(()=>useCompanyData('company-a'));
+ expect(again.result.current.incomes.map(i=>i.amount)).toEqual([200,400,400]);
 });

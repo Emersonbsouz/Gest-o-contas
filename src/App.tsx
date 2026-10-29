@@ -178,6 +178,7 @@ export default function App() {
     lastError,
     saveExpense,
     saveExpenseInstallments,
+    saveIncomeInstallments,
     deleteExpense,
     saveIncome,
     deleteIncome,
@@ -1147,6 +1148,11 @@ export default function App() {
         onSaveExpenseInstallments={async items => {
           if (!currentUserPermissions.canCreateTransactions) throw new Error('Você não tem permissão para lançar despesas.');
           const saved = await saveExpenseInstallments(items);
+          if (saved[0]) setCurrentYearMonth(saved[0].date.slice(0, 7));
+        }}
+        onSaveIncomeInstallments={async items => {
+          if (!currentUserPermissions.canCreateTransactions) throw new Error('Você não tem permissão para lançar receitas.');
+          const saved = await saveIncomeInstallments(items);
           if (saved[0]) setCurrentYearMonth(saved[0].date.slice(0, 7));
         }}
         editingItem={editingFinancialItem}

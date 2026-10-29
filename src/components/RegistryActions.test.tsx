@@ -31,3 +31,34 @@ test('destructive table actions require confirmation and show failed saves',asyn
  render(<RegistryTable title="Registros" items={[{id:'1',name:'Registro'}]} columns={[{label:'Nome',render:item=>item.name}]} actions={[{label:'Excluir',destructive:true,run:remove}]}/>);
  fireEvent.click(screen.getByRole('button',{name:'Excluir Registro'}));expect(remove).not.toHaveBeenCalled();confirm.mockReturnValue(true);fireEvent.click(screen.getByRole('button',{name:'Excluir Registro'}));await screen.findByRole('alert');expect(remove).toHaveBeenCalledTimes(1);expect(screen.getByText('Registro')).toBeTruthy();
 });
+
+
+test('registry sorting uses Portuguese names, raw currency values and keeps edit actions on their records',()=>{
+ const edit=vi.fn();
+ const items=[{id:'z',name:'Zebra',value:9},{id:'a',name:'Árvore',value:1000},{id:'b',name:'Beta',value:100}];
+ render(<RegistryTable title="Ordenáveis" items={items} columns={[{label:'Nome',render:i=><strong>{i.name}</strong>},{label:'Valor',render:i=>i.value.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}),sortValue:i=>i.value}]} actions={[{label:'Editar',run:edit}]}/>);
+ const names=()=>screen.getAllByRole('row').slice(1).map(row=>within(row).getAllByRole('cell')[0].textContent);
+ expect(names()).toEqual(['Árvore','Beta','Zebra']);
+ fireEvent.change(screen.getByLabelText('Direção da ordenação de Ordenáveis'),{target:{value:'desc'}});
+ expect(names()).toEqual(['Zebra','Beta','Árvore']);
+ fireEvent.change(screen.getByLabelText('Ordenar Ordenáveis por'),{target:{value:'Valor'}});
+ expect(names()).toEqual(['Árvore','Beta','Zebra']);
+ fireEvent.change(screen.getByLabelText('Direção da ordenação de Ordenáveis'),{target:{value:'asc'}});
+ expect(names()).toEqual(['Zebra','Beta','Árvore']);
+ fireEvent.click(screen.getByRole('button',{name:'Editar Beta'}));
+ expect(edit).toHaveBeenCalledWith(items[2]);
+ expect(items.map(i=>i.id)).toEqual(['z','a','b']);
+});
+
+test('contact ordering works together with search and keeps missing emails last',()=>{
+ const p=props();p.contacts=[{id:'z',name:'Zebra',type:'supplier',email:'a@example.com'},{id:'a',name:'Árvore',type:'client',email:'z@example.com'},{id:'b',name:'Beta',type:'supplier'}];
+ render(<RegistriesView {...p}/>);
+ const names=()=>screen.getAllByRole('row').slice(1).map(row=>within(row).getAllByRole('cell')[0].textContent);
+ expect(names()[0]).toContain('Árvore');
+ fireEvent.change(screen.getByLabelText('Ordenar clientes e fornecedores'),{target:{value:'name_desc'}});
+ expect(names()[0]).toContain('Zebra');
+ fireEvent.change(screen.getByLabelText('Ordenar clientes e fornecedores'),{target:{value:'email_asc'}});
+ expect(names()[0]).toContain('Zebra');expect(names()[2]).toContain('Beta');
+ fireEvent.change(screen.getByLabelText('Pesquisar cadastros'),{target:{value:'Árvore'}});
+ expect(names()).toHaveLength(1);expect(names()[0]).toContain('Árvore');
+});
