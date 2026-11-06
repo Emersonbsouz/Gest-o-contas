@@ -42,3 +42,18 @@
 @media (prefers-reduced-motion: reduce) {
   .enterprise-shell *, .enterprise-shell *::before, .enterprise-shell *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
 }
+
+
+@media print {
+  body:has(#pix-charge-dialog[open]) > :not(#pix-charge-dialog) { display: none !important; }
+  #pix-charge-dialog[open] {
+    position: static;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+    margin: 0;
+    box-shadow: none;
+  }
+  #pix-charge-dialog::backdrop { display: none; }
+}

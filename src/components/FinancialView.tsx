@@ -196,6 +196,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
             </button>
           </div>
           <IncomeList
+            companyName={companyName}
             incomes={incomes}
             categories={categories}
             accounts={accounts}

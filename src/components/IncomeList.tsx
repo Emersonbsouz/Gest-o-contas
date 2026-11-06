@@ -1,3 +1,4 @@
+import { PixChargeDialog } from './PixChargeDialog';
 import { isOpen, isSettled, isCancelled } from '../utils/financialStatus';
 import React, { useState, useMemo } from 'react';
 import {
@@ -28,10 +29,15 @@ interface IncomeListProps {
   contacts?: ContactPerson[];
   costCenters?: CostCenter[];
   currentYearMonth: string;
+  companyName?: string;
   onEditIncome: (income: Income) => void;
   onDeleteIncome: (incomeId: string) => void;
   onOpenAddModal: () => void;
   onLiquidateIncome?: (income: Income) => void;
+}
+
+function canIssuePix(income: Income) {
+  return isOpen(income.status) && income.status !== 'draft' && Number.isFinite(income.amount) && income.amount > 0;
 }
 
 type SortOption = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
@@ -43,11 +49,14 @@ export const IncomeList: React.FC<IncomeListProps> = ({
   contacts = [],
   costCenters = [],
   currentYearMonth,
+  companyName,
   onEditIncome,
   onDeleteIncome,
   onOpenAddModal,
   onLiquidateIncome,
 }) => {
+  const [chargeId, setChargeId] = useState<string | null>(null);
+  const charge = chargeId ? incomes.find(income => income.id === chargeId && canIssuePix(income)) : undefined;
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedCostCenter, setSelectedCostCenter] = useState('all');
@@ -264,6 +273,15 @@ export const IncomeList: React.FC<IncomeListProps> = ({
                     </td>
                     <td className="py-3 px-4 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1">
+                        {canIssuePix(income) && (
+                          <button
+                            type="button"
+                            onClick={event => { event.stopPropagation(); setChargeId(income.id); }}
+                            className="whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
+                          >
+                            Emitir cobrança Pix
+                          </button>
+                        )}
                         {isOpen(income.status) && onLiquidateIncome && (
                           <button
                             onClick={(e) => { e.stopPropagation(); onLiquidateIncome(income); }}
@@ -295,6 +313,16 @@ export const IncomeList: React.FC<IncomeListProps> = ({
             </tbody>
           </table>
         </div>
+      )}
+      {charge && (
+        <PixChargeDialog
+          key={charge.id}
+          income={charge}
+          clientName={contactMap.get(charge.contactId ?? '') || 'Cliente não informado'}
+          companyName={companyName ?? ''}
+          bankName={accounts.find(account => account.id === charge.accountId)?.bankName}
+          onClose={() => setChargeId(null)}
+        />
       )}
     </div>
   );
