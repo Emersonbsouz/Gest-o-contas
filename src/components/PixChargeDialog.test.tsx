@@ -47,4 +47,17 @@ test('issues a Pix charge only for outstanding income and requires the receiver 
   fireEvent.change(key, { target: { value: 'chave-do-recebedor' } });
   fireEvent.click(printButton);
   expect(print).toHaveBeenCalledOnce();
+
+  fireEvent.click(dialog.getByRole('button', { name: 'Fechar' }));
+  cleanup();
+  render(<IncomeList
+    incomes={[income]} categories={[]} companyName="Empresa exemplo"
+    companyProfile={{ pixKey: 'pix-da-empresa', pixReceiver: 'Titular exemplo', pixBank: 'Banco exemplo' }}
+    currentYearMonth="2026-11" onEditIncome={edit} onDeleteIncome={vi.fn()} onOpenAddModal={vi.fn()}
+  />);
+  fireEvent.click(screen.getByRole('button', { name: 'Emitir cobrança Pix' }));
+  const configured = within(screen.getByRole('dialog', { name: 'Cobrança Pix' }));
+  expect((configured.getByLabelText('Chave Pix do recebedor') as HTMLInputElement).value).toBe('pix-da-empresa');
+  expect((configured.getByLabelText('Nome do recebedor') as HTMLInputElement).value).toBe('Titular exemplo');
+  expect((configured.getByRole('button', { name: 'Imprimir / Salvar PDF' }) as HTMLButtonElement).disabled).toBe(false);
 });

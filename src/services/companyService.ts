@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import {
   Company,
+  CompanyProfile,
   CompanyRole,
   MemberPermissions,
   DEFAULT_ROLE_PERMISSIONS,
@@ -74,6 +75,7 @@ async function hydrateCompanies(rows: any[], fallbackEmail: string): Promise<Com
     return {
       id: row.id,
       name: row.name,
+      profile: row.profile ?? undefined,
       type: row.type,
       ownerId: row.owner_id,
       ownerEmail,
@@ -88,7 +90,7 @@ async function hydrateCompanies(rows: any[], fallbackEmail: string): Promise<Com
 async function loadAccessibleCompanies(userEmail: string): Promise<Company[]> {
   const { data, error } = await supabase
     .from('companies')
-    .select('id,name,type,owner_id,color,created_at')
+    .select('id,name,type,owner_id,color,created_at,profile')
     .order('created_at', { ascending: true });
   if (error) throw error;
   return hydrateCompanies(data || [], userEmail);
@@ -174,6 +176,16 @@ export async function createNewCompany(
   data: { name: string; type: 'personal' | 'business'; color: string }
 ): Promise<Company> {
   return createCompanyRow(userId, userEmail, data);
+}
+
+export async function updateCompanyProfile(companyId: string, ownerId: string, name: string, profile: CompanyProfile) {
+  const { error } = await supabase.from('companies')
+    .update({ name, profile })
+    .eq('id', companyId)
+    .eq('owner_id', ownerId)
+    .select('id')
+    .single();
+  if (error) throw error;
 }
 
 export async function addCompanyMember(

@@ -1,5 +1,5 @@
 import { beforeEach, expect, test, vi } from 'vitest';
-import { createIncomeInstallments, createExpenseInstallments, updateCompanyDoc } from './companyService';
+import { createIncomeInstallments, createExpenseInstallments, updateCompanyDoc, updateCompanyProfile } from './companyService';
 
 const db = vi.hoisted(() => ({from:vi.fn(),insert:vi.fn(),update:vi.fn(),eq:vi.fn(),select:vi.fn()}));
 vi.mock('../lib/supabase',() => ({supabase:{from:db.from}}));
@@ -56,4 +56,16 @@ test('entry and income installments use one insert with the company scope and re
  expect(db.insert).toHaveBeenCalledWith(items.map(item=>({company_id:'company-a',collection_name:'incomes',doc_id:item.id,payload:item})));
  db.insert.mockResolvedValueOnce({error:{message:'permission denied'}});
  await expect(createIncomeInstallments('company-a',items)).rejects.toMatchObject({message:'permission denied'});
+});
+
+
+test('company profile updates the selected company under its owner and propagates a denied write', async () => {
+  const single = vi.fn().mockResolvedValueOnce({ error: null }).mockResolvedValueOnce({ error: { code: '42501' } });
+  db.select.mockReturnValue({ single });
+  const profile = { pixKey: 'company-key', document: 'company-document' };
+  await updateCompanyProfile('company-a', 'owner-a', 'Nome revisado', profile);
+  expect(db.from).toHaveBeenCalledWith('companies');
+  expect(db.update).toHaveBeenCalledWith({ name: 'Nome revisado', profile });
+  expect(db.eq.mock.calls).toEqual([['id', 'company-a'], ['owner_id', 'owner-a']]);
+  await expect(updateCompanyProfile('company-a', 'owner-b', 'Outro nome', {})).rejects.toMatchObject({ code: '42501' });
 });

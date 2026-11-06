@@ -1,3 +1,4 @@
+import type { CompanyProfile } from '../types';
 import React, { useState } from 'react';
 import { 
   TrendingDown, 
@@ -28,6 +29,7 @@ interface FinancialViewProps {
   cashClosings?: DailyCashClosing[];
   canCloseCash?: boolean;
   companyName?: string;
+  companyProfile?: CompanyProfile;
   onNewCashMovement?: (kind: 'income' | 'expense', accountId: string, date: string) => void;
   onCloseDay?: (accountId: string, date: string, counted: number, notes?: string, signature?: string) => Promise<unknown>;
   expenses: Expense[];
@@ -58,7 +60,7 @@ interface FinancialViewProps {
 }
 
 export const FinancialView: React.FC<FinancialViewProps> = ({
-  cashClosings = [], canCloseCash = false, companyName, onCloseDay, onNewCashMovement,
+  cashClosings = [], canCloseCash = false, companyName, companyProfile, onCloseDay, onNewCashMovement,
   expenses,
   incomes,
   accounts,
@@ -197,6 +199,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
           </div>
           <IncomeList
             companyName={companyName}
+            companyProfile={companyProfile}
             incomes={incomes}
             categories={categories}
             accounts={accounts}

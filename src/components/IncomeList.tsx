@@ -1,3 +1,4 @@
+import type { CompanyProfile } from '../types';
 import { PixChargeDialog } from './PixChargeDialog';
 import { isOpen, isSettled, isCancelled } from '../utils/financialStatus';
 import React, { useState, useMemo } from 'react';
@@ -30,6 +31,7 @@ interface IncomeListProps {
   costCenters?: CostCenter[];
   currentYearMonth: string;
   companyName?: string;
+  companyProfile?: CompanyProfile;
   onEditIncome: (income: Income) => void;
   onDeleteIncome: (incomeId: string) => void;
   onOpenAddModal: () => void;
@@ -49,7 +51,7 @@ export const IncomeList: React.FC<IncomeListProps> = ({
   contacts = [],
   costCenters = [],
   currentYearMonth,
-  companyName,
+  companyName, companyProfile,
   onEditIncome,
   onDeleteIncome,
   onOpenAddModal,
@@ -320,6 +322,7 @@ export const IncomeList: React.FC<IncomeListProps> = ({
           income={charge}
           clientName={contactMap.get(charge.contactId ?? '') || 'Cliente não informado'}
           companyName={companyName ?? ''}
+          companyProfile={companyProfile}
           bankName={accounts.find(account => account.id === charge.accountId)?.bankName}
           onClose={() => setChargeId(null)}
         />

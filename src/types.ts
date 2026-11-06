@@ -368,7 +368,18 @@ export interface CompanyMemberInfo {
   addedAt?: number;
 }
 
+export interface CompanyProfile {
+  document?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  pixKey?: string;
+  pixReceiver?: string;
+  pixBank?: string;
+}
+
 export interface Company {
+  profile?: CompanyProfile;
   id: string;
   name: string; // Ex: "Despesas Pessoais", "Empresa Cacto", "Minha Empresa Individual"
   type: CompanyType;

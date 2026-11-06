@@ -4,6 +4,7 @@ import {
   User,
   ChevronDown,
   Plus,
+  Pencil,
   Users,
   Check,
   Shield,
@@ -16,6 +17,7 @@ interface CompanySwitcherProps {
   activeCompany: Company | null;
   onSelectCompany: (company: Company) => void;
   onOpenCreateCompany: () => void;
+  onOpenEditCompany?: () => void;
   onOpenManageMembers: () => void;
   currentUserEmail?: string | null;
 }
@@ -25,6 +27,7 @@ export const CompanySwitcher: React.FC<CompanySwitcherProps> = ({
   activeCompany,
   onSelectCompany,
   onOpenCreateCompany,
+  onOpenEditCompany,
   onOpenManageMembers,
   currentUserEmail,
 }) => {
@@ -141,6 +144,12 @@ export const CompanySwitcher: React.FC<CompanySwitcherProps> = ({
 
           {/* Actions */}
           <div className="pt-1.5 border-t border-slate-100 px-2 space-y-1">
+            {onOpenEditCompany && (
+              <button type="button" onClick={() => { setIsOpen(false); onOpenEditCompany(); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">
+                <Pencil className="h-3.5 w-3.5" />
+                Editar dados da empresa
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {

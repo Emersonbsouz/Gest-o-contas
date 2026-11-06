@@ -1,3 +1,4 @@
+import type { CompanyProfile } from '../types';
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Income } from '../types';
@@ -8,15 +9,16 @@ interface Props {
   clientName: string;
   companyName: string;
   bankName?: string;
+  companyProfile?: CompanyProfile;
   onClose: () => void;
 }
 
-export function PixChargeDialog({ income, clientName, companyName, bankName, onClose }: Props) {
+export function PixChargeDialog({ income, clientName, companyName, bankName, companyProfile, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  const [receiver, setReceiver] = useState(companyName);
-  const [bank, setBank] = useState(bankName ?? '');
-  const [key, setKey] = useState('');
+  const [receiver, setReceiver] = useState(companyProfile?.pixReceiver || companyName);
+  const [bank, setBank] = useState(companyProfile?.pixBank || bankName || '');
+  const [key, setKey] = useState(companyProfile?.pixKey ?? '');
   const canPrint = Boolean(receiver.trim() && key.trim());
 
   useEffect(() => {
@@ -37,6 +39,7 @@ export function PixChargeDialog({ income, clientName, companyName, bankName, onC
         <header className="border-b pb-4">
           <h2 id={titleId} className="text-xl font-bold">Cobrança Pix</h2>
           <p className="mt-1 text-sm text-slate-600">{companyName}</p>
+          {companyProfile?.document && <p className="text-sm text-slate-600">{companyProfile.document}</p>}
         </header>
 
         <dl className="grid gap-3 text-sm sm:grid-cols-2">

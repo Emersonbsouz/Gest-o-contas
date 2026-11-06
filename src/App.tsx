@@ -21,6 +21,7 @@ import { GoalFormModal } from './components/GoalFormModal';
 import { QuickRegisterModal } from './components/QuickRegisterModal';
 import { RegistriesView } from './components/RegistriesView';
 import { ReportsView } from './components/ReportsView';
+import { CompanyProfileModal } from './components/CompanyProfileModal';
 import { CreateCompanyModal } from './components/CreateCompanyModal';
 import { ManageMembersModal } from './components/ManageMembersModal';
 import { BackupSecurityModal } from './components/BackupSecurityModal';
@@ -43,6 +44,7 @@ import {
   createNewCompany,
   addCompanyMember,
   updateCompanyMember,
+  updateCompanyProfile,
   removeCompanyMember,
 } from './services/companyService';
 
@@ -85,6 +87,7 @@ export default function App() {
   const [activeCompany, setActiveCompany] = useState<Company | null>(null);
   const [companiesLoading, setCompaniesLoading] = useState(true);
   const [companyError, setCompanyError] = useState('');
+  const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
   const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
   const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
 
@@ -932,6 +935,7 @@ export default function App() {
           activeCompany={activeCompany}
           onSelectCompany={handleSelectCompany}
           onOpenCreateCompany={() => setIsCreateCompanyOpen(true)}
+          onOpenEditCompany={activeCompany && activeCompany.ownerId === currentUser?.uid ? () => setEditingCompanyId(activeCompany.id) : undefined}
           onOpenManageMembers={() => setIsManageMembersOpen(true)}
           currentUserEmail={currentUser.email}
           currentUserName={currentUser.displayName}
@@ -1028,6 +1032,7 @@ export default function App() {
               key={activeCompany?.id}
               treasuries={treasuries}
               companyName={activeCompany?.name}
+              companyProfile={activeCompany?.profile}
               cashClosings={cashClosings}
               canCloseCash={currentUserPermissions.canCreateTransactions}
               onCloseDay={async (accountId,date,counted,notes,signature) => {
@@ -1280,6 +1285,19 @@ export default function App() {
       />
 
       {/* Multi-Company Modals */}
+      {activeCompany && activeCompany.id === editingCompanyId && activeCompany.ownerId === currentUser?.uid && (
+        <CompanyProfileModal
+          key={activeCompany.id}
+          company={activeCompany}
+          onClose={() => setEditingCompanyId(null)}
+          onSave={async (name, profile) => {
+            const { id, ownerId } = activeCompany;
+            await updateCompanyProfile(id, ownerId, name, profile);
+            setCompanies(previous => previous.map(company => company.id === id ? { ...company, name, profile } : company));
+            setActiveCompany(previous => previous?.id === id ? { ...previous, name, profile } : previous);
+          }}
+        />
+      )}
       <CreateCompanyModal
         isOpen={isCreateCompanyOpen}
         onClose={() => setIsCreateCompanyOpen(false)}

@@ -48,6 +48,7 @@ interface HeaderProps {
   activeCompany: Company | null;
   onSelectCompany: (company: Company) => void;
   onOpenCreateCompany: () => void;
+  onOpenEditCompany?: () => void;
   onOpenManageMembers: () => void;
   currentUserEmail?: string | null;
   currentUserName?: string | null;
@@ -72,6 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
   activeCompany,
   onSelectCompany,
   onOpenCreateCompany,
+  onOpenEditCompany,
   onOpenManageMembers,
   currentUserEmail,
   currentUserName,
@@ -91,6 +93,7 @@ export const Header: React.FC<HeaderProps> = ({
               activeCompany={activeCompany}
               onSelectCompany={onSelectCompany}
               onOpenCreateCompany={onOpenCreateCompany}
+              onOpenEditCompany={onOpenEditCompany}
               onOpenManageMembers={onOpenManageMembers}
               currentUserEmail={currentUserEmail}
             />
