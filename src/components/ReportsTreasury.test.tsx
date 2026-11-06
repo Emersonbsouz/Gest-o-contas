@@ -36,8 +36,10 @@ test('a new cash account saves its treasury relationship and waits for confirmat
   render(<AccountFormModal isOpen onClose={onClose} onSave={onSave} defaultType="cash" treasuries={[{id:'main',name:'Principal'}]} />);
   fireEvent.change(document.getElementById('input-account-name')!,{target:{value:'Caixa loja'}});
   fireEvent.change(screen.getByLabelText('Tesouraria vinculada'),{target:{value:'main'}});
+  fireEvent.change(screen.getByLabelText('Chave Pix'),{target:{value:' loja@example.com '}});
+  fireEvent.change(screen.getByLabelText('Titular da chave Pix'),{target:{value:' Loja '}});
   fireEvent.click(screen.getByRole('button',{name:'Criar Conta'}));
-  await waitFor(()=>expect(onSave).toHaveBeenCalledWith(expect.objectContaining({name:'Caixa loja',type:'cash',treasuryId:'main',initialBalance:0}),undefined));
+  await waitFor(()=>expect(onSave).toHaveBeenCalledWith(expect.objectContaining({name:'Caixa loja',type:'cash',treasuryId:'main',initialBalance:0,pixKey:'loja@example.com',pixReceiver:'Loja'}),undefined));
   expect(onClose).not.toHaveBeenCalled(); confirm(); await waitFor(() => expect(onClose).toHaveBeenCalled());
 });
 test('treasury registration keeps the form open when the server refuses the write', async () => {

@@ -85,6 +85,8 @@ export interface TreasuryGroup {
 }
 
 export interface TreasuryAccount {
+  pixKey?: string;
+  pixReceiver?: string;
   treasuryId?: string;
   id: string;
   name: string;

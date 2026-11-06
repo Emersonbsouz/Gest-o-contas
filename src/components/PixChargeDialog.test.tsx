@@ -52,6 +52,10 @@ test('issues a Pix charge only for outstanding income and requires the receiver 
   cleanup();
   render(<IncomeList
     incomes={[income]} categories={[]} companyName="Empresa exemplo"
+    accounts={[
+      { id: 'account', name: 'Banco sem Pix', type: 'checking', color: '#000000', initialBalance: 0 },
+      { id: 'cash', name: 'Caixa Loja', type: 'cash', color: '#000000', initialBalance: 0, pixKey: 'pix-do-caixa', pixReceiver: 'Titular do caixa' },
+    ]}
     companyProfile={{ pixKey: 'pix-da-empresa', pixReceiver: 'Titular exemplo', pixBank: 'Banco exemplo' }}
     currentYearMonth="2026-11" onEditIncome={edit} onDeleteIncome={vi.fn()} onOpenAddModal={vi.fn()}
   />);
@@ -60,4 +64,8 @@ test('issues a Pix charge only for outstanding income and requires the receiver 
   expect((configured.getByLabelText('Chave Pix do recebedor') as HTMLInputElement).value).toBe('pix-da-empresa');
   expect((configured.getByLabelText('Nome do recebedor') as HTMLInputElement).value).toBe('Titular exemplo');
   expect((configured.getByRole('button', { name: 'Imprimir / Salvar PDF' }) as HTMLButtonElement).disabled).toBe(false);
+  expect(configured.queryByRole('option', { name: 'Banco sem Pix' })).toBeNull();
+  fireEvent.change(configured.getByLabelText('Selecionar Pix cadastrado'), { target: { value: 'cash' } });
+  expect((configured.getByLabelText('Chave Pix do recebedor') as HTMLInputElement).value).toBe('pix-do-caixa');
+  expect((configured.getByLabelText('Nome do recebedor') as HTMLInputElement).value).toBe('Titular do caixa');
 });

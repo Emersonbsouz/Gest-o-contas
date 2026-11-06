@@ -323,7 +323,7 @@ export const IncomeList: React.FC<IncomeListProps> = ({
           clientName={contactMap.get(charge.contactId ?? '') || 'Cliente não informado'}
           companyName={companyName ?? ''}
           companyProfile={companyProfile}
-          bankName={accounts.find(account => account.id === charge.accountId)?.bankName}
+          accounts={accounts}
           onClose={() => setChargeId(null)}
         />
       )}

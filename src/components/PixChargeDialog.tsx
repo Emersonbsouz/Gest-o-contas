@@ -1,24 +1,33 @@
 import type { CompanyProfile } from '../types';
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { Income } from '../types';
+import type { Income, TreasuryAccount } from '../types';
 import { formatCurrency, formatDateBR } from '../utils/formatters';
 
 interface Props {
   income: Income;
   clientName: string;
   companyName: string;
-  bankName?: string;
+  accounts: TreasuryAccount[];
   companyProfile?: CompanyProfile;
   onClose: () => void;
 }
 
-export function PixChargeDialog({ income, clientName, companyName, bankName, companyProfile, onClose }: Props) {
+export function PixChargeDialog({ income, clientName, companyName, accounts, companyProfile, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  const [receiver, setReceiver] = useState(companyProfile?.pixReceiver || companyName);
-  const [bank, setBank] = useState(companyProfile?.pixBank || bankName || '');
-  const [key, setKey] = useState(companyProfile?.pixKey ?? '');
+  const pixAccounts = accounts.filter(account => account.pixKey?.trim());
+  const incomeAccount = accounts.find(account => account.id === income.accountId);
+  const [selectedAccountId, setSelectedAccountId] = useState(
+    incomeAccount?.pixKey?.trim() ? incomeAccount.id : '',
+  );
+  const selectedAccount = pixAccounts.find(account => account.id === selectedAccountId);
+  const [manualReceiver, setReceiver] = useState(companyProfile?.pixReceiver || companyName);
+  const [manualBank, setBank] = useState(companyProfile?.pixBank || incomeAccount?.bankName || '');
+  const [manualKey, setKey] = useState(companyProfile?.pixKey ?? '');
+  const receiver = selectedAccountId ? selectedAccount?.pixReceiver?.trim() || companyName : manualReceiver;
+  const bank = selectedAccountId ? selectedAccount?.bankName ?? '' : manualBank;
+  const key = selectedAccountId ? selectedAccount?.pixKey ?? '' : manualKey;
   const canPrint = Boolean(receiver.trim() && key.trim());
 
   useEffect(() => {
@@ -52,14 +61,24 @@ export function PixChargeDialog({ income, clientName, companyName, bankName, com
         <section className="space-y-3 rounded-xl border p-4">
           <h3 className="font-semibold">Dados para pagamento</h3>
           <div className="space-y-3 print:hidden">
+            <label className="block text-sm">Selecionar Pix cadastrado
+              <select value={selectedAccountId} onChange={event => setSelectedAccountId(event.target.value)} className="mt-1 block w-full rounded-lg border p-2">
+                <option value="">{companyProfile?.pixKey ? 'Pix da empresa / preenchimento manual' : 'Preencher manualmente'}</option>
+                {pixAccounts.map(account => (
+                  <option key={account.id} value={account.id}>{account.name}{account.bankName ? ' · ' + account.bankName : ''}</option>
+                ))}
+              </select>
+            </label>
+            {!pixAccounts.length && <p className="text-xs text-slate-600">Cadastre uma chave em Cadastros → Contas e Caixas para selecionar aqui.</p>}
+            {selectedAccountId && !selectedAccount && <p role="alert" className="text-xs text-rose-700">Esta chave não está mais disponível. Selecione outra opção.</p>}
             <label className="block text-sm">Nome do recebedor
-              <input value={receiver} onChange={event => setReceiver(event.target.value)} className="mt-1 block w-full rounded-lg border p-2" />
+              <input readOnly={!!selectedAccountId} value={receiver} onChange={event => setReceiver(event.target.value)} className="mt-1 block w-full rounded-lg border p-2" />
             </label>
             <label className="block text-sm">Instituição financeira (opcional)
-              <input value={bank} onChange={event => setBank(event.target.value)} className="mt-1 block w-full rounded-lg border p-2" />
+              <input readOnly={!!selectedAccountId} value={bank} onChange={event => setBank(event.target.value)} className="mt-1 block w-full rounded-lg border p-2" />
             </label>
             <label className="block text-sm">Chave Pix do recebedor
-              <input value={key} onChange={event => setKey(event.target.value)} autoComplete="off" spellCheck={false} className="mt-1 block w-full rounded-lg border p-2" />
+              <input readOnly={!!selectedAccountId} value={key} onChange={event => setKey(event.target.value)} autoComplete="off" spellCheck={false} className="mt-1 block w-full rounded-lg border p-2" />
             </label>
           </div>
           <dl className="hidden space-y-2 text-sm print:block">

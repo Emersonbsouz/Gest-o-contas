@@ -59,6 +59,8 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   const [openingDate, setOpeningDate] = useState('');
   const [initialBalance, setInitialBalance] = useState('');
   const [treasuryId, setTreasuryId] = useState('');
+  const [pixKey, setPixKey] = useState('');
+  const [pixReceiver, setPixReceiver] = useState('');
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [color, setColor] = useState(COLOR_PRESETS[0]);
@@ -72,6 +74,8 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
       setType(editingAccount.type);
       setInitialBalance(editingAccount.initialBalance.toString());
       setOpeningDate(editingAccount.openingDate || '');
+      setPixKey(editingAccount.pixKey || '');
+      setPixReceiver(editingAccount.pixReceiver || '');
       setBankName(editingAccount.bankName || '');
       setAccountNumber(editingAccount.accountNumber || '');
       setColor(editingAccount.color || COLOR_PRESETS[0]);
@@ -81,6 +85,8 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
       setTreasuryId('');
       setInitialBalance('0');
       setOpeningDate(localToday());
+      setPixKey('');
+      setPixReceiver('');
       setBankName('');
       setAccountNumber('');
       setColor(COLOR_PRESETS[0]);
@@ -122,6 +128,8 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
         initialBalance: Math.round(numBalance * 100) / 100,
         openingDate: openingDate || undefined,
         color,
+        pixKey: pixKey.trim() || undefined,
+        pixReceiver: pixKey.trim() ? pixReceiver.trim() || undefined : undefined,
         bankName: bankName.trim() || undefined,
         accountNumber: accountNumber.trim() || undefined,
       },
@@ -281,6 +289,16 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
               />
             </div>
           </div>
+
+          <fieldset className="grid gap-3 rounded-xl border p-3 sm:grid-cols-2">
+            <legend className="px-1 text-xs font-bold text-slate-700">Pix para cobranças</legend>
+            <label className="block text-xs font-semibold text-slate-700">Chave Pix
+              <input value={pixKey} onChange={event => setPixKey(event.target.value)} maxLength={250} spellCheck={false} autoComplete="off" className="mt-1 w-full rounded-lg border p-2 text-sm" />
+            </label>
+            <label className="block text-xs font-semibold text-slate-700">Titular da chave Pix
+              <input value={pixReceiver} onChange={event => setPixReceiver(event.target.value)} maxLength={150} placeholder="Nome que aparece no banco" className="mt-1 w-full rounded-lg border p-2 text-sm" />
+            </label>
+          </fieldset>
 
           {/* Color Selection */}
           <div>
