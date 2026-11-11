@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { getSaveErrorMessage } from '../utils/saveErrors';
 import { Hammer, Plus, MapPin, CheckCircle2, Clock } from 'lucide-react';
 import { CostCenter, ContactPerson } from '../types';
 import { formatCurrency } from '../utils/formatters';
@@ -7,7 +8,8 @@ interface ProjectsViewProps {
   costCenters: CostCenter[];
   contacts: ContactPerson[];
   onOpenCostCenterModal: (cc?: CostCenter) => void;
-  onDeleteCostCenter: (id: string) => void;
+  onDeleteCostCenter: (id: string) => void | Promise<void>;
+  canManageRegistries?: boolean;
   onViewDRE: (centerId: string) => void;
   canViewReports?: boolean;
 }
@@ -19,7 +21,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   onDeleteCostCenter,
   onViewDRE,
   canViewReports = true,
+  canManageRegistries = true,
 }) => {
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [error, setError] = useState('');
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
@@ -36,6 +41,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         </button>
       </div>
 
+      {error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{error}</p>}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {costCenters.length === 0 ? (
           <div className="col-span-full bg-white p-12 rounded-3xl border border-slate-200 border-dashed text-center text-slate-400 italic">
@@ -91,6 +97,28 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   <button type="button" onClick={() => onViewDRE(cc.id)} disabled={!canViewReports} title={canViewReports ? "Ver resultado deste centro de custo" : "Você não tem permissão para visualizar relatórios"} className="disabled:opacity-50 disabled:cursor-not-allowed flex-1 py-2 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl transition-colors">
                     Ver DRE
                   </button>
+                  {canManageRegistries && (
+                    <button
+                      type="button"
+                      aria-label={'Excluir centro de custo ' + cc.name}
+                      disabled={deletingId !== null}
+                      onClick={async () => {
+                        if (!window.confirm('Excluir o centro de custo "' + cc.name + '"?')) return;
+                        setDeletingId(cc.id);
+                        setError('');
+                        try {
+                          await onDeleteCostCenter(cc.id);
+                        } catch (failure) {
+                          setError(getSaveErrorMessage(failure));
+                        } finally {
+                          setDeletingId(null);
+                        }
+                      }}
+                      className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50"
+                    >
+                      {deletingId === cc.id ? 'Excluindo…' : 'Excluir'}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

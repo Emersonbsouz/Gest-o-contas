@@ -62,3 +62,17 @@ test('contact ordering works together with search and keeps missing emails last'
  fireEvent.change(screen.getByLabelText('Pesquisar cadastros'),{target:{value:'Árvore'}});
  expect(names()).toHaveLength(1);expect(names()[0]).toContain('Árvore');
 });
+
+
+test('cost center deletion is confirmed and targets the selected registry row', async () => {
+  const remove = vi.fn().mockResolvedValue(undefined);
+  const p = props();
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  render(<RegistriesView {...p} onDeleteCostCenter={remove} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Centros de Custo (1)' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Excluir Centro Alfa' }));
+  expect(remove).not.toHaveBeenCalled();
+  confirm.mockReturnValue(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Excluir Centro Alfa' }));
+  await waitFor(() => expect(remove).toHaveBeenCalledWith('center'));
+});

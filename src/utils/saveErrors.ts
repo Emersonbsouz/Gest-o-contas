@@ -1,6 +1,7 @@
 export function getSaveErrorMessage(error: unknown): string {
   const detail = error as { code?: string; message?: string } | null;
   const message = detail?.message || '';
+  if (detail?.code === 'COST_CENTER_IN_USE') return message;
   if (detail?.code === '42501' || /row-level security|permission denied/i.test(message)) {
     return 'Não foi possível salvar nesta empresa. Confira sua empresa ativa e suas permissões de acesso.';
   }

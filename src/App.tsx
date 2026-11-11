@@ -287,6 +287,13 @@ export default function App() {
     }
   };
 
+  const handleDeleteCostCenter = async (id: string) => {
+    if (!currentUserPermissions.canManageRegistries) {
+      throw Object.assign(new Error('Sem permissão para excluir centros de custo.'), { code: '42501' });
+    }
+    await deleteCostCenter(id);
+  };
+
   const handleCreateCompany = async (data: { name: string; type: CompanyType; color: string }) => {
     if (!currentUser) return;
     const newComp = await createNewCompany(currentUser.uid, currentUser.email || '', data);
@@ -1012,7 +1019,8 @@ export default function App() {
                 setEditingCostCenter(cc || null);
                 setIsCostCenterModalOpen(true);
               }}
-              onDeleteCostCenter={deleteCostCenter}
+              onDeleteCostCenter={handleDeleteCostCenter}
+              canManageRegistries={currentUserPermissions.canManageRegistries}
               canViewReports={currentUserPermissions.canViewReports}
               onViewDRE={centerId => {
                 if (!currentUserPermissions.canViewReports) { alert('Você não tem permissão para visualizar relatórios.'); return; }
@@ -1083,6 +1091,7 @@ export default function App() {
               onSaveTreasury={saveTreasury}
               onOpenCashModal={() => { setAccountDefaultType("cash"); setEditingAccount(null); setIsAccountModalOpen(true); }}
               costCenters={costCenters}
+              onDeleteCostCenter={currentUserPermissions.canManageRegistries ? handleDeleteCostCenter : undefined}
               incomes={incomes}
               expenses={expenses}
               onOpenCostCenterModal={(center) => { setEditingCostCenter(center || null); setIsCostCenterModalOpen(true); }}

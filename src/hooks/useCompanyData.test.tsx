@@ -202,3 +202,26 @@ test('income entry and installments persist together, and a server error leaves 
  unmount();const again=renderHook(()=>useCompanyData('company-a'));
  expect(again.result.current.incomes.map(i=>i.amount)).toEqual([200,400,400]);
 });
+
+
+test('deleting an unused cost center waits for persistence and rejects linked allocations', async () => {
+  const center = {id:'center',name:'Obra',clientId:'',status:'active',color:'#000',createdAt:1};
+  localStorage.setItem('cg_company-a_costCenters', JSON.stringify([center]));
+  const linked = {id:'expense',description:'Material',amount:10,date:'2026-11-11',categoryId:'cat',paymentMethod:'pix',createdAt:1,
+    splits:[{id:'split',costCenterId:'center',amount:10,categoryId:'cat'}]};
+  localStorage.setItem('cg_company-a_expenses', JSON.stringify([linked]));
+  const first = renderHook(() => useCompanyData('company-a'));
+  await expect(first.result.current.deleteCostCenter('center')).rejects.toMatchObject({code:'COST_CENTER_IN_USE'});
+  expect(service.deleteCompanyDoc).not.toHaveBeenCalled();
+  expect(first.result.current.costCenters).toEqual([center]);
+  first.unmount();
+  localStorage.setItem('cg_company-a_expenses', '[]');
+  const second = renderHook(() => useCompanyData('company-a'));
+  service.deleteCompanyDoc.mockRejectedValueOnce(new Error('Falha'));
+  await act(async () => { await expect(second.result.current.deleteCostCenter('center')).rejects.toThrow('Falha'); });
+  expect(second.result.current.costCenters).toEqual([center]);
+  service.deleteCompanyDoc.mockResolvedValueOnce(undefined);
+  await act(async () => { await second.result.current.deleteCostCenter('center'); });
+  expect(second.result.current.costCenters).toEqual([]);
+  expect(JSON.parse(localStorage.getItem('cg_company-a_costCenters')!)).toEqual([]);
+});

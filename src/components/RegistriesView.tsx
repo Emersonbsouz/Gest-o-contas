@@ -83,6 +83,7 @@ interface RegistriesViewProps {
   costCenters?: CostCenter[];
   incomes?: Income[];
   expenses?: Expense[];
+  onDeleteCostCenter?: (id: string) => Promise<void>;
   onOpenCostCenterModal?: (center?: CostCenter) => void;
   treasuries?: TreasuryGroup[];
   transfers?: AccountTransfer[];
@@ -149,6 +150,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
   accounts = [],
   categories = [],
   equipment = [],
+  onDeleteCostCenter,
   costCenters = [],
   incomes = [],
   expenses = [],
@@ -397,7 +399,7 @@ export const RegistriesView: React.FC<RegistriesViewProps> = ({
         </button>)}
       </nav>
       {!['costCenters', 'members'].includes(activeTab) && <input aria-label="Pesquisar cadastros" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Pesquisar nesta área..." className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" />}
-      {activeTab === 'costCenters' && <CostCenterRegistry centers={costCenters} contacts={contacts} incomes={incomes} expenses={expenses} onCreate={()=>onOpenCostCenterModal?.()} onEdit={center=>onOpenCostCenterModal?.(center)} />}
+      {activeTab === 'costCenters' && <CostCenterRegistry onDelete={onDeleteCostCenter} centers={costCenters} contacts={contacts} incomes={incomes} expenses={expenses} onCreate={()=>onOpenCostCenterModal?.()} onEdit={center=>onOpenCostCenterModal?.(center)} />}
       {activeTab === 'treasuries' && onSaveTreasury && <TreasuryRegistry treasuries={treasuries} accounts={accounts} incomes={incomes} expenses={expenses} transfers={transfers} search={searchQuery} onSave={onSaveTreasury} />}
 
       {/* TAB 1: CARTÕES DE CRÉDITO */}

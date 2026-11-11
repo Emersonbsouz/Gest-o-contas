@@ -607,6 +607,16 @@ export function useCompanyData(companyId: string | null) {
   const deleteCostCenter = useCallback(async (id: string) => {
     if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');
 
+    const linked = expenses.some(expense => expense.costCenterId === id || expense.splits?.some(split => split.costCenterId === id))
+      || incomes.some(income => income.costCenterId === id)
+      || recurringBills.some(bill => bill.costCenterId === id)
+      || proposals.some(proposal => proposal.costCenterId === id)
+      || rentals.some(rental => rental.costCenterId === id);
+    if (linked) {
+      const error = new Error('Este centro de custo possui vínculos. Reatribua os lançamentos, recorrências, propostas e locações a outro centro antes de excluir, ou edite a situação para Suspenso.');
+      throw Object.assign(error, { code: 'COST_CENTER_IN_USE' });
+    }
+
     await deleteCompanyDoc(companyId, 'costCenters', id);
     setCostCenters((prev) => {
       const next = prev.filter((v) => v.id !== id);
@@ -614,7 +624,7 @@ export function useCompanyData(companyId: string | null) {
       return next;
     });
 
-  }, [companyId]);
+  }, [companyId, expenses, incomes, recurringBills, proposals, rentals]);
 
   const saveProposal = useCallback(async (data: Omit<Proposal, 'id' | 'createdAt'>, itemId?: string, original?: Proposal) => {
     if (!companyId) throw new Error('Selecione uma empresa antes de salvar ou alterar os dados.');
