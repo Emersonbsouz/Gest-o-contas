@@ -25,7 +25,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ transfers = [], expens
   const [range, setRange] = useState(() => initialPeriod === 'all' ? {start: '', end: ''} : monthRange(month));
   const [preset, setPreset] = useState(initialPeriod as string);
   const [status, setStatus] = useState<ReportFilters['status']>('all');
-  const [kind, setKind] = useState<ReportFilters['kind']>('all');
+  const [kind, setKind] = useState<ReportFilters['kind'] | 'transfer'>('all');
   const [accountId, setAccountId] = useState('all');
   const [costCenterId, setCostCenterId] = useState(initialCostCenterId || 'all');
   const [treasuryId, setTreasuryId] = useState('all');
@@ -36,10 +36,32 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ transfers = [], expens
     return splits?.length ? splits.filter(s => costCenterId === 'all' || s.costCenterId === costCenterId).map(s => `${s.description || s.notes || 'Item'} — ${name(costCenters, s.costCenterId) || 'Centro indisponível'} (${formatCurrency(s.amount)})`).join(' / ') : name(costCenters, item.costCenterId);
   };
   const invalidRange = !!(range.start && range.end && range.start > range.end);
-  const rows = useMemo(() => invalidRange ? [] : reportRows(incomes, expenses,
+  const rows = useMemo(() => invalidRange || kind === 'transfer' ? [] : reportRows(incomes, expenses,
     { ...range, status, kind, accountId, costCenterId, search }, item => `${name(contacts, item.contactId)} ${centerNames(item)} ${name(accounts, item.accountId)}`)
     .filter(({item}) => treasuryId === 'all' || accounts.find(a => a.id === item.accountId)?.treasuryId === treasuryId),
     [incomes, expenses, range, status, kind, accountId, costCenterId, search, contacts, costCenters, accounts, treasuryId, invalidRange]);
+  const inlineTransfers = useMemo(() => {
+    if (invalidRange || (kind !== 'all' && kind !== 'transfer') || (status !== 'all' && status !== 'settled')) return [];
+    return transfers.filter(item => {
+      if (range.start && item.date < range.start || range.end && item.date > range.end) return false;
+      if (accountId !== 'all' && item.fromAccountId !== accountId && item.toAccountId !== accountId) return false;
+      if (treasuryId !== 'all' && !accounts.some(account => account.treasuryId === treasuryId && (account.id === item.fromAccountId || account.id === item.toAccountId))) return false;
+      return [item.description,name(accounts,item.fromAccountId),name(accounts,item.toAccountId),'Transferência interna'].join(' ').toLocaleLowerCase('pt-BR').includes(search.trim().toLocaleLowerCase('pt-BR'));
+    });
+  }, [transfers,accounts,range,accountId,treasuryId,kind,status,search,invalidRange]);
+  const tableRows = [
+    ...rows.map(row => ({type:'financial' as const,row,date:row.item.date,id:row.kind+':'+row.item.id})),
+    ...inlineTransfers.map(item => ({type:'transfer' as const,item,date:item.date,id:'transfer:'+item.id})),
+  ].sort((a,b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  function transferDirection(item:AccountTransfer) {
+    if (accountId !== 'all') return item.toAccountId === accountId ? 'Entrada' : 'Saída';
+    if (treasuryId !== 'all') {
+      const from = accounts.find(a=>a.id===item.fromAccountId)?.treasuryId === treasuryId;
+      const to = accounts.find(a=>a.id===item.toAccountId)?.treasuryId === treasuryId;
+      if (from !== to) return to ? 'Entrada' : 'Saída';
+    }
+    return 'Interna';
+  }
   const openingAccounts = accounts.filter(account => !invalidRange && account.initialBalance !== 0 &&
     (accountId === 'all' || account.id === accountId) && (treasuryId === 'all' || account.treasuryId === treasuryId) &&
     (!range.end || !account.openingDate || account.openingDate <= range.end));
@@ -64,9 +86,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ transfers = [], expens
   function choosePeriod(value: string) { setPreset(value); }
   const periodLabel = `${range.start ? formatDateBR(range.start) : 'Início do histórico'} a ${range.end ? formatDateBR(range.end) : 'Fim do histórico'}`;
   function exportReport() {
-    const headers = ['Vencimento', 'Tipo', 'Descrição', 'Cliente / Fornecedor', 'Centro de custo', 'Conta / Caixa', 'Tesouraria', 'Categoria', 'Valor (R$)', 'Situação'];
-    const data = rows.map(({item, kind: type, amount}) => [formatDateBR(item.date), type === 'income' ? 'Receita' : 'Despesa', item.description, name(contacts, item.contactId), centerNames(item), name(accounts, item.accountId), name(treasuries, accounts.find(a => a.id === item.accountId)?.treasuryId), name(categories, item.categoryId), amount.toFixed(2).replace('.', ','), statusLabel(item.status, type)]);
-    const metadata = [['Relatório financeiro'], ['Empresa', companyName], ['Período', periodLabel], ['Situação', statusNames[status]], ['Tipo', kind === 'all' ? 'Receitas e despesas' : kind === 'income' ? 'Receitas' : 'Despesas'], ['Conta / Caixa', accountId === 'all' ? 'Todas' : name(accounts, accountId)], ['Tesouraria', treasuryId === 'all' ? 'Todas' : name(treasuries, treasuryId)], ['Centro de custo', costCenterId === 'all' ? 'Todos' : name(costCenters, costCenterId)], ['Busca', search], ['Recebido', received.toFixed(2).replace('.', ',')], ['Pago', paid.toFixed(2).replace('.', ',')], ['A receber', receivable.toFixed(2).replace('.', ',')], ['A pagar', payable.toFixed(2).replace('.', ',')], []];
+    const headers = ['Vencimento', 'Tipo', 'Descrição', 'Cliente / Fornecedor', 'Centro de custo', 'Conta / Caixa', 'Tesouraria', 'Categoria', 'Valor (R$)', 'Situação', 'Origem', 'Destino'];
+    const data = tableRows.map(entry => {
+      if (entry.type === 'transfer') {
+        const item = entry.item, direction = transferDirection(item);
+        return [formatDateBR(item.date),'Transferência interna — '+direction,item.description,'—','Não se aplica',accountId==='all'?'Origem → Destino':name(accounts,accountId),'','Transferência interna',((direction==='Saída'?-1:1)*item.amount).toFixed(2).replace('.',','),'Realizada',name(accounts,item.fromAccountId)||item.fromAccountId,name(accounts,item.toAccountId)||item.toAccountId];
+      }
+      const {item,kind:type,amount} = entry.row;
+      return [formatDateBR(item.date),type==='income'?'Receita':'Despesa',item.description,name(contacts,item.contactId),centerNames(item),name(accounts,item.accountId),name(treasuries,accounts.find(a=>a.id===item.accountId)?.treasuryId),name(categories,item.categoryId),amount.toFixed(2).replace('.',','),statusLabel(item.status,type),'',''];
+    });
+    const metadata = [['Relatório financeiro'], ['Empresa', companyName], ['Período', periodLabel], ['Situação', statusNames[status]], ['Tipo', kind === 'all' ? 'Receitas, despesas e transferências' : kind === 'transfer' ? 'Transferências internas' : kind === 'income' ? 'Receitas' : 'Despesas'], ['Conta / Caixa', accountId === 'all' ? 'Todas' : name(accounts, accountId)], ['Tesouraria', treasuryId === 'all' ? 'Todas' : name(treasuries, treasuryId)], ['Centro de custo', costCenterId === 'all' ? 'Todos' : name(costCenters, costCenterId)], ['Busca', search], ['Recebido', received.toFixed(2).replace('.', ',')], ['Pago', paid.toFixed(2).replace('.', ',')], ['A receber', receivable.toFixed(2).replace('.', ',')], ['A pagar', payable.toFixed(2).replace('.', ',')], []];
     const openingData = openingAccounts.length ? [[], ['Saldos de abertura das contas — fora do resultado da DRE'], ['Conta / Caixa', 'Data da abertura', 'Valor (R$)'], ...openingAccounts.map(account => [account.name, account.openingDate ? formatDateBR(account.openingDate) : 'Sem data (saldo anterior)', account.initialBalance.toFixed(2).replace('.', ',')]), ['Abertura da conta inteira, sem rateio por centro de custo. Não somada às receitas operacionais.']] : [];
     const blob = new Blob(['\uFEFF' + [...metadata, headers, ...data, ...openingData].map(row => row.map(csvCell).join(';')).join('\r\n')], {type: 'text/csv;charset=utf-8'});
     const url = URL.createObjectURL(blob), link = document.createElement('a');
@@ -83,12 +112,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ transfers = [], expens
       <label className="space-y-1 text-xs font-semibold text-slate-600">Data inicial<input aria-label="Data inicial" type="date" value={range.start} onChange={e => {setPreset('custom'); setRange({...range, start: e.target.value});}} className={inputClass} /></label>
       <label className="space-y-1 text-xs font-semibold text-slate-600">Data final<input aria-label="Data final" type="date" value={range.end} onChange={e => {setPreset('custom'); setRange({...range, end: e.target.value});}} className={inputClass} /></label>
       <label className="space-y-1 text-xs font-semibold text-slate-600">Situação<select aria-label="Situação do relatório" value={status} onChange={e => setStatus(e.target.value as ReportFilters['status'])} className={inputClass}>{Object.entries(statusNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      <label className="space-y-1 text-xs font-semibold text-slate-600">Tipo<select aria-label="Tipo do relatório" value={kind} onChange={e => setKind(e.target.value as ReportFilters['kind'])} className={inputClass}><option value="all">Receitas e despesas</option><option value="income">Receitas</option><option value="expense">Despesas</option></select></label>
+      <label className="space-y-1 text-xs font-semibold text-slate-600">Tipo<select aria-label="Tipo do relatório" value={kind} onChange={e => setKind(e.target.value as ReportFilters['kind'] | 'transfer')} className={inputClass}><option value="all">Receitas, despesas e transferências</option><option value="transfer">Transferências internas</option><option value="income">Receitas</option><option value="expense">Despesas</option></select></label>
       <label className="space-y-1 text-xs font-semibold text-slate-600">Conta / Caixa<select aria-label="Conta / Caixa" value={accountId} onChange={e => setAccountId(e.target.value)} className={inputClass}><option value="all">Todas as contas e caixas</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
       <label className="space-y-1 text-xs font-semibold text-slate-600">Centro de custo<select aria-label="Centro de custo do relatório" value={costCenterId} onChange={e => setCostCenterId(e.target.value)} className={inputClass}><option value="all">Todos os centros</option>{costCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
       <label className="space-y-1 text-xs font-semibold text-slate-600">Tesouraria<select aria-label="Tesouraria do relatório" value={treasuryId} onChange={e => setTreasuryId(e.target.value)} className={inputClass}><option value="all">Todas as tesourarias</option>{treasuries.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
     </div><input aria-label="Buscar no relatório" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar descrição, cliente, fornecedor ou centro..." className={`${inputClass} mt-4`} />{invalidRange && <p role="alert" className="mt-3 text-sm text-rose-600">A data final deve ser igual ou posterior à data inicial.</p>}</div>
-    <p className="text-xs text-slate-500">{periodLabel} · {statusNames[status]} · {rows.length} lançamentos. Período pela data de vencimento. Conta: {accountId === "all" ? "Todas" : name(accounts, accountId)}. Tesouraria: {treasuryId === "all" ? "Todas" : name(treasuries, treasuryId)}. Centro: {costCenterId === "all" ? "Todos" : name(costCenters, costCenterId)}. {costCenterId !== 'all' && 'Valores correspondentes somente aos produtos destinados ao centro selecionado.'}</p>
+    <p className="text-xs text-slate-500">{periodLabel} · {statusNames[status]} · {tableRows.length} lançamentos. Período pela data de vencimento. Conta: {accountId === "all" ? "Todas" : name(accounts, accountId)}. Tesouraria: {treasuryId === "all" ? "Todas" : name(treasuries, treasuryId)}. Centro: {costCenterId === "all" ? "Todos" : name(costCenters, costCenterId)}. {costCenterId !== 'all' && 'Valores correspondentes somente aos produtos destinados ao centro selecionado.'}</p>
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[["Recebido", received, 'text-emerald-700'], ["Pago", paid, 'text-rose-700'], ["A receber", receivable, 'text-amber-700'], ["A pagar", payable, 'text-amber-700']].map(([label, value, color]) => <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-xs font-semibold text-slate-500">{label}</p><p className={`mt-2 text-xl font-bold ${color}`}>{formatCurrency(Number(value))}</p></div>)}</div>
     <div className="flex flex-wrap gap-5 rounded-xl bg-indigo-50 p-4 text-sm text-indigo-900"><span>Resultado realizado: <b>{formatCurrency(received - paid)}</b></span><span>Resultado previsto: <b>{formatCurrency(received + receivable - paid - payable)}</b></span></div>
     {openingAccounts.length > 0 && <section aria-label="Saldos de abertura das contas" className="rounded-2xl border border-indigo-200 bg-white p-5">
@@ -97,6 +126,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ transfers = [], expens
       <div className="mt-3 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th className="p-2">Conta / Caixa</th><th className="p-2">Data da abertura</th><th className="p-2 text-right">Saldo inicial de abertura</th></tr></thead><tbody>{openingAccounts.map(account => <tr key={account.id} className="border-t"><td className="p-2 font-semibold">{account.name}</td><td className="p-2">{account.openingDate ? formatDateBR(account.openingDate) : 'Sem data (saldo anterior)'}</td><td className="p-2 text-right font-bold text-indigo-700">{formatCurrency(account.initialBalance)}</td></tr>)}</tbody></table></div>
     </section>}
     {chartData.length > 0 && <div className="rounded-2xl border bg-white p-5 print:hidden"><h3 className="mb-4 text-sm font-bold">Evolução no período</h3><div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip formatter={(v: number) => formatCurrency(v)} /><Legend /><Bar dataKey="Recebido" fill="#059669" /><Bar dataKey="Pago" fill="#e11d48" /><Bar dataKey="A receber" fill="#84cc16" /><Bar dataKey="A pagar" fill="#f59e0b" /></BarChart></ResponsiveContainer></div></div>}
-    <div className="overflow-x-auto rounded-2xl border bg-white"><table className="w-full text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr>{['Vencimento', 'Tipo / Descrição', 'Cliente / Fornecedor', 'Centro de custo', 'Conta / Caixa', 'Valor', 'Situação'].map(h => <th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{rows.map(({item, kind: type, amount}) => <tr key={`${type}-${item.id}`} className="border-t border-slate-100"><td className="whitespace-nowrap p-3">{formatDateBR(item.date)}</td><td className="p-3"><span className="block text-slate-500">{type === 'income' ? 'Receita' : 'Despesa'}</span><b>{item.description}</b></td><td className="p-3">{name(contacts, item.contactId) || '—'}</td><td className="p-3">{centerNames(item) || '—'}</td><td className="p-3">{name(accounts, item.accountId) || 'Não definida'}</td><td className={`whitespace-nowrap p-3 font-bold ${type === 'income' ? 'text-emerald-700' : 'text-rose-700'}`}>{formatCurrency(amount)}</td><td className="whitespace-nowrap p-3"><span className={`rounded-full px-2 py-1 ${isOpen(item.status) ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-700'}`}>{statusLabel(item.status, type)}</span></td></tr>)}</tbody></table>{!rows.length && <p className="p-8 text-center text-sm text-slate-500">Nenhum lançamento encontrado para estes filtros.</p>}</div>
+    {inlineTransfers.length>0 && <p className="rounded-lg bg-sky-50 p-3 text-xs text-sky-900">Transferências internas aparecem nesta tabela, mas não entram nos totais de receitas, despesas ou resultado da DRE. Elas seguem os filtros de conta, tesouraria e data da transferência; não possuem centro de custo.</p>}
+    <div className="overflow-x-auto rounded-2xl border bg-white"><table aria-label="Lançamentos do relatório financeiro" className="w-full text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr>{['Data / Vencimento','Tipo / Descrição','Cliente / Fornecedor','Centro de custo','Conta / Caixa','Origem','Destino','Valor','Situação'].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{tableRows.map(entry => {
+      if (entry.type==='transfer') {
+        const item=entry.item,direction=transferDirection(item);
+        const origin=name(accounts,item.fromAccountId)||'Conta indisponível',destination=name(accounts,item.toAccountId)||'Conta indisponível';
+        return <tr key={entry.id} className="border-t border-slate-100 bg-sky-50/30"><td className="whitespace-nowrap p-3">{formatDateBR(item.date)}</td><td className="p-3"><span className="block text-sky-700">Transferência interna — {direction}</span><b>{item.description||'Transferência interna'}</b></td><td className="p-3">—</td><td className="p-3">Não se aplica</td><td className="p-3">{accountId==='all'?'Origem → Destino':name(accounts,accountId)}</td><td className="p-3">{origin}</td><td className="p-3">{destination}</td><td className="whitespace-nowrap p-3 font-bold text-sky-700">{direction==='Saída'?'− ':direction==='Entrada'?'+ ':''}{formatCurrency(item.amount)}</td><td className="p-3"><span className="rounded-full bg-sky-100 px-2 py-1 text-sky-800">Realizada</span></td></tr>;
+      }
+      const {item,kind:type,amount}=entry.row;
+      return <tr key={entry.id} className="border-t border-slate-100"><td className="whitespace-nowrap p-3">{formatDateBR(item.date)}</td><td className="p-3"><span className="block text-slate-500">{type==='income'?'Receita':'Despesa'}</span><b>{item.description}</b></td><td className="p-3">{name(contacts,item.contactId)||'—'}</td><td className="p-3">{centerNames(item)||'—'}</td><td className="p-3">{name(accounts,item.accountId)||'Não definida'}</td><td className="p-3">—</td><td className="p-3">—</td><td className={'whitespace-nowrap p-3 font-bold '+(type==='income'?'text-emerald-700':'text-rose-700')}>{formatCurrency(amount)}</td><td className="whitespace-nowrap p-3"><span className={'rounded-full px-2 py-1 '+(isOpen(item.status)?'bg-amber-50 text-amber-800':'bg-slate-100 text-slate-700')}>{statusLabel(item.status,type)}</span></td></tr>;
+    })}</tbody></table>{!tableRows.length&&<p className="p-8 text-center text-sm text-slate-500">Nenhum lançamento encontrado para estes filtros.</p>}</div>
   </section>;
 };

@@ -72,3 +72,14 @@ test('wallet opening is visible in project DRE and export without inflating oper
   fireEvent.click(screen.getByRole('button',{name:'Exportar relatório'}));
   expect(content).toContain('1200,00');expect(content).not.toContain('900,00');
 });
+
+test('internal transfers appear in the financial table for a selected account without changing DRE totals',()=>{
+ let content='';vi.stubGlobal('Blob',class {constructor(parts:string[]){content=parts.join('');}});URL.createObjectURL=vi.fn(()=>'blob:report');URL.revokeObjectURL=vi.fn();vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});
+ render(<ReportsView expenses={[]} incomes={[{id:'income',description:'Venda real',amount:50,date:'2026-11-01',accountId:'bank',categoryId:'cat',costCenterId:'center',status:'paid',createdAt:1}]} accounts={[{id:'bank',name:'NUBANK',type:'checking',initialBalance:0,color:'#123'},{id:'cash',name:'Caixa Loja',type:'cash',initialBalance:0,color:'#123'}]} categories={[]} costCenters={[{id:'center',name:'Cacto',clientId:'',status:'active',color:'#123',createdAt:1}]} initialCostCenterId="center" transfers={[{id:'transfer',description:'Aporte para Caixa Loja',fromAccountId:'bank',toAccountId:'cash',amount:100,date:'2026-11-02',createdAt:2},{id:'old',description:'Aporte antigo',fromAccountId:'bank',toAccountId:'cash',amount:70,date:'2026-10-01',createdAt:1}]} selectedMonth="2026-11" onMonthChange={vi.fn()}/>);
+ fireEvent.change(screen.getByLabelText('Conta / Caixa'),{target:{value:'bank'}});
+ const row=screen.getByText('Aporte para Caixa Loja').closest('tr')!;expect(row.textContent).toContain('Transferência interna — Saída');expect(row.textContent).toContain('NUBANK');expect(row.textContent).toContain('Caixa Loja');expect(screen.queryByText('Aporte antigo')).toBeNull();expect(screen.getByText('Resultado realizado:').textContent).toContain('50,00');
+ fireEvent.click(screen.getByRole('button',{name:'Exportar relatório'}));expect(content).toContain('Transferência interna — Saída');expect(content).toContain('-100,00');expect(content).not.toContain('Aporte antigo');
+ fireEvent.change(screen.getByLabelText('Conta / Caixa'),{target:{value:'cash'}});expect(screen.getByText('Aporte para Caixa Loja').closest('tr')!.textContent).toContain('Transferência interna — Entrada');expect(screen.queryByText('Venda real')).toBeNull();
+ fireEvent.change(screen.getByLabelText('Situação do relatório'),{target:{value:'open'}});expect(screen.queryByText('Aporte para Caixa Loja')).toBeNull();
+ fireEvent.change(screen.getByLabelText('Situação do relatório'),{target:{value:'all'}});fireEvent.change(screen.getByLabelText('Tipo do relatório'),{target:{value:'transfer'}});expect(screen.getByText('Aporte para Caixa Loja')).toBeTruthy();
+});
